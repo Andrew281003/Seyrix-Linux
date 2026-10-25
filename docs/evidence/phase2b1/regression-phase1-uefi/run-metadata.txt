@@ -1,0 +1,8 @@
+Run started UTC: 2026-10-25T21:56:08+00:00
+ISO: /root/.cache/seyrix-linux/phase1-20261025T153755Z/out/seyrix-2026.10.25-x86_64.iso
+ISO SHA-256: 44c46eb3eeb1519faba3687fdc489e9c748fcdad743a822ae3f7ea7c52d50eca
+ISO bytes: 907358208
+Host kernel: 6.18.54.1-microsoft-standard-WSL2
+QEMU package: qemu-system-x86 11.1.2-1
+OVMF package: edk2-ovmf 202608-1
+Expected output: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/docs/evidence/phase2b1/regression-phase1-uefi/serial.log

@@ -12,9 +12,18 @@ set qemu_args [lrange $argv 3 end]
 set serial_log "$run_dir/serial.log"
 set timeout 360
 set phase2b 0
+set sanitizers_enabled 0
+set renderer_request ""
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2b"} {
 	set phase2b 1
+}
+if {[info exists env(SEYRIX_QEMU_SANITIZERS)] &&
+		$env(SEYRIX_QEMU_SANITIZERS) eq "1"} {
+	set sanitizers_enabled 1
+}
+if {[info exists env(SEYRIX_QEMU_RENDERER)]} {
+	set renderer_request $env(SEYRIX_QEMU_RENDERER)
 }
 log_file -noappend $serial_log
 log_user 1
@@ -44,27 +53,42 @@ proc qmp_hmp {channel command} {
 }
 
 proc keycode_for {character} {
+    set shift 0
+    if {[regexp {^[A-Z]$} $character]} {
+        set character [string tolower $character]
+        set shift 1
+    }
     if {[regexp {^[a-z0-9]$} $character]} {
-        return $character
+        return [list $character $shift]
     }
     switch -- $character {
-        " " { return "spc" }
-        "/" { return "slash" }
-        "-" { return "minus" }
-        "." { return "dot" }
-        "\n" { return "ret" }
+        " " { return [list "spc" 0] }
+        "/" { return [list "slash" 0] }
+        "-" { return [list "minus" 0] }
+        "_" { return [list "minus" 1] }
+        "=" { return [list "equal" 0] }
+        "." { return [list "dot" 0] }
+        "\n" { return [list "ret" 0] }
         default { error "Unsupported QEMU key character: $character" }
     }
 }
 
 proc qmp_type {channel value} {
     foreach character [split $value ""] {
-        set code [keycode_for $character]
+        lassign [keycode_for $character] code shift
+        if {$shift} {
+            qmp_key_transition $channel shift 1
+            after 40
+        }
         set down_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
         qmp_exec $channel $down_event
         after 60
         set up_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
         qmp_exec $channel $up_event
+        if {$shift} {
+            after 40
+            qmp_key_transition $channel shift 0
+        }
         after 60
     }
 }
@@ -356,7 +380,18 @@ expect {
 }
 if {$phase2b} {
     qmp_hmp $qmp "screendump $run_dir/tty1-before-seyrix.ppm"
-    qmp_type $qmp "start-seyrix\n"
+    set compositor_launch_command "start-seyrix"
+    if {$sanitizers_enabled} {
+        set compositor_launch_command "ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 start-seyrix"
+    }
+    if {$renderer_request ne ""} {
+        set compositor_launch_command "WLR_RENDERER=$renderer_request $compositor_launch_command"
+    }
+    qmp_type $qmp $compositor_launch_command
+    set compositor_command_started [clock milliseconds]
+    qmp_key_transition $qmp ret 1
+    after 80
+    qmp_key_transition $qmp ret 0
     after 2000
     qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-command.ppm"
 
@@ -392,6 +427,9 @@ if {$phase2b} {
         puts stderr "Seyrix compositor did not start or create a Wayland socket."
         exit 1
     }
+    set compositor_startup_ms [expr {[clock milliseconds] - $compositor_command_started}]
+    puts "COMPOSITOR_STARTUP_MS=$compositor_startup_ms"
+    puts "APPLICATION_LAUNCH=passed"
     set graphics_ms [expr {[clock milliseconds] - $boot_started}]
     puts "GRAPHICAL_BOOT_MS=$graphics_ms"
 
@@ -591,8 +629,176 @@ if {$phase2b} {
         }
     }
 
+    if {[info exists env(SEYRIX_QEMU_STRESS)] && $env(SEYRIX_QEMU_STRESS) eq "1"} {
+        puts "STRESS_CAMPAIGN=started"
+        set stress_baseline_command {compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); if [[ -n "$compositor_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status" > /tmp/seyrix-compositor-rss-before; else echo missing > /tmp/seyrix-compositor-rss-before; fi; printf 'STRESS_BASELINE_RSS_KB='; cat /tmp/seyrix-compositor-rss-before; printf 'STRESS_BASELINE_TERMINALS='; pgrep -u 1000 -x weston-terminal | wc -l; printf 'STRESS_BASELINE_COMPOSITORS='; pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | wc -l}
+        send -- "$stress_baseline_command\r"
+        expect {
+            -re {STRESS_BASELINE_RSS_KB=[0-9]+} {}
+            timeout {puts stderr "Could not record compositor stress baseline."; exit 1}
+            eof {puts stderr "QEMU exited before stress baseline recording."; exit 1}
+        }
+
+        for {set cycle 1} {$cycle <= 5} {incr cycle} {
+            set cycle_id [format "%02d" $cycle]
+            puts "STRESS_CYCLE_START=$cycle_id"
+            qmp_key_chord $qmp {meta_l} ret
+            after 400
+            set open_first_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -ge 1 ]]; then break; fi; sleep 1; done; if [[ "$(pgrep -u 1000 -x weston-terminal | wc -l)" -ge 1 ]]; then echo STRESS_FIRST_WINDOW=passed; else echo STRESS_FIRST_WINDOW=failed; fi}
+            send -- "$open_first_command\r"
+            expect {
+                -re {STRESS_FIRST_WINDOW=passed} {}
+                -re {STRESS_FIRST_WINDOW=failed} {puts stderr "Stress cycle could not open first window."; exit 1}
+                timeout {puts stderr "Timed out opening first stress window."; exit 1}
+                eof {puts stderr "QEMU exited opening first stress window."; exit 1}
+            }
+
+            qmp_key_chord $qmp {meta_l} ret
+            after 400
+            set open_second_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -ge 2 ]]; then break; fi; sleep 1; done; count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -ge 2 ]]; then echo STRESS_SECOND_WINDOW=passed; else echo STRESS_SECOND_WINDOW=failed; fi}
+            send -- "$open_second_command\r"
+            expect {
+                -re {STRESS_SECOND_WINDOW=passed} {}
+                -re {STRESS_SECOND_WINDOW=failed} {puts stderr "Stress cycle could not open second window."; exit 1}
+                timeout {puts stderr "Timed out opening second stress window."; exit 1}
+                eof {puts stderr "QEMU exited opening second stress window."; exit 1}
+            }
+
+            qmp_type $qmp "touch /tmp/seyrix-stress-focus-$cycle_id\n"
+            set focus_command [format {if test -f /tmp/seyrix-stress-focus-%s; then echo STRESS_NEW_WINDOW_FOCUS=passed; else echo STRESS_NEW_WINDOW_FOCUS=failed; fi} $cycle_id]
+            send -- "$focus_command\r"
+            expect {
+                -re {STRESS_NEW_WINDOW_FOCUS=passed} {}
+                -re {STRESS_NEW_WINDOW_FOCUS=failed} {puts stderr "New stress window did not receive keyboard focus."; exit 1}
+                timeout {puts stderr "Timed out checking stress window focus."; exit 1}
+                eof {puts stderr "QEMU exited checking stress window focus."; exit 1}
+            }
+
+            qmp_hmp $qmp "screendump $run_dir/stress-cycle-$cycle_id-before-interaction.ppm"
+            qmp_key_transition $qmp alt 1
+            qmp_mouse_drag $qmp 15360 17066 20480 20480 left
+            qmp_key_transition $qmp alt 0
+            qmp_key_transition $qmp alt 1
+            qmp_mouse_drag $qmp 17920 17066 20480 19114 right
+            qmp_key_transition $qmp alt 0
+            after 500
+            qmp_hmp $qmp "screendump $run_dir/stress-cycle-$cycle_id-after-interaction.ppm"
+            set required_interactions [expr {$cycle + 1}]
+            set interaction_command [format {moved=$(grep -c 'Window moved to' /tmp/seyrix-compositor.log || true); resized=$(grep -c 'Resize gesture ended' /tmp/seyrix-compositor.log || true); if [[ "$moved" -ge %s && "$resized" -ge %s ]]; then echo STRESS_MOVE_RESIZE=passed; else echo STRESS_MOVE_RESIZE=failed; fi; printf 'STRESS_MOVE_COUNT=%%s\nSTRESS_RESIZE_COUNT=%%s\n' "$moved" "$resized"} $required_interactions $required_interactions]
+            send -- "$interaction_command\r"
+            expect {
+                -re {STRESS_MOVE_RESIZE=passed} {set interaction_status passed}
+                -re {STRESS_MOVE_RESIZE=failed} {set interaction_status failed}
+                timeout {puts stderr "Timed out checking stress movement and resize."; exit 1}
+                eof {puts stderr "QEMU exited checking stress movement and resize."; exit 1}
+            }
+            expect {
+                -re {STRESS_RESIZE_COUNT=[0-9]+} {}
+                timeout {puts stderr "Timed out reading stress interaction counters."; exit 1}
+                eof {puts stderr "QEMU exited reading stress interaction counters."; exit 1}
+            }
+            if {$interaction_status eq "failed"} {
+                puts stderr "Stress cycle did not move and resize window."
+                exit 1
+            }
+
+            qmp_key_chord $qmp {meta_l} q
+            after 700
+            set close_top_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -le 1 ]]; then break; fi; sleep 1; done; if [[ "$(pgrep -u 1000 -x weston-terminal | wc -l)" -eq 1 ]]; then echo STRESS_CLOSE_TOP=passed; else echo STRESS_CLOSE_TOP=failed; fi}
+            send -- "$close_top_command\r"
+            expect {
+                -re {STRESS_CLOSE_TOP=passed} {}
+                -re {STRESS_CLOSE_TOP=failed} {puts stderr "Stress cycle failed to close top window."; exit 1}
+                timeout {puts stderr "Timed out closing top stress window."; exit 1}
+                eof {puts stderr "QEMU exited closing top stress window."; exit 1}
+            }
+
+            qmp_type $qmp "touch /tmp/seyrix-stress-fallback-$cycle_id\n"
+            set fallback_command [format {if test -f /tmp/seyrix-stress-fallback-%s; then echo STRESS_FOCUS_FALLBACK=passed; else echo STRESS_FOCUS_FALLBACK=failed; fi} $cycle_id]
+            send -- "$fallback_command\r"
+            expect {
+                -re {STRESS_FOCUS_FALLBACK=passed} {}
+                -re {STRESS_FOCUS_FALLBACK=failed} {puts stderr "Focus did not return to remaining stress window."; exit 1}
+                timeout {puts stderr "Timed out checking focus fallback."; exit 1}
+                eof {puts stderr "QEMU exited checking focus fallback."; exit 1}
+            }
+
+            qmp_key_chord $qmp {meta_l} q
+            after 700
+            set close_last_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then break; fi; sleep 1; done; if [[ "$(pgrep -u 1000 -x weston-terminal | wc -l)" -eq 0 ]]; then echo STRESS_CLOSE_LAST=passed; else echo STRESS_CLOSE_LAST=failed; fi}
+            send -- "$close_last_command\r"
+            expect {
+                -re {STRESS_CLOSE_LAST=passed} {}
+                -re {STRESS_CLOSE_LAST=failed} {puts stderr "Stress cycle failed to close last window."; exit 1}
+                timeout {puts stderr "Timed out closing last stress window."; exit 1}
+                eof {puts stderr "QEMU exited closing last stress window."; exit 1}
+            }
+            puts "STRESS_CYCLE_${cycle_id}=passed"
+        }
+
+        qmp_key_chord $qmp {meta_l} ret
+        after 400
+        qmp_key_chord $qmp {meta_l} ret
+        after 500
+        set unexpected_exit_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -ge 2 ]]; then break; fi; sleep 1; done; before=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); victim=$(pgrep -u 1000 -x weston-terminal | tail -n 1); if [[ -z "$victim" ]]; then echo STRESS_UNEXPECTED_APP_EXIT=failed; else kill -KILL "$victim"; for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 1 && "$destroyed" -gt "$before" ]]; then break; fi; sleep 1; done; count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 1 && "$destroyed" -gt "$before" ]] && pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then echo STRESS_UNEXPECTED_APP_EXIT=passed; else echo STRESS_UNEXPECTED_APP_EXIT=failed; fi; fi}
+        send -- "$unexpected_exit_command\r"
+        expect {
+            -re {STRESS_UNEXPECTED_APP_EXIT=passed} {}
+            -re {STRESS_UNEXPECTED_APP_EXIT=failed} {puts stderr "Unexpected application termination did not clean up its window."; exit 1}
+            timeout {puts stderr "Timed out checking unexpected application termination."; exit 1}
+            eof {puts stderr "QEMU exited during unexpected application termination."; exit 1}
+        }
+        qmp_type $qmp "touch /tmp/seyrix-stress-unexpected-focus\n"
+        set unexpected_focus_command {if test -f /tmp/seyrix-stress-unexpected-focus; then echo STRESS_UNEXPECTED_FOCUS=passed; else echo STRESS_UNEXPECTED_FOCUS=failed; fi}
+        send -- "$unexpected_focus_command\r"
+        expect {
+            -re {STRESS_UNEXPECTED_FOCUS=passed} {}
+            -re {STRESS_UNEXPECTED_FOCUS=failed} {puts stderr "Focus did not recover after unexpected application exit."; exit 1}
+            timeout {puts stderr "Timed out checking focus after unexpected exit."; exit 1}
+            eof {puts stderr "QEMU exited checking focus after unexpected exit."; exit 1}
+        }
+
+        qmp_key_chord $qmp {meta_l} ret
+        after 500
+        qmp_key_transition $qmp alt 1
+        qmp_mouse_move $qmp 12000 15000
+        qmp_mouse_button $qmp left 1
+        after 250
+        set grabbed_destroy_command {before_destroy=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); before_move=$(grep -c 'Window moved to' /tmp/seyrix-compositor.log || true); victim=$(pgrep -u 1000 -x weston-terminal | tail -n 1); if [[ -z "$victim" ]]; then echo STRESS_DESTROY_DURING_GRAB=failed; else kill -KILL "$victim"; for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); moved=$(grep -c 'Window moved to' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 1 && "$destroyed" -gt "$before_destroy" && "$moved" -gt "$before_move" ]]; then break; fi; sleep 1; done; count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); moved=$(grep -c 'Window moved to' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 1 && "$destroyed" -gt "$before_destroy" && "$moved" -gt "$before_move" ]] && pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then echo STRESS_DESTROY_DURING_GRAB=passed; else echo STRESS_DESTROY_DURING_GRAB=failed; fi; fi}
+        send -- "$grabbed_destroy_command\r"
+        expect {
+            -re {STRESS_DESTROY_DURING_GRAB=passed} {}
+            -re {STRESS_DESTROY_DURING_GRAB=failed} {puts stderr "Destroy during pointer grab did not reset compositor state."; exit 1}
+            timeout {puts stderr "Timed out destroying window during pointer grab."; exit 1}
+            eof {puts stderr "QEMU exited during pointer-grab destruction."; exit 1}
+        }
+        qmp_mouse_button $qmp left 0
+        qmp_key_transition $qmp alt 0
+        qmp_type $qmp "touch /tmp/seyrix-stress-grab-focus\n"
+        set grab_focus_command {if test -f /tmp/seyrix-stress-grab-focus; then echo STRESS_GRAB_FOCUS_RECOVERY=passed; else echo STRESS_GRAB_FOCUS_RECOVERY=failed; fi}
+        send -- "$grab_focus_command\r"
+        expect {
+            -re {STRESS_GRAB_FOCUS_RECOVERY=passed} {}
+            -re {STRESS_GRAB_FOCUS_RECOVERY=failed} {puts stderr "Focus did not recover after destroying grabbed window."; exit 1}
+            timeout {puts stderr "Timed out checking focus after grabbed-window destruction."; exit 1}
+            eof {puts stderr "QEMU exited checking focus after grabbed-window destruction."; exit 1}
+        }
+
+        qmp_key_chord $qmp {meta_l} q
+        after 700
+        set stress_metrics_command {compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); before=$(cat /tmp/seyrix-compositor-rss-before); after=$(awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status"); fds=$(find "/proc/$compositor_pid/fd" -maxdepth 1 -type l | wc -l); terminals=$(pgrep -u 1000 -x weston-terminal | wc -l); compositors=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | wc -l); printf 'STRESS_RSS_BEFORE_KB=%s\nSTRESS_RSS_AFTER_KB=%s\nSTRESS_RSS_DELTA_KB=%s\nSTRESS_OPEN_FDS=%s\nSTRESS_TERMINAL_PROCESSES=%s\nSTRESS_COMPOSITOR_PROCESSES=%s\n' "$before" "$after" "$((after - before))" "$fds" "$terminals" "$compositors"; if [[ "$terminals" -eq 0 && "$compositors" -eq 1 ]]; then echo STRESS_PROCESS_CHECK=passed; else echo STRESS_PROCESS_CHECK=failed; fi}
+        send -- "$stress_metrics_command\r"
+        expect {
+            -re {STRESS_PROCESS_CHECK=passed} {}
+            -re {STRESS_PROCESS_CHECK=failed} {puts stderr "Stress run left unexpected compositor or app processes."; exit 1}
+            timeout {puts stderr "Timed out recording post-stress metrics."; exit 1}
+            eof {puts stderr "QEMU exited before post-stress metrics."; exit 1}
+        }
+        puts "STRESS_CAMPAIGN=passed"
+    }
+
     qmp_key_chord $qmp {meta_l shift} q
-    set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$'; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
+    set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'OUTPUT_TEARDOWN_LOG='; if grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo unexpected; else echo clean; fi; printf 'CLEAN_STOP_LOG='; if grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log; then echo present; else echo missing; fi; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
     send -- "$compositor_exit_command\r"
     expect {
         -re {COMPOSITOR_EXIT=passed} {}
@@ -609,8 +815,64 @@ if {$phase2b} {
             exit 1
         }
     }
+    if {$sanitizers_enabled} {
+        set sanitizer_check_command {if grep -Eq 'AddressSanitizer:|LeakSanitizer:|runtime error:' /tmp/seyrix-compositor.log; then echo SANITIZER_FINDINGS=present; else echo SANITIZER_FINDINGS=none; fi}
+        send -- "$sanitizer_check_command\r"
+        expect {
+            -re {SANITIZER_FINDINGS=none} {puts "SANITIZER_FINDINGS=none"}
+            -re {SANITIZER_FINDINGS=present} {puts stderr "Sanitizer diagnostics appeared in the compositor log."; exit 1}
+            timeout {puts stderr "Timed out checking sanitizer diagnostics."; exit 1}
+            eof {puts stderr "QEMU exited before sanitizer diagnostics were checked."; exit 1}
+        }
+    }
     qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-exit.ppm"
     puts "SESSION_EXIT=passed"
+    if {[info exists env(SEYRIX_QEMU_STRESS)] && $env(SEYRIX_QEMU_STRESS) eq "1"} {
+        qmp_type $qmp $compositor_launch_command
+        set restart_start [clock milliseconds]
+        qmp_key_transition $qmp ret 1
+        after 80
+        qmp_key_transition $qmp ret 0
+        set restart_ready_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then echo COMPOSITOR_RESTART=passed; else echo COMPOSITOR_RESTART=failed; fi; printf 'RESTART_RENDERER='; grep -i 'renderer' /tmp/seyrix-compositor.log | head -n 1; printf 'RESTART_COMPOSITOR_RSS_KB='; compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status"}
+        send -- "$restart_ready_command\r"
+        expect {
+            -re {COMPOSITOR_RESTART=passed} {
+                set restart_ms [expr {[clock milliseconds] - $restart_start}]
+                puts "COMPOSITOR_RESTART_STARTUP_MS=$restart_ms"
+            }
+            -re {COMPOSITOR_RESTART=failed} {puts stderr "Seyrix compositor did not restart cleanly."; exit 1}
+            timeout {puts stderr "Timed out restarting Seyrix compositor."; exit 1}
+            eof {puts stderr "QEMU exited before compositor restart."; exit 1}
+        }
+        qmp_type $qmp "touch /tmp/seyrix-restart-keyboard-ok\n"
+        set restart_input_command {if test -f /tmp/seyrix-restart-keyboard-ok; then echo COMPOSITOR_RESTART_INPUT=passed; else echo COMPOSITOR_RESTART_INPUT=failed; fi}
+        send -- "$restart_input_command\r"
+        expect {
+            -re {COMPOSITOR_RESTART_INPUT=passed} {}
+            -re {COMPOSITOR_RESTART_INPUT=failed} {puts stderr "Keyboard input failed after compositor restart."; exit 1}
+            timeout {puts stderr "Timed out checking input after compositor restart."; exit 1}
+            eof {puts stderr "QEMU exited checking input after compositor restart."; exit 1}
+        }
+        qmp_key_chord $qmp {meta_l shift} q
+        set restart_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_RESTART_EXIT=passed; else echo COMPOSITOR_RESTART_EXIT=failed; fi; printf 'RESTART_LOG_TAIL_BEGIN\n'; tail -n 40 /tmp/seyrix-compositor.log; printf 'RESTART_LOG_TAIL_END\n'}
+        send -- "$restart_exit_command\r"
+        expect {
+            -re {COMPOSITOR_RESTART_EXIT=passed} {}
+            -re {COMPOSITOR_RESTART_EXIT=failed} {puts stderr "Restarted compositor did not exit cleanly."; exit 1}
+            timeout {puts stderr "Timed out waiting for restarted compositor exit."; exit 1}
+            eof {puts stderr "QEMU exited before restarted compositor exit check."; exit 1}
+        }
+        puts "COMPOSITOR_RESTART_EXIT=passed"
+        if {$sanitizers_enabled} {
+            send -- "$sanitizer_check_command\r"
+            expect {
+                -re {SANITIZER_FINDINGS=none} {puts "SANITIZER_FINDINGS=none"}
+                -re {SANITIZER_FINDINGS=present} {puts stderr "Sanitizer diagnostics appeared after compositor restart."; exit 1}
+                timeout {puts stderr "Timed out checking sanitizer diagnostics after restart."; exit 1}
+                eof {puts stderr "QEMU exited before restart sanitizer diagnostics were checked."; exit 1}
+            }
+        }
+    }
 } else {
 qmp_hmp $qmp "screendump $run_dir/tty1-before-wayland.ppm"
 qmp_type $qmp "start-wayland\n"

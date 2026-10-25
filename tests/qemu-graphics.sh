@@ -22,8 +22,23 @@ done
 
 qemu_bin="$(command -v qemu-system-x86_64)"
 workflow="${SEYRIX_QEMU_WORKFLOW:-phase2a}"
+smp_count="${SEYRIX_QEMU_SMP:-2}"
+tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
+renderer_request="${SEYRIX_QEMU_RENDERER:-}"
 if [[ "$workflow" != phase2a && "$workflow" != phase2b ]]; then
   echo "Unsupported QEMU workflow: $workflow" >&2
+  exit 2
+fi
+if [[ ! "$smp_count" =~ ^[1-9][0-9]*$ ]] || (( smp_count > 64 )); then
+  echo "SEYRIX_QEMU_SMP must be an integer from 1 through 64." >&2
+  exit 2
+fi
+if [[ -n "$tcg_thread" && "$tcg_thread" != single && "$tcg_thread" != multi ]]; then
+  echo "SEYRIX_QEMU_TCG_THREAD must be single or multi when set." >&2
+  exit 2
+fi
+if [[ -n "$renderer_request" && "$renderer_request" != pixman && "$renderer_request" != gles2 ]]; then
+  echo "SEYRIX_QEMU_RENDERER must be pixman or gles2 when set." >&2
   exit 2
 fi
 if ! "$qemu_bin" -display help 2>&1 | grep -q '^gtk$'; then
@@ -62,9 +77,15 @@ cp "$ovmf_vars_template" "$ovmf_vars"
 
 qemu_args=(
   -name "seyrix-${workflow}-graphics-test"
-  -machine q35,accel=tcg
+)
+if [[ -n "$tcg_thread" ]]; then
+  qemu_args+=(-machine q35 -accel "tcg,thread=${tcg_thread}")
+else
+  qemu_args+=(-machine q35,accel=tcg)
+fi
+qemu_args+=(
   -cpu qemu64
-  -smp 2
+  -smp "$smp_count"
   -m 4G
   -drive "if=pflash,format=raw,readonly=on,file=${ovmf_code}"
   -drive "if=pflash,format=raw,file=${ovmf_vars}"
@@ -99,10 +120,14 @@ qemu_args=(
   printf 'QEMU virtio VGA package: %s\n' "$(pacman -Q qemu-hw-display-virtio-vga)"
   printf 'OVMF package: %s\n' "$(pacman -Q edk2-ovmf)"
   printf 'Display: GTK on WSLg; guest virtio-vga 2D; QEMU TCG\n'
-  printf 'RAM: 4 GiB; vCPUs: 2; machine: q35; firmware: OVMF UEFI\n'
+  printf 'RAM: 4 GiB; vCPUs: %s; machine: q35; firmware: OVMF UEFI\n' "$smp_count"
+  printf 'TCG thread mode: %s\n' "${tcg_thread:-default}"
   printf 'Input: USB keyboard and USB tablet\n'
   printf 'Storage: read-only ISO only; no physical disk passthrough\n'
   printf 'QMP monitor: localhost TCP port %s\n' "$monitor_port"
+  printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
+  printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
+  printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
 } > "$run_dir/run-metadata.txt"
 
 if ! expect "$script_dir/qemu-graphics.exp" "$run_dir" "$monitor_port" "$qemu_bin" \

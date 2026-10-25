@@ -1,0 +1,19 @@
+Run started UTC: 2026-10-25T22:21:51+00:00
+ISO: /root/.cache/seyrix-linux/phase2b1-sanitized-full-order-20261025T2235Z/out/seyrix-phase2b-2026.10.25-x86_64.iso
+ISO SHA-256: 9c5c2f5556f112a450a4f0d09ecb455ad83b704a7f7aa667a669308d2ef927ab
+ISO bytes: 1039171584
+Host kernel: 6.18.54.1-microsoft-standard-WSL2
+QEMU package: qemu-system-x86 11.1.2-1
+QEMU GTK package: qemu-ui-gtk 11.1.2-1
+QEMU virtio GPU package: qemu-hw-display-virtio-gpu 11.1.2-1
+QEMU virtio VGA package: qemu-hw-display-virtio-vga 11.1.2-1
+OVMF package: edk2-ovmf 202608-1
+Display: GTK on WSLg; guest virtio-vga 2D; QEMU TCG
+RAM: 4 GiB; vCPUs: 2; machine: q35; firmware: OVMF UEFI
+TCG thread mode: default
+Input: USB keyboard and USB tablet
+Storage: read-only ISO only; no physical disk passthrough
+QMP monitor: localhost TCP port 42431
+Compositor stress: 1
+AddressSanitizer/UBSan: 1
+Compositor renderer request: pixman

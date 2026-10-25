@@ -1,0 +1,2 @@
+SEYRIX_BUILD_ROOT=/root/.cache/seyrix-linux/phase2b1-final-20261025T2225Z
+/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/build/build-phase2b-iso.sh

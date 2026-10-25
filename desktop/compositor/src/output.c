@@ -82,12 +82,14 @@ static void handle_output_destroy(struct wl_listener *listener, void *data) {
 	remove_listener(&output->request_state);
 	remove_listener(&output->commit);
 	remove_listener(&output->destroy);
-	if (output->background != NULL) {
+	if (output->background != NULL && server->scene != NULL) {
 		wlr_scene_node_destroy(&output->background->node);
 	}
 	wl_list_remove(&output->link);
 	wl_list_init(&output->link);
-	wlr_output_layout_remove(server->output_layout, output->wlr_output);
+	if (server->output_layout != NULL) {
+		wlr_output_layout_remove(server->output_layout, output->wlr_output);
+	}
 	wlr_log(WLR_INFO, "Output %s removed", output->wlr_output->name);
 	free(output);
 
@@ -180,4 +182,10 @@ bool seyrix_output_init(struct seyrix_server *server) {
 void seyrix_output_finish(struct seyrix_server *server) {
 	remove_listener(&server->new_output);
 	remove_listener(&server->output_layout_change);
+	struct seyrix_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		remove_listener(&output->frame);
+		remove_listener(&output->request_state);
+		remove_listener(&output->commit);
+	}
 }

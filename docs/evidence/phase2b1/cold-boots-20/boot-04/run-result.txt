@@ -1,0 +1,11 @@
+Run: boot-04
+Result: passed
+Exit code: 0
+Started UTC: 2026-10-25T21:21:01+00:00
+Finished UTC: 2026-10-25T21:23:07+00:00
+Boot to serial login ms: 60255
+Compositor ready from QEMU start ms: 84383
+Compositor startup ms: 15629
+Application launch: passed
+Compositor exit: passed
+Guest shutdown: passed

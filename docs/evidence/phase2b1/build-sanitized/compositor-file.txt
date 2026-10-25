@@ -1,0 +1,1 @@
+/root/.cache/seyrix-linux/phase2b1-sanitized-20261025T2156Z/staging/usr/bin/seyrix-compositor: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=e591cc2b884e56694293a4fb05a0585264414000, for GNU/Linux 4.4.0, with debug_info, not stripped

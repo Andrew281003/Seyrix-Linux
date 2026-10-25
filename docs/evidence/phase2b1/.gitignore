@@ -1,0 +1,3 @@
+# Keep the complete binary evidence locally; it is too large for a source commit.
+*.ppm
+OVMF_VARS.fd

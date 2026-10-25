@@ -1,0 +1,4 @@
+CFLAGS=-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer
+LDFLAGS=-fsanitize=address,undefined
+SEYRIX_BUILD_ROOT=/root/.cache/seyrix-linux/phase2b1-sanitized-orderfix-20261025T2210Z
+/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/build/build-phase2b-iso.sh

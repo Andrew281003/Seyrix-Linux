@@ -264,6 +264,10 @@ void seyrix_server_finish(struct seyrix_server *server) {
 		wl_event_source_remove(server->sigchld_source);
 		server->sigchld_source = NULL;
 	}
+	if (server->display != NULL) {
+		wl_display_destroy_clients(server->display);
+	}
+	stop_children(server);
 
 	if (server->cursor_manager != NULL) {
 		wlr_xcursor_manager_destroy(server->cursor_manager);
@@ -273,16 +277,6 @@ void seyrix_server_finish(struct seyrix_server *server) {
 		wlr_cursor_destroy(server->cursor);
 		server->cursor = NULL;
 	}
-	if (server->backend != NULL) {
-		wlr_backend_destroy(server->backend);
-		server->backend = NULL;
-	}
-
-	if (server->display != NULL) {
-		wl_display_destroy_clients(server->display);
-	}
-	stop_children(server);
-
 	if (server->scene != NULL) {
 		wlr_scene_node_destroy(&server->scene->tree.node);
 		server->scene = NULL;
@@ -298,6 +292,11 @@ void seyrix_server_finish(struct seyrix_server *server) {
 	if (server->renderer != NULL) {
 		wlr_renderer_destroy(server->renderer);
 		server->renderer = NULL;
+	}
+	if (server->backend != NULL) {
+		server->backend_started = false;
+		wlr_backend_destroy(server->backend);
+		server->backend = NULL;
 	}
 	if (server->display != NULL) {
 		wl_display_destroy(server->display);
