@@ -1,0 +1,54 @@
+# Build output
+/build/
+/out/
+/dist/
+/target/
+*.o
+*.a
+*.so
+*.so.*
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.tmp
+
+# Disk and installer images
+*.iso
+*.img
+*.raw
+*.qcow2
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+
+# Temporary files, logs, and crash dumps
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.log
+*.dump
+*.core
+core
+tmp/
+temp/
+
+# Local development and editor state
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.fleet/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local caches and generated metadata
+.cache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
