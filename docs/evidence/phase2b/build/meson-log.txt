@@ -1,0 +1,245 @@
+Build started at 2026-10-25T19:59:53.952968
+Main binary: /usr/bin/python
+Build Options: -Dbuildtype=release -Dprefix=/usr -Dwrap_mode=nofallback
+Python system: Linux
+The Meson build system
+Version: 1.12.1
+Source dir: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor
+Build dir: /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build
+Build type: native build
+Project name: seyrix-compositor
+Project version: 0.1.0
+-----------
+Detecting compiler via: `cc --version` -> 0
+stdout:
+cc (GCC) 16.2.1 20260810
+Copyright (C) 2026 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+-----------
+Running command: -cpp -x c -E -dM -
+-----
+-----------
+Detecting linker via: `cc -Wl,--version` -> 0
+stdout:
+GNU ld (GNU Binutils) 2.47
+Copyright (C) 2026 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) a later version.
+This program has absolutely no warranty.
+-----------
+stderr:
+collect2 version 16.2.1 20260810
+/usr/sbin/ld -plugin /usr/lib/gcc/x86_64-pc-linux-gnu/16/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-pc-linux-gnu/16/lto-wrapper -plugin-opt=-fresolution=/tmp/cc6XkoMH.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s_asneeded -plugin-opt=-pass-through=-latomic_asneeded -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s_asneeded --build-id --eh-frame-hdr --hash-style=gnu -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/Scrt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/crtbeginS.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/16 -L/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib -L/lib/../lib -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../.. -L/lib -L/usr/lib --version -lgcc -lgcc_s_asneeded -latomic_asneeded -lc -lgcc -lgcc_s_asneeded /usr/lib/gcc/x86_64-pc-linux-gnu/16/crtendS.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/crtn.o
+-----------
+Sanity check compiler command line: cc -o sanity_check_for_c.exe sanity_check_for_c.c -D_FILE_OFFSET_BITS=64
+Sanity check compile stdout:
+
+-----
+Sanity check compile stderr:
+
+-----
+Sanity check built target output for host machine c compiler
+ -- Running test binary command:  /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/sanity_check_for_c.exe
+-----------
+Sanity check: `/root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/sanity_check_for_c.exe` -> 0
+ -- stdout:
+ 
+ -- stderr:
+ 
+ -- returncode: 0
+C compiler for the host machine: cc (gcc 16.2.1 "cc (GCC) 16.2.1 20260810")
+C linker for the host machine: cc ld.bfd 2.47
+-----------
+Detecting archiver via: `gcc-ar --version` -> 0
+stdout:
+GNU ar (GNU Binutils) 2.47
+Copyright (C) 2026 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) any later version.
+This program has absolutely no warranty.
+-----------
+-----------
+Detecting compiler via: `cc --version` -> 0
+stdout:
+cc (GCC) 16.2.1 20260810
+Copyright (C) 2026 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+-----------
+Running command: -cpp -x c -E -dM -
+-----
+-----------
+Detecting linker via: `cc -Wl,--version` -> 0
+stdout:
+GNU ld (GNU Binutils) 2.47
+Copyright (C) 2026 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) a later version.
+This program has absolutely no warranty.
+-----------
+stderr:
+collect2 version 16.2.1 20260810
+/usr/sbin/ld -plugin /usr/lib/gcc/x86_64-pc-linux-gnu/16/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-pc-linux-gnu/16/lto-wrapper -plugin-opt=-fresolution=/tmp/ccPwCTqY.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s_asneeded -plugin-opt=-pass-through=-latomic_asneeded -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s_asneeded --build-id --eh-frame-hdr --hash-style=gnu -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/Scrt1.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/crti.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/crtbeginS.o -L/usr/lib/gcc/x86_64-pc-linux-gnu/16 -L/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib -L/lib/../lib -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../.. -L/lib -L/usr/lib --version -lgcc -lgcc_s_asneeded -latomic_asneeded -lc -lgcc -lgcc_s_asneeded /usr/lib/gcc/x86_64-pc-linux-gnu/16/crtendS.o /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/crtn.o
+-----------
+Sanity check compiler command line: cc -o sanity_check_for_c.exe sanity_check_for_c.c -D_FILE_OFFSET_BITS=64
+Sanity check compile stdout:
+
+-----
+Sanity check compile stderr:
+
+-----
+Sanity check built target output for build machine c compiler
+ -- Running test binary command:  /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/sanity_check_for_c.exe
+-----------
+Sanity check: `/root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/sanity_check_for_c.exe` -> 0
+ -- stdout:
+ 
+ -- stderr:
+ 
+ -- returncode: 0
+C compiler for the build machine: cc (gcc 16.2.1 "cc (GCC) 16.2.1 20260810")
+C linker for the build machine: cc ld.bfd 2.47
+Build machine cpu family: x86_64
+Build machine cpu: x86_64
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Target machine cpu family: x86_64
+Target machine cpu: x86_64
+Pkg-config binary missing from cross or native file, or env var undefined.
+Trying a default Pkg-config fallback at pkg-config
+Found pkg-config: YES (/usr/sbin/pkg-config) 3.0.10
+Determining dependency 'wlroots-0.20' with pkg-config executable '/usr/sbin/pkg-config'
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --modversion wlroots-0.20` -> 0
+stdout:
+0.20.2
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --cflags wlroots-0.20` -> 0
+stdout:
+-I/usr/include/wlroots-0.20 -I/usr/include/pixman-1 -I/usr/include/libdrm
+-----------
+env[PKG_CONFIG_ALLOW_SYSTEM_LIBS]: 1
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs wlroots-0.20` -> 0
+stdout:
+-L/usr/lib -lwlroots-0.20
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs wlroots-0.20` -> 0
+stdout:
+-lwlroots-0.20
+-----------
+Running compile:
+Working directory:  /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp6mykmqu5
+Code:
+
+        #include<stddef.h>
+        #include<stdio.h>
+        int main(void) {
+            printf("%ld\n", (long)(sizeof(void *)));
+            return 0;
+        }
+-----------
+Command line: `cc /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp6mykmqu5/testfile.c -o /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp6mykmqu5/output.exe -D_FILE_OFFSET_BITS=64 -O0 -U_FORTIFY_SOURCE` -> 0
+Program stdout:
+
+8
+
+Program stderr:
+
+
+Running compile:
+Working directory:  /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmpunzx9jqw
+Code:
+
+-----------
+Command line: `cc /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmpunzx9jqw/testfile.c -o /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmpunzx9jqw/output.obj -c -D_FILE_OFFSET_BITS=64 -O0 -U_FORTIFY_SOURCE --print-search-dirs` -> 0
+stdout:
+install: /usr/lib/gcc/x86_64-pc-linux-gnu/16/
+programs: =/usr/lib/gcc/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../x86_64-pc-linux-gnu/bin/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../x86_64-pc-linux-gnu/bin/
+libraries: =/usr/lib/gcc/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../x86_64-pc-linux-gnu/lib/x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../x86_64-pc-linux-gnu/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../x86_64-pc-linux-gnu/16/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/:/lib/x86_64-pc-linux-gnu/16/:/lib/../lib/:/usr/lib/x86_64-pc-linux-gnu/16/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../x86_64-pc-linux-gnu/lib/:/usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../:/lib/:/usr/lib/
+-----------
+Run-time dependency wlroots-0.20 found: YES 0.20.2
+Determining dependency 'wayland-server' with pkg-config executable '/usr/sbin/pkg-config'
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --modversion wayland-server` -> 0
+stdout:
+1.26.0
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --cflags wayland-server` -> 0
+env[PKG_CONFIG_ALLOW_SYSTEM_LIBS]: 1
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs wayland-server` -> 0
+stdout:
+-L/usr/lib -lwayland-server -lm
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs wayland-server` -> 0
+stdout:
+-lwayland-server -lm
+-----------
+Running compile:
+Working directory:  /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp3vf07ec9
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `cc /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp3vf07ec9/testfile.c -o /root/.cache/seyrix-linux/phase2b-20261025T185953Z/compositor-build/meson-private/tmp3vf07ec9/output.exe -D_FILE_OFFSET_BITS=64 -O0 -U_FORTIFY_SOURCE -lm -Wl,--allow-shlib-undefined` -> 0
+Run-time dependency wayland-server found: YES 1.26.0
+Determining dependency 'xkbcommon' with pkg-config executable '/usr/sbin/pkg-config'
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --modversion xkbcommon` -> 0
+stdout:
+1.13.2
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --cflags xkbcommon` -> 0
+env[PKG_CONFIG_ALLOW_SYSTEM_LIBS]: 1
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs xkbcommon` -> 0
+stdout:
+-L/usr/lib -lxkbcommon
+-----------
+env[PKG_CONFIG_PATH]: 
+env[PKG_CONFIG]: /usr/sbin/pkg-config
+-----------
+Called: `/usr/sbin/pkg-config --libs xkbcommon` -> 0
+stdout:
+-lxkbcommon
+-----------
+Run-time dependency xkbcommon found: YES 1.13.2
+Build targets in project: 1
+
+seyrix-compositor 0.1.0
+
+  User defined options
+    buildtype: release
+    prefix   : /usr
+    wrap_mode: nofallback
+
+Found ninja-1.13.2 at /usr/sbin/ninja

@@ -21,9 +21,25 @@ boot, interactive serial login, system checks, and clean shutdown in QEMU.
 This is a live development image, not an installer or production release. See
 the [Phase 1 report](docs/phase1-report.md) for measurements and limitations.
 
+Phase 2A is complete on the `phase2a-wayland-foundation` branch. Its separate
+Archiso graphics overlay builds a Wayland development session with Weston and
+`weston-terminal`. Graphical QEMU testing verified the visible session,
+keyboard and mouse input, return to tty1, clean shutdown, and the Phase 1
+terminal regression. See the [Phase 2A engineering report](docs/phase2a-report.md),
+[graphics architecture](docs/graphics-architecture.md), and
+[Wayland test record](docs/wayland-testing.md).
+
 The repository does not yet have a project-wide license. The included Archiso
 profile retains its upstream GPL-3.0-or-later notice, and redistributed Arch
 packages retain their package license files in the image.
+
+Phase 2B is complete on the `phase2b-seyrix-compositor` branch. The native C17
+compositor is based on Arch's `wlroots0.20` package. UEFI QEMU verification
+covered desktop rendering, terminal input, pointer events, multiple windows,
+focus, move/resize, safe close, and clean shutdown. The Weston reference and
+Phase 1 terminal regression also pass on the new image. See the
+[Phase 2B report](docs/phase2b-report.md), [compositor architecture](docs/compositor-architecture.md),
+and [development guide](docs/compositor-development.md) for results and details.
 
 ## Documentation
 
@@ -32,6 +48,9 @@ packages retain their package license files in the image.
 - [Phase 1 report](docs/phase1-report.md)
 - [Build guide](docs/build-guide.md)
 - [Boot architecture](docs/boot-architecture.md)
+- [Compositor architecture](docs/compositor-architecture.md)
+- [Compositor development](docs/compositor-development.md)
+- [Phase 2B report](docs/phase2b-report.md)
 
 ## Contributing
 

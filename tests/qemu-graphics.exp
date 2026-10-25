@@ -1,0 +1,793 @@
+#!/usr/bin/expect -f
+
+if {$argc < 4} {
+    puts stderr {Usage: qemu-graphics.exp run-dir monitor-port qemu [qemu arguments...]}
+    exit 2
+}
+
+set run_dir [lindex $argv 0]
+set monitor_port [lindex $argv 1]
+set qemu [lindex $argv 2]
+set qemu_args [lrange $argv 3 end]
+set serial_log "$run_dir/serial.log"
+set timeout 360
+set phase2b 0
+if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2b"} {
+	set phase2b 1
+}
+log_file -noappend $serial_log
+log_user 1
+set boot_started [clock milliseconds]
+
+proc qmp_reply {channel} {
+    while {[gets $channel line] >= 0} {
+        if {[string first {"return"} $line] >= 0 || [string first {"error"} $line] >= 0} {
+            if {[string first {"error"} $line] >= 0} {
+                error "QMP error: $line"
+            }
+            return $line
+        }
+    }
+    error "QMP connection closed before reply."
+}
+
+proc qmp_exec {channel json} {
+    puts $channel $json
+    flush $channel
+    return [qmp_reply $channel]
+}
+
+proc qmp_hmp {channel command} {
+    set escaped [string map [list "\\" "\\\\" "\"" "\\\""] $command]
+    return [qmp_exec $channel "{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"$escaped\"}}"]
+}
+
+proc keycode_for {character} {
+    if {[regexp {^[a-z0-9]$} $character]} {
+        return $character
+    }
+    switch -- $character {
+        " " { return "spc" }
+        "/" { return "slash" }
+        "-" { return "minus" }
+        "." { return "dot" }
+        "\n" { return "ret" }
+        default { error "Unsupported QEMU key character: $character" }
+    }
+}
+
+proc qmp_type {channel value} {
+    foreach character [split $value ""] {
+        set code [keycode_for $character]
+        set down_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
+        qmp_exec $channel $down_event
+        after 60
+        set up_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
+        qmp_exec $channel $up_event
+        after 60
+    }
+}
+
+proc qmp_mouse_move {channel x y} {
+    set json [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%s}},{"type":"abs","data":{"axis":"y","value":%s}}]}}} $x $y]
+    return [qmp_exec $channel $json]
+}
+
+proc qmp_mouse_click {channel} {
+    qmp_exec $channel {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"left"}}]}}}
+    after 100
+    qmp_exec $channel {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":false,"button":"left"}}]}}}
+}
+
+proc qmp_key_transition {channel key down} {
+    set state "false"
+    if {$down} {
+        set state "true"
+    }
+    set json [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":%s,"key":{"type":"qcode","data":"%s"}}}]}}} $state $key]
+    return [qmp_exec $channel $json]
+}
+
+proc qmp_key_chord {channel modifiers key} {
+    foreach modifier $modifiers {
+        qmp_key_transition $channel $modifier 1
+        after 80
+    }
+    qmp_key_transition $channel $key 1
+    after 100
+    qmp_key_transition $channel $key 0
+    after 80
+    foreach modifier [lreverse $modifiers] {
+        qmp_key_transition $channel $modifier 0
+        after 80
+    }
+}
+
+proc qmp_mouse_button {channel button down} {
+    set state "false"
+    if {$down} {
+        set state "true"
+    }
+    set json [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"%s"}}]}}} $state $button]
+    return [qmp_exec $channel $json]
+}
+
+proc qmp_mouse_drag {channel x1 y1 x2 y2 button} {
+    qmp_mouse_move $channel $x1 $y1
+    after 100
+    qmp_mouse_button $channel $button 1
+    after 100
+    qmp_mouse_move $channel $x2 $y2
+    after 250
+    qmp_mouse_button $channel $button 0
+    after 100
+}
+
+spawn -noecho $qemu {*}$qemu_args
+set qemu_spawn_id $spawn_id
+set qmp ""
+set qmp_error ""
+for {set attempt 0} {$attempt < 40 && $qmp eq ""} {incr attempt} {
+    if {[catch {set qmp [socket 127.0.0.1 $monitor_port]} qmp_error]} {
+        set qmp ""
+        after 250
+    }
+}
+if {$qmp eq ""} {
+    puts stderr "Could not connect to QMP on localhost port $monitor_port: $qmp_error"
+    exit 1
+}
+fconfigure $qmp -buffering line -blocking 1
+set greeting [gets $qmp]
+if {[string first {"QMP"} $greeting] < 0} {
+    puts stderr "Unexpected QMP greeting: $greeting"
+    exit 1
+}
+qmp_exec $qmp {{"execute":"qmp_capabilities"}}
+puts "QMP_CONNECTED=passed"
+set pci_info [qmp_hmp $qmp "info pci"]
+puts "QEMU_PCI_INVENTORY=$pci_info"
+
+expect {
+    -re {seyrix-dev login:} {
+        set login_ms [expr {[clock milliseconds] - $boot_started}]
+        puts "BOOT_TO_LOGIN_MS=$login_ms"
+    }
+    timeout {
+        puts stderr "Timed out waiting for the Seyrix serial login prompt."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the Seyrix serial login prompt."
+        exit 1
+    }
+}
+puts "SERIAL_LOGIN_PROMPT=passed"
+
+send -- "root\r"
+puts "SERIAL_ROOT_LOGIN_SENT=passed"
+expect {
+    -re {Password:} {
+        send -- "\r"
+        exp_continue
+    }
+    -re {root@seyrix-dev[^\r\n]*# ?$} {}
+    timeout {
+        puts stderr "Timed out waiting for the live root shell."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the live root shell appeared."
+        exit 1
+    }
+}
+puts "SERIAL_ROOT_SHELL=passed"
+
+send -- "stty -echo; export PS1='SEYRIX-ROOT# '\r"
+expect {
+    -re {SEYRIX-ROOT#} {}
+    timeout {
+        puts stderr "Timed out setting up the serial test shell."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the serial test shell was ready."
+        exit 1
+    }
+}
+
+set baseline_command {
+  printf 'SEYRIX_GRAPHICS_CHECK_BEGIN\n'
+  printf 'LOGIN_USER='; id -un
+  printf 'KERNEL='; uname -r
+  printf 'ROOT_FS='; findmnt -n -o FSTYPE /
+  printf 'PID1='; ps -p 1 -o comm= | tr -d ' '
+  printf 'SYSTEMD='; systemctl is-system-running
+  printf 'LOGIND='; systemctl is-active systemd-logind
+  printf 'NETWORKD='; systemctl is-active systemd-networkd
+  printf 'RESOLVED='; systemctl is-active systemd-resolved
+  printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo
+  printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo
+  printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l
+  printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l
+  printf 'GRAPHICS_USER_UID='; id -u seyrix
+  printf 'GRAPHICS_USER_GROUPS='; id -nG seyrix
+  printf 'GPU_MODULES='; lsmod | grep -E 'virtio_gpu|virtio_pci' || true
+  printf 'DRM_DEVICE='; ls -l /dev/dri/card* 2>&1
+  printf 'DRM_DRIVER_LINKS_BEGIN\n'
+  for sys_card in /sys/class/drm/card[0-9]*; do
+    if [[ -e "$sys_card/device/driver" ]]; then printf '%s=' "${sys_card##*/}"; readlink -f "$sys_card/device/driver"; fi
+  done
+  printf 'DRM_DRIVER_LINKS_END\n'
+  printf 'PCI_INVENTORY_BEGIN\n'; lspci -nn
+  printf 'PCI_INVENTORY_END\n'
+  printf 'PCI_GPU='; lspci -nn | grep -Ei 'VGA|Display|3D' | head -1
+  printf 'INPUT_DEVICE_HANDLERS_BEGIN\n'; grep -E '^N: Name=|^H: Handlers=' /proc/bus/input/devices
+  printf 'INPUT_DEVICE_HANDLERS_END\n'
+  printf 'INPUT_EVENT_COUNT='; find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | wc -l
+  if find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | grep -q .; then echo INPUT_DEVICE_CHECK=passed; else echo INPUT_DEVICE_CHECK=failed; fi
+  if compgen -G '/dev/dri/card[0-9]*' >/dev/null && lsmod | grep -q '^virtio_gpu '; then echo GRAPHICS_DEVICE_CHECK=passed; else echo GRAPHICS_DEVICE_CHECK=failed; fi
+  printf 'SEYRIX_GRAPHICS_CHECK_END\n'
+}
+send -- "$baseline_command\r"
+foreach {label pattern} {
+    login_user {LOGIN_USER=root}
+    kernel {KERNEL=[0-9]+\.[0-9]+}
+    root_fs {ROOT_FS=overlay}
+    pid1 {PID1=systemd}
+    systemd {SYSTEMD=running}
+    logind {LOGIND=active}
+    networkd {NETWORKD=active}
+    resolved {RESOLVED=active}
+    memory {MEM_TOTAL_KB=[1-9][0-9]+}
+    services {RUNNING_SERVICES=[1-9][0-9]*}
+    packages {PACKAGE_COUNT=[1-9][0-9]*}
+    graphics_user {GRAPHICS_USER_UID=[1-9][0-9]*}
+    drm_device {DRM_DEVICE=.*}
+    pci_inventory {PCI_INVENTORY_END}
+    pci_gpu {PCI_GPU=.*}
+    input_events {INPUT_EVENT_COUNT=[0-9]+}
+} {
+    expect {
+        -re $pattern {}
+        timeout {
+            puts stderr "Missing graphics boot verification output for $label."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before graphics boot verification for $label."
+            exit 1
+        }
+    }
+}
+expect {
+    -re {INPUT_DEVICE_CHECK=passed} {}
+    -re {INPUT_DEVICE_CHECK=failed} {
+        puts stderr "The guest did not expose input event devices. See INPUT_EVENT_COUNT in test.log."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for the guest input device check."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the guest input device check."
+        exit 1
+    }
+}
+expect {
+    -re {GRAPHICS_DEVICE_CHECK=passed} {}
+    -re {GRAPHICS_DEVICE_CHECK=failed} {
+        puts stderr "The guest did not expose a virtio DRM device. See PCI_INVENTORY and DRM_DEVICE in test.log."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for the guest DRM device check."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the guest DRM device check."
+        exit 1
+    }
+}
+expect {
+    -re {SEYRIX_GRAPHICS_CHECK_END} {}
+    timeout {
+        puts stderr "Timed out waiting for the guest graphics diagnostics to finish."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before graphics diagnostics finished."
+        exit 1
+    }
+}
+
+qmp_hmp $qmp "screendump $run_dir/tty1-login-screen.ppm"
+qmp_type $qmp "\n"
+set tty_ready_command {for n in $(seq 1 20); do test -f /home/seyrix/.tty1-ready && break; sleep 1; done; printf 'TTY1_MARKER='; test -f /home/seyrix/.tty1-ready && echo present || echo missing; printf 'TTY1_SESSION_INFO='; cat /home/seyrix/.tty1-session-info 2>/dev/null || echo missing; printf 'TTY1_GETTY_ACTIVE='; systemctl is-active getty@tty1; printf 'TTY1_GETTY_EXEC='; systemctl show -p ExecStart getty@tty1; printf 'SEYRIX_PROCESSES='; pgrep -a -u 1000 || true; printf 'TTY1_GETTY_STATUS_BEGIN\n'; systemctl status getty@tty1 --no-pager --full || true; printf 'TTY1_GETTY_STATUS_END\n'; printf 'TTY1_JOURNAL_BEGIN\n'; journalctl -b -u getty@tty1 --no-pager -n 30; printf 'TTY1_JOURNAL_END\n'; printf 'LOGINCTL_SESSIONS_BEGIN\n'; loginctl list-sessions --no-legend; printf 'LOGINCTL_SESSIONS_END\n'; if test -f /home/seyrix/.tty1-ready; then echo TTY1_DEV_SESSION_READY=passed; else echo TTY1_DEV_SESSION_READY=failed; fi}
+send -- "$tty_ready_command\r"
+expect {
+    -re {TTY1_DEV_SESSION_READY=passed} {}
+    -re {TTY1_DEV_SESSION_READY=failed} {
+        puts stderr "The development-only tty1 login did not become ready. See TTY1_GETTY and SEYRIX_PROCESSES in test.log."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for the development-only tty1 login."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the tty1 login became ready."
+        exit 1
+    }
+}
+
+set input_monitor_command {mouse_event="$(awk '/^N: Name="QEMU QEMU USB Tablet"/ { found=1; next } found && /^H: Handlers=/ { if (match($0, /event[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit } }' /proc/bus/input/devices)"; if [[ -z "$mouse_event" ]]; then echo MOUSE_MONITOR_STARTED=failed; else nohup timeout 120s evtest "/dev/input/$mouse_event" >/tmp/seyrix-evtest-mouse.log 2>&1 </dev/null & echo MOUSE_MONITOR_STARTED=passed; fi}
+send -- "$input_monitor_command\r"
+expect {
+    -re {MOUSE_MONITOR_STARTED=passed} {}
+    -re {MOUSE_MONITOR_STARTED=failed} {
+        puts stderr "Could not find the QEMU USB tablet event device for evtest."
+        exit 1
+    }
+    timeout {
+        puts stderr "Could not start the evtest mouse event recorder."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the libinput input-event recorder started."
+        exit 1
+    }
+}
+
+set tty_switch_command {printf 'TTY_BEFORE_SWITCH='; cat /sys/class/tty/tty0/active; chvt 1; sleep 1; printf 'TTY_ACTIVE_AFTER_SWITCH='; cat /sys/class/tty/tty0/active; printf '\n'}
+send -- "$tty_switch_command\r"
+expect {
+    -re {TTY_ACTIVE_AFTER_SWITCH=tty1} {}
+    timeout {
+        puts stderr "Could not switch the active virtual terminal to Seyrix tty1."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited while switching to Seyrix tty1."
+        exit 1
+    }
+}
+if {$phase2b} {
+    qmp_hmp $qmp "screendump $run_dir/tty1-before-seyrix.ppm"
+    qmp_type $qmp "start-seyrix\n"
+    after 2000
+    qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-command.ppm"
+
+    set compositor_ready_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null && find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit | grep -q .; then echo COMPOSITOR_READY=passed; else echo COMPOSITOR_READY=failed; fi; printf 'COMPOSITOR_LOG_BEGIN\n'; cat /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_END\n'; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'COMPOSITOR_RSS_KB='; compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); if [[ -n "$compositor_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status"; else echo unavailable; fi; printf 'TERMINAL_PROCESSES='; pgrep -a -u 1000 -x weston-terminal || true}
+    send -- "$compositor_ready_command\r"
+    set compositor_ready 0
+    expect {
+        -re {COMPOSITOR_READY=passed} {
+            set compositor_ready 1
+        }
+        -re {COMPOSITOR_READY=failed} {set compositor_ready 0}
+        timeout {
+            puts stderr "Timed out waiting for Seyrix compositor startup."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before the Seyrix compositor became ready."
+            exit 1
+        }
+    }
+    expect {
+        -re {COMPOSITOR_LOG_END} {}
+        timeout {
+            puts stderr "Timed out collecting Seyrix compositor startup diagnostics."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before compositor diagnostics were collected."
+            exit 1
+        }
+    }
+    if {!$compositor_ready} {
+        puts stderr "Seyrix compositor did not start or create a Wayland socket."
+        exit 1
+    }
+    set graphics_ms [expr {[clock milliseconds] - $boot_started}]
+    puts "GRAPHICAL_BOOT_MS=$graphics_ms"
+
+    qmp_hmp $qmp "screendump $run_dir/seyrix-background-terminal.ppm"
+    qmp_type $qmp "touch /tmp/seyrix-keyboard-ok\n"
+    after 500
+    qmp_hmp $qmp "screendump $run_dir/seyrix-after-keyboard.ppm"
+    set keyboard_check_command {if test -f /tmp/seyrix-keyboard-ok; then echo KEYBOARD_INPUT=passed; else echo KEYBOARD_INPUT=failed; fi}
+    send -- "$keyboard_check_command\r"
+    expect {
+        -re {KEYBOARD_INPUT=passed} {}
+        -re {KEYBOARD_INPUT=failed} {
+            puts stderr "Keyboard input did not reach the focused Wayland terminal."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking keyboard input in Seyrix."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before the Seyrix keyboard check."
+            exit 1
+        }
+    }
+
+    qmp_mouse_drag $qmp 4200 5900 12300 5900 left
+    after 500
+    qmp_hmp $qmp "screendump $run_dir/seyrix-pointer-selection.ppm"
+    qmp_mouse_move $qmp 14000 14000
+    qmp_mouse_click $qmp
+    qmp_type $qmp "touch /tmp/seyrix-pointer-ok\n"
+    after 500
+    set pointer_check_command {sleep 1; if test -f /tmp/seyrix-pointer-ok && grep -q 'BTN_LEFT' /tmp/seyrix-evtest-mouse.log && grep -q 'ABS_X' /tmp/seyrix-evtest-mouse.log && grep -q 'ABS_Y' /tmp/seyrix-evtest-mouse.log; then echo POINTER_INPUT=passed; else echo POINTER_INPUT=failed; fi; printf 'POINTER_EVENTS_BEGIN\n'; grep -E 'BTN_LEFT|ABS_X|ABS_Y' /tmp/seyrix-evtest-mouse.log | tail -n 16; printf 'POINTER_EVENTS_END\n'}
+    send -- "$pointer_check_command\r"
+    expect {
+        -re {POINTER_INPUT=passed} {}
+        -re {POINTER_INPUT=failed} {
+            puts stderr "QEMU pointer input did not reach the compositor and Wayland terminal."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking pointer input in Seyrix."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before the Seyrix pointer check."
+            exit 1
+        }
+    }
+
+    qmp_key_chord $qmp {meta_l} ret
+    after 1500
+    qmp_hmp $qmp "screendump $run_dir/seyrix-two-windows.ppm"
+    set coexist_check_command {for n in $(seq 1 30); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -ge 2 ]]; then break; fi; sleep 1; done; mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); count=$(pgrep -u 1000 -x weston-terminal | wc -l); printf 'WINDOW_MAPPED_COUNT=%s\nTERMINAL_COUNT=%s\n' "$mapped" "$count"; if [[ "$mapped" -ge 2 && "$count" -ge 2 ]]; then echo WINDOWS_COEXIST=passed; else echo WINDOWS_COEXIST=failed; fi}
+    send -- "$coexist_check_command\r"
+    expect {
+        -re {WINDOWS_COEXIST=passed} {}
+        -re {WINDOWS_COEXIST=failed} {
+            puts stderr "Two independent xdg-shell windows did not coexist."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking coexistence of two windows."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the multiple-window check."
+            exit 1
+        }
+    }
+
+    qmp_type $qmp "touch /tmp/seyrix-second-focus-ok\n"
+    after 500
+    set second_focus_command {if test -f /tmp/seyrix-second-focus-ok; then echo WINDOW_FOCUS_NEW=passed; else echo WINDOW_FOCUS_NEW=failed; fi}
+    send -- "$second_focus_command\r"
+    expect {
+        -re {WINDOW_FOCUS_NEW=passed} {}
+        -re {WINDOW_FOCUS_NEW=failed} {
+            puts stderr "Keyboard focus did not move to the newly mapped window."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking focus on the new window."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the new-window focus check."
+            exit 1
+        }
+    }
+
+    qmp_key_transition $qmp alt 1
+    qmp_mouse_drag $qmp 15360 17066 20480 20480 left
+    qmp_key_transition $qmp alt 0
+    after 500
+    qmp_hmp $qmp "screendump $run_dir/seyrix-window-moved.ppm"
+    set move_check_command {sleep 1; if grep -q 'Window moved to' /tmp/seyrix-compositor.log; then echo WINDOW_MOVE=passed; else echo WINDOW_MOVE=failed; fi; grep 'Window moved to' /tmp/seyrix-compositor.log | tail -n 2}
+    send -- "$move_check_command\r"
+    expect {
+        -re {WINDOW_MOVE=passed} {}
+        -re {WINDOW_MOVE=failed} {
+            puts stderr "Alt+left drag did not move a Seyrix window."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking compositor window movement."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the window movement check."
+            exit 1
+        }
+    }
+
+    qmp_key_transition $qmp alt 1
+    qmp_mouse_drag $qmp 17920 17066 20480 19114 right
+    qmp_key_transition $qmp alt 0
+    after 1500
+    qmp_hmp $qmp "screendump $run_dir/seyrix-window-resized.ppm"
+    set resize_check_command {sleep 1; sizes=$(grep 'Window geometry committed:' /tmp/seyrix-compositor.log | awk '{print $NF}' | sort -u | wc -l); printf 'DISTINCT_COMMITTED_WINDOW_SIZES=%s\n' "$sizes"; if grep -q 'Resize gesture ended' /tmp/seyrix-compositor.log && [[ "$sizes" -ge 2 ]]; then echo WINDOW_RESIZE=passed; else echo WINDOW_RESIZE=failed; fi; grep -E 'Resize gesture ended|Window geometry committed:' /tmp/seyrix-compositor.log | tail -n 8}
+    send -- "$resize_check_command\r"
+    expect {
+        -re {WINDOW_RESIZE=passed} {}
+        -re {WINDOW_RESIZE=failed} {
+            puts stderr "Alt+right drag did not resize a Wayland window."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking compositor window resize."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the window resize check."
+            exit 1
+        }
+    }
+
+    qmp_mouse_move $qmp 2815 20479
+    qmp_mouse_click $qmp
+    qmp_type $qmp "touch /tmp/seyrix-first-focus-ok\n"
+    after 500
+    set first_focus_command {if test -f /tmp/seyrix-first-focus-ok; then echo WINDOW_FOCUS_CLICK=passed; else echo WINDOW_FOCUS_CLICK=failed; fi}
+    send -- "$first_focus_command\r"
+    expect {
+        -re {WINDOW_FOCUS_CLICK=passed} {}
+        -re {WINDOW_FOCUS_CLICK=failed} {
+            puts stderr "Pointer click did not focus the lower Wayland window."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking pointer-driven window focus."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the pointer focus check."
+            exit 1
+        }
+    }
+
+    qmp_key_chord $qmp {meta_l} q
+    after 1500
+    set close_first_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 1 && "$destroyed" -ge 1 ]]; then echo WINDOW_CLOSE_FIRST=passed; else echo WINDOW_CLOSE_FIRST=failed; fi}
+    send -- "$close_first_command\r"
+    expect {
+        -re {WINDOW_CLOSE_FIRST=passed} {}
+        -re {WINDOW_CLOSE_FIRST=failed} {
+            puts stderr "Super+Q did not close the focused Wayland application window."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking first-window close."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during the first-window close check."
+            exit 1
+        }
+    }
+
+    qmp_key_chord $qmp {meta_l} q
+    after 1500
+    set close_all_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE_ALL=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 0 && "$destroyed" -ge 2 ]]; then echo WINDOW_CLOSE=passed; else echo WINDOW_CLOSE=failed; fi}
+    send -- "$close_all_command\r"
+    expect {
+        -re {WINDOW_CLOSE=passed} {}
+        -re {WINDOW_CLOSE=failed} {
+            puts stderr "Both xdg-shell windows did not close cleanly."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out checking application window cleanup."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited during application window cleanup."
+            exit 1
+        }
+    }
+
+    qmp_key_chord $qmp {meta_l shift} q
+    set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$'; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
+    send -- "$compositor_exit_command\r"
+    expect {
+        -re {COMPOSITOR_EXIT=passed} {}
+        -re {COMPOSITOR_EXIT=failed} {
+            puts stderr "Super+Shift+Q did not return the user to the tty1 shell."
+            exit 1
+        }
+        timeout {
+            puts stderr "Timed out waiting for a clean Seyrix compositor exit."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before compositor shutdown was checked."
+            exit 1
+        }
+    }
+    qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-exit.ppm"
+    puts "SESSION_EXIT=passed"
+} else {
+qmp_hmp $qmp "screendump $run_dir/tty1-before-wayland.ppm"
+qmp_type $qmp "start-wayland\n"
+after 2000
+qmp_hmp $qmp "screendump $run_dir/tty1-after-wayland-command.ppm"
+set wayland_ready_command {for n in $(seq 1 120); do test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && break; sleep 1; done; if test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready"; then echo WAYLAND_SESSION_READY=passed; else echo WAYLAND_SESSION_READY=failed; tail -n 40 /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null; fi}
+send -- "$wayland_ready_command\r"
+expect {
+    -re {WAYLAND_SESSION_READY=passed} {
+        set graphics_ms [expr {[clock milliseconds] - $boot_started}]
+        puts "GRAPHICAL_BOOT_MS=$graphics_ms"
+    }
+    -re {WAYLAND_SESSION_READY=failed} {
+        puts stderr "Weston failed to open a Wayland session."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for the Weston terminal session."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the Weston session became ready."
+        exit 1
+    }
+}
+
+set wayland_stability_command {sleep 2; if test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && pgrep -u 1000 -x weston >/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then echo WAYLAND_SESSION_STABLE=passed; else echo WAYLAND_SESSION_STABLE=failed; fi; printf 'WAYLAND_STATUS_FILE_BEGIN\n'; cat /tmp/seyrix-weston-status.txt 2>/dev/null || true; printf 'WAYLAND_STATUS_FILE_END\n'; printf 'WESTON_PROCESSES_BEGIN\n'; pgrep -a -u 1000 -f 'weston|weston-terminal' || true; printf 'WESTON_PROCESSES_END\n'; printf 'WESTON_LOGS_BEGIN\n'; cat /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null || true; printf 'WESTON_LOGS_END\nWAYLAND_DIAGNOSTICS_END\n'}
+send -- "$wayland_stability_command\r"
+expect {
+    -re {WAYLAND_SESSION_STABLE=passed} {}
+    -re {WAYLAND_SESSION_STABLE=failed} {
+        puts stderr "Wayland socket did not remain available with Weston and its terminal app running."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out checking the persistent Weston session."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited while checking the persistent Weston session."
+        exit 1
+    }
+}
+
+set graphical_metrics_command {printf 'GRAPHICAL_MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'GRAPHICAL_MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'GRAPHICAL_MEMORY_USED_APPROX_KB='; awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {print t-a}' /proc/meminfo; printf 'GRAPHICAL_RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'GRAPHICAL_METRICS_END\n'}
+send -- "$graphical_metrics_command\r"
+expect {
+    -re {GRAPHICAL_METRICS_END} {}
+    timeout {
+        puts stderr "Timed out collecting metrics for the running graphical session."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before graphical session metrics were collected."
+        exit 1
+    }
+}
+
+qmp_hmp $qmp "screendump $run_dir/desktop-before.ppm"
+qmp_type $qmp "touch /tmp/seyrix-keyboard-ok\n"
+after 500
+qmp_hmp $qmp "screendump $run_dir/desktop-after-keyboard.ppm"
+set keyboard_check_command {for n in $(seq 1 30); do test -f /tmp/seyrix-keyboard-ok && break; sleep 1; done; if test -f /tmp/seyrix-keyboard-ok; then echo KEYBOARD_INPUT=passed; else echo KEYBOARD_INPUT=failed; fi}
+send -- "$keyboard_check_command\r"
+expect {
+    -re {KEYBOARD_INPUT=passed} {}
+    -re {KEYBOARD_INPUT=failed} {
+        puts stderr "Keyboard input did not create the guest marker."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for graphical keyboard input."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before graphical keyboard input was checked."
+        exit 1
+    }
+}
+
+qmp_mouse_move $qmp 2500 2500
+after 750
+qmp_hmp $qmp "screendump $run_dir/desktop-pointer-a.ppm"
+qmp_mouse_move $qmp 29000 21000
+qmp_mouse_click $qmp
+after 750
+qmp_hmp $qmp "screendump $run_dir/desktop-pointer-b.ppm"
+puts "MOUSE_EVENTS_SENT=2"
+
+set mouse_check_command {sleep 1; printf 'EVTEST_POINTER_EVENTS_BEGIN\n'; grep -E 'ABS_X|ABS_Y' /tmp/seyrix-evtest-mouse.log | tail -n 20; if grep -q 'ABS_X' /tmp/seyrix-evtest-mouse.log && grep -q 'ABS_Y' /tmp/seyrix-evtest-mouse.log; then echo MOUSE_INPUT=passed; else echo MOUSE_INPUT=failed; fi}
+send -- "$mouse_check_command\r"
+expect {
+    -re {MOUSE_INPUT=passed} {}
+    -re {MOUSE_INPUT=failed} {
+        puts stderr "QEMU mouse events did not produce evdev absolute pointer motion."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for guest evdev pointer events."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before guest mouse input was checked."
+        exit 1
+    }
+}
+
+set session_active_command {if test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && pgrep -u 1000 -x weston >/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then echo WAYLAND_SESSION_BEFORE_EXIT=passed; else echo WAYLAND_SESSION_BEFORE_EXIT=failed; fi}
+send -- "$session_active_command\r"
+expect {
+    -re {WAYLAND_SESSION_BEFORE_EXIT=passed} {}
+    -re {WAYLAND_SESSION_BEFORE_EXIT=failed} {
+        puts stderr "Weston and its terminal app were not both active before the exit-key check."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out checking the Wayland session before exit."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the Wayland pre-exit check."
+        exit 1
+    }
+}
+
+qmp_type $qmp "exit\n"
+set session_exit_command {for n in $(seq 1 60); do test ! -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && break; sleep 1; done; if test ! -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready"; then echo SESSION_EXIT=passed; else echo SESSION_EXIT=failed; fi; if systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$'; then echo TTY1_SHELL_RETURN=passed; else echo TTY1_SHELL_RETURN=failed; fi; printf 'WESTON_STATUS='; cat /tmp/seyrix-weston-status.txt 2>/dev/null || echo missing; printf 'WESTON_RENDERER_LOGS_BEGIN\n'; grep -hEi 'renderer|rendering device|libseat|drm' /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null | tail -n 40 || true; printf 'WESTON_RENDERER_LOGS_END\n'}
+send -- "$session_exit_command\r"
+expect {
+    -re {SESSION_EXIT=passed} {}
+    -re {SESSION_EXIT=failed} {
+        puts stderr "Wayland session did not exit cleanly."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out waiting for Weston to return to tty1."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before Wayland session exit was checked."
+        exit 1
+    }
+}
+expect {
+    -re {TTY1_SHELL_RETURN=passed} {}
+    -re {TTY1_SHELL_RETURN=failed} {
+        puts stderr "The graphical session exited without returning to the tty1 user shell."
+        exit 1
+    }
+    timeout {
+        puts stderr "Timed out checking return to the tty1 shell."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before return to the tty1 shell was checked."
+        exit 1
+    }
+}
+qmp_hmp $qmp "screendump $run_dir/tty1-after-wayland-exit.ppm"
+puts "SESSION_EXIT=passed"
+}
+
+set shutdown_command {printf 'SEYRIX_GRAPHICS_CHECK_END\n'; systemctl poweroff}
+send -- "$shutdown_command\r"
+set timeout 90
+expect {
+    eof {}
+    timeout {
+        puts stderr "Timed out waiting for clean guest shutdown."
+        exit 1
+    }
+}
+set wait_result [wait]
+set qemu_exit [lindex $wait_result 3]
+if {$qemu_exit != 0} {
+    puts stderr "QEMU exited with status $qemu_exit after guest shutdown."
+    exit 1
+}
+
+puts "CLEAN_SHUTDOWN=passed"
