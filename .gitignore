@@ -1,8 +1,10 @@
 # Build output
-/build/
 /out/
 /dist/
 /target/
+/build/out/
+/build/work/
+/build/cache/
 *.o
 *.a
 *.so

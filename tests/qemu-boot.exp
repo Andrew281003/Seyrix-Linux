@@ -1,0 +1,110 @@
+#!/usr/bin/expect -f
+
+if {$argc < 3} {
+    puts stderr {Usage: qemu-boot.exp serial-log qemu [qemu arguments...]}
+    exit 2
+}
+
+set serial_log [lindex $argv 0]
+set qemu [lindex $argv 1]
+set qemu_args [lrange $argv 2 end]
+set timeout 360
+log_file -noappend $serial_log
+log_user 1
+set boot_started [clock milliseconds]
+
+spawn -noecho $qemu {*}$qemu_args
+
+expect {
+    -re {seyrix-dev login:} {
+        set boot_ms [expr {[clock milliseconds] - $boot_started}]
+        puts "BOOT_TO_LOGIN_MS=$boot_ms"
+    }
+    timeout {
+        puts stderr "Timed out waiting for the Seyrix serial login prompt."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the Seyrix serial login prompt."
+        exit 1
+    }
+}
+
+send -- "root\r"
+expect {
+    -re {Password:} {
+        send -- "\r"
+        exp_continue
+    }
+    -re {root@seyrix-dev[^\r\n]*# ?$} {}
+    timeout {
+        puts stderr "Timed out waiting for the live root shell."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the live root shell appeared."
+        exit 1
+    }
+}
+
+send -- "stty -echo; export PS1='SEYRIX-ROOT# '\r"
+expect {
+    -re {SEYRIX-ROOT#} {}
+    timeout {
+        puts stderr "Timed out setting up the serial test shell."
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited before the serial test shell was ready."
+        exit 1
+    }
+}
+
+set verification_command {printf 'SEYRIX_CHECK_BEGIN\n'; printf 'LOGIN_USER='; id -un; printf 'KERNEL='; uname -r; printf 'ROOT_FS='; findmnt -n -o FSTYPE /; printf 'PID1='; ps -p 1 -o comm= | tr -d ' '; printf 'SYSTEMD='; systemctl is-system-running; printf 'NETWORKD='; systemctl is-active systemd-networkd; printf 'RESOLVED='; systemctl is-active systemd-resolved; printf 'IP_ADDR='; ip -4 -o addr show scope global | awk 'NR == 1 {print $4}'; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ { print $2 }' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ { print $2 }' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; printf 'PCI_DEVICE='; lspci -nn | head -1; printf 'USB_DEVICE='; lsusb | head -1; printf 'SEYRIX_CHECK_END\n'}
+send -- "$verification_command\r"
+
+foreach {label pattern} {
+    login_user {LOGIN_USER=root}
+    kernel {KERNEL=[0-9]+\.[0-9]+}
+    root_fs {ROOT_FS=overlay}
+    pid1 {PID1=systemd}
+    systemd {SYSTEMD=running}
+    networkd {NETWORKD=active}
+    resolved {RESOLVED=active}
+    dhcp {IP_ADDR=10\.0\.2\.15/24}
+    memory {MEM_TOTAL_KB=[1-9][0-9]+}
+    services {RUNNING_SERVICES=[1-9][0-9]*}
+    packages {PACKAGE_COUNT=[1-9][0-9]*}
+    pci {PCI_DEVICE=[0-9a-fA-F]{2}:}
+    checks_complete {SEYRIX_CHECK_END}
+} {
+    expect {
+        -re $pattern {}
+        timeout {
+            puts stderr "Missing boot verification output for $label."
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited before verification output for $label."
+            exit 1
+        }
+    }
+}
+
+set timeout 60
+send -- "systemctl poweroff\r"
+expect {
+    eof {}
+    timeout {
+        puts stderr "Timed out waiting for clean guest shutdown."
+        exit 1
+    }
+}
+set wait_result [wait]
+set qemu_exit [lindex $wait_result 3]
+if {$qemu_exit != 0} {
+    puts stderr "QEMU exited with status $qemu_exit after guest shutdown."
+    exit 1
+}
+
+puts "CLEAN_SHUTDOWN=passed"

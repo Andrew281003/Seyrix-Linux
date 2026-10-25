@@ -1,22 +1,53 @@
-# Initial Architecture Overview
+# Seyrix Linux architecture
 
-Seyrix is planned as a Linux-based operating system. This document records an initial direction, not a finalized design or an implementation claim.
+This document records the selected foundation and the boundaries of the first
+development image. It does not claim production readiness or physical hardware
+compatibility.
 
-## Foundation
+## Phase 1 foundation
 
-- **Kernel:** Linux, selected for its broad hardware support, mature driver ecosystem, and active development community. No kernel source is vendored in this repository.
-- **User space:** Established open-source system components will be evaluated for core services, device management, networking, graphics, audio, and application support.
-- **Desktop environment:** Seyrix intends to develop its own desktop environment and system applications, with Aero and Chroma as distinct user-facing desktop styles.
-- **Installer and system experience:** A project-developed installer and integrated setup and update experience are planned for evaluation and later development.
+- **Distribution:** Arch Linux, x86-64, using the official `core` and `extra`
+  repositories and signed packages.
+- **Kernel:** Arch's current stable `linux` package. The version used by each
+  image is recorded in its package manifest.
+- **Init and package management:** systemd and pacman.
+- **Image tooling:** a project-owned copy of the Archiso `baseline` profile.
+- **Boot:** upstream Archiso GRUB for UEFI and Syslinux for BIOS. UEFI is the
+  tested path.
+- **Live root:** read-only EROFS with a temporary writable overlay in RAM. No
+  partitioning, ext4 installation, or persistent storage is included.
+- **Networking:** systemd-networkd and systemd-resolved for wired networking;
+  `iw` and `iwd` are available for manual wireless use.
+- **Graphics:** no desktop is installed. The image uses the Arch kernel and
+  upstream firmware; no custom GPU drivers are provided.
+- **Development languages:** C and C++ remain the primary implementation
+  languages for future system components.
 
-## Design goals
+## Security and licensing
 
-The architecture should support performance, modern hardware compatibility, customization, clear component boundaries, and maintainable integration with upstream open-source projects. Component choices should account for security maintenance, licensing, attribution, and upstream contribution requirements.
+Pacman keeps package signature verification enabled. The live profile has a
+local root console login with an empty password, inherited from Archiso's
+development baseline. It does not automatically log in and does not include
+OpenSSH. Revisit this policy before building any production image. Arch
+package license files remain in the image; the copied Archiso profile retains
+its GPL-3.0-or-later notice. The repository has not selected a project-wide
+license.
 
-## Open decisions
+## Explicit phase boundaries
 
-The distribution base, package management approach, init and service management, graphics stack, supported hardware scope, release model, and licensing have not been selected. These decisions require research and documented trade-offs before implementation.
+Phase 1 does not include Aero, Chroma, a desktop environment, a custom GPU
+driver, a kernel fork, an installer, a custom package manager, or a persistent
+root filesystem. QEMU results are not evidence of physical hardware support.
+
+## Open decisions for later phases
+
+The supported hardware matrix, production authentication policy, persistent
+installation and recovery design, update and release model, Secure Boot
+support, desktop graphics stack, and project-wide licensing need separate
+decisions and evidence.
 
 ## Current status
 
-This repository contains planning documentation only. It does not provide a built, functional, or bootable operating system.
+The Arch foundation and bootable ISO have passed the Phase 1 UEFI QEMU
+acceptance checks, including interactive login and clean shutdown. Results and
+limits are recorded in the [Phase 1 report](phase1-report.md).

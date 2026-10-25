@@ -1,42 +1,41 @@
-# Proposed Roadmap
+# Seyrix Linux roadmap
 
-This roadmap is an initial proposal. Milestones may change as research and project priorities develop.
+Milestones are gated by working software, documented package state, licensing,
+security review, and recoverable testing. Planned work is not a claim that the
+feature already exists.
 
-## 0. Project foundation
+## Project foundation — complete
 
-- Establish the public project repository and core documentation.
-- Define contribution, issue triage, and decision-record practices.
-- Review licensing and attribution needs before adopting third-party components.
+- Establish the repository and initial architecture and roadmap documents.
+- Select the initial distribution foundation.
 
-## 1. Research and requirements
+## Phase 1 — Arch Linux foundation and first boot — complete
 
-- Define target users, hardware scope, performance goals, and supported architectures.
-- Compare distribution bases, package managers, init systems, and graphics stacks.
-- Document security, update, accessibility, and maintenance requirements.
-- Refine the Aero and Chroma design goals.
+- Build a project-owned Archiso profile from the official `baseline` profile.
+- Generate a minimal x86-64 development ISO with the Arch stable kernel,
+  systemd, pacman, text login, networking, firmware, and Seyrix identity.
+- Verify UEFI boot, the live root, systemd, shell commands, hardware
+  enumeration, and clean shutdown in QEMU.
+- Record tool and package versions, the image checksum, test evidence,
+  measurements, limitations, and reproduction instructions.
 
-## 2. System architecture
+Acceptance results and remaining limitations are in [the Phase 1 report](phase1-report.md).
 
-- Choose and document the initial system component strategy.
-- Define how the desktop, system services, applications, installer, and update path fit together.
-- Establish development environments and reproducible build expectations.
+## Phase 2 — Hardware and installation design — planned
 
-## 3. Desktop and application prototypes
+- Define a supported hardware matrix and test devices using disposable media.
+- Design a persistent ext4 installation and recovery path before implementing
+  an installer.
+- Review live-image authentication, Secure Boot, update, and release policies.
 
-- Prototype the desktop shell and shared design system.
-- Explore Aero and Chroma as alternative presentation styles.
-- Identify the first essential system applications and accessibility needs.
+## Phase 3 — Desktop prototypes — planned
 
-## 4. Integration and installer prototypes
+- Define the shared graphics, accessibility, and application interfaces.
+- Prototype Aero and Chroma as separate presentation styles.
+- Keep desktop components compatible with the selected upstream system base.
 
-- Integrate selected upstream components in a controlled development image.
-- Prototype installation, first-run setup, and system update workflows.
-- Evaluate hardware compatibility and performance against documented targets.
+## Phase 4 — Integration and preview releases — planned
 
-## 5. Preview releases
-
-- Publish test images only after licensing, attribution, security, and recovery practices are established.
-- Gather feedback, resolve critical issues, and document known limitations.
-- Define criteria for any future stable release.
-
-No milestone in this proposal indicates that a functional or bootable system currently exists.
+- Integrate reviewed desktop and system components in a controlled image.
+- Establish signed update, rollback, licensing, and recovery workflows.
+- Publish preview images only after security and licensing review.

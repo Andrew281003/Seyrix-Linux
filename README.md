@@ -15,12 +15,23 @@ These are design directions; they do not imply compatibility with or affiliation
 
 ## Development status
 
-This repository is at the project-foundation stage. No functional or bootable operating system is provided yet. Early work is limited to documenting the proposed architecture and roadmap. The project has not selected a license; licensing and attribution requirements will be reviewed before incorporating third-party components.
+Phase 1 is complete on the `phase1-arch-foundation` branch. The project has
+generated an x86-64 Arch Linux development ISO and verified a complete UEFI
+boot, interactive serial login, system checks, and clean shutdown in QEMU.
+This is a live development image, not an installer or production release. See
+the [Phase 1 report](docs/phase1-report.md) for measurements and limitations.
+
+The repository does not yet have a project-wide license. The included Archiso
+profile retains its upstream GPL-3.0-or-later notice, and redistributed Arch
+packages retain their package license files in the image.
 
 ## Documentation
 
 - [Architecture overview](docs/architecture.md)
 - [Proposed roadmap](docs/roadmap.md)
+- [Phase 1 report](docs/phase1-report.md)
+- [Build guide](docs/build-guide.md)
+- [Boot architecture](docs/boot-architecture.md)
 
 ## Contributing
 

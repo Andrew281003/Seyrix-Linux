@@ -1,0 +1,5 @@
+Seyrix Linux | Phase 1 development image
+Arch Linux, x86_64
+
+This live environment uses a temporary writable overlay. Changes are lost at shutdown.
+Log in as root without a password on the local console. SSH is not installed.

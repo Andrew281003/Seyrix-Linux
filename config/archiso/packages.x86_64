@@ -1,0 +1,11 @@
+base
+linux
+linux-firmware
+iw
+iwd
+iptables
+mkinitcpio
+mkinitcpio-archiso
+pv
+syslinux
+usbutils
