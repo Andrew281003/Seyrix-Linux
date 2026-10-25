@@ -1,0 +1,8 @@
+archiso 91-1
+grub 2:2.16-1
+qemu-system-x86 11.1.2-1
+qemu-ui-gtk 11.1.2-1
+qemu-hw-display-virtio-gpu 11.1.2-1
+qemu-hw-display-virtio-vga 11.1.2-1
+edk2-ovmf 202608-1
+expect 5.45.4-5

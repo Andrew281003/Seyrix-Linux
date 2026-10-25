@@ -1,0 +1,7 @@
+warning: /root/.cache/seyrix-linux/phase2a-20261025T174234Z/work/x86_64/airootfs/etc/issue installed as /root/.cache/seyrix-linux/phase2a-20261025T174234Z/work/x86_64/airootfs/etc/issue.pacnew
+warning: /root/.cache/seyrix-linux/phase2a-20261025T174234Z/work/x86_64/airootfs/etc/shadow installed as /root/.cache/seyrix-linux/phase2a-20261025T174234Z/work/x86_64/airootfs/etc/shadow.pacnew
+grub-mkstandalone: warning: Global SBAT level 4 in `/usr/share/grub/sbat.csv' does not match the build-time Global SBAT level 6.
+grub-mkstandalone: warning: Global SBAT level 4 in `/usr/share/grub/sbat.csv' does not match the build-time Global SBAT level 6.
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+991M	/root/.cache/seyrix-linux/phase2a-20261025T174234Z/out/seyrix-phase2a-2026.10.25-x86_64.iso
