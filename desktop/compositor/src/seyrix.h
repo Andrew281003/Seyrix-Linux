@@ -26,6 +26,18 @@ enum seyrix_cursor_mode {
 	SEYRIX_CURSOR_RESIZE,
 };
 
+struct seyrix_window;
+struct seyrix_window_state;
+struct seyrix_decoration;
+
+#define SEYRIX_WORKSPACE_COUNT 4U
+
+struct seyrix_workspace {
+	struct wl_list windows;
+	struct wlr_scene_tree *scene_tree;
+	struct seyrix_window *focused_window;
+};
+
 struct seyrix_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
@@ -45,11 +57,13 @@ struct seyrix_server {
 	struct wl_list windows;
 	struct wl_list keyboards;
 	struct wl_list children;
+	struct seyrix_workspace workspaces[SEYRIX_WORKSPACE_COUNT];
 
 	struct wl_listener new_output;
 	struct wl_listener output_layout_change;
 	struct wl_listener new_input;
 	struct wl_listener new_toplevel;
+	struct wl_listener new_popup;
 	struct wl_listener cursor_motion;
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_button;
@@ -66,6 +80,7 @@ struct seyrix_server {
 	enum seyrix_cursor_mode cursor_mode;
 	struct seyrix_window *focused_window;
 	struct seyrix_window *grabbed_window;
+	size_t active_workspace_index;
 	double grab_x;
 	double grab_y;
 	struct wlr_box grab_box;
@@ -91,9 +106,14 @@ struct seyrix_output {
 
 struct seyrix_window {
 	struct wl_list link;
+	struct wl_list workspace_link;
 	struct seyrix_server *server;
+	struct seyrix_workspace *workspace;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *surface_tree;
+	struct seyrix_window_state *window_state;
+	struct seyrix_decoration *decoration;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
@@ -133,6 +153,26 @@ void seyrix_output_finish(struct seyrix_server *server);
 
 bool seyrix_input_init(struct seyrix_server *server);
 void seyrix_input_finish(struct seyrix_server *server);
+
+/* Call after creating window_layer; finish before destroying the scene. */
+bool seyrix_workspaces_init(struct seyrix_server *server);
+void seyrix_workspaces_finish(struct seyrix_server *server);
+/* Attach before creating the window scene node; forget on failure/destruction. */
+struct wlr_scene_tree *seyrix_workspace_attach_window(
+	struct seyrix_server *server, struct seyrix_window *window);
+void seyrix_workspace_forget_window(struct seyrix_window *window);
+void seyrix_workspace_window_mapped(struct seyrix_window *window);
+void seyrix_workspace_window_unmapped(struct seyrix_window *window);
+void seyrix_workspace_record_focus(struct seyrix_server *server,
+	struct seyrix_window *window);
+struct seyrix_window *seyrix_workspace_focus_candidate(
+	struct seyrix_server *server, struct seyrix_window *exclude);
+bool seyrix_workspace_window_is_visible(const struct seyrix_window *window);
+void seyrix_workspace_switch(struct seyrix_server *server, size_t index);
+void seyrix_workspace_switch_relative(struct seyrix_server *server,
+	int direction);
+void seyrix_workspace_move_focused(struct seyrix_server *server,
+	int direction);
 
 bool seyrix_window_init(struct seyrix_server *server);
 void seyrix_window_finish(struct seyrix_server *server);

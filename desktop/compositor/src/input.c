@@ -70,9 +70,25 @@ static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 		wlr_log(WLR_INFO, "Compositor exit requested by Super+Shift+Q");
 		wl_display_terminate(server->display);
 	} else if ((sym == XKB_KEY_q || sym == XKB_KEY_Q) &&
-			server->focused_window != NULL) {
+			server->focused_window != NULL &&
+			seyrix_workspace_window_is_visible(server->focused_window)) {
 		wlr_log(WLR_INFO, "Close requested for focused application window");
 		wlr_xdg_toplevel_send_close(server->focused_window->xdg_toplevel);
+	} else if ((modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL)) == 0 &&
+			(sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
+		int direction = sym == XKB_KEY_Left ? -1 : 1;
+		if ((modifiers & WLR_MODIFIER_SHIFT) != 0) {
+			seyrix_workspace_move_focused(server, direction);
+		} else {
+			seyrix_workspace_switch_relative(server, direction);
+		}
+	} else if ((modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL |
+			WLR_MODIFIER_SHIFT)) == 0 && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+		size_t index = (size_t)(sym - XKB_KEY_1);
+		/* Only the four initial workspaces exist in this phase. */
+		if (index < SEYRIX_WORKSPACE_COUNT) {
+			seyrix_workspace_switch(server, index);
+		}
 	} else {
 		handled = false;
 	}
@@ -114,6 +130,11 @@ static void handle_keyboard_key(struct wl_listener *listener, void *data) {
 		}
 	}
 
+	if (keyboard->server->focused_window != NULL &&
+			!seyrix_workspace_window_is_visible(keyboard->server->focused_window)) {
+		seyrix_focus_window(keyboard->server,
+			seyrix_workspace_focus_candidate(keyboard->server, NULL));
+	}
 	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
 	wlr_seat_keyboard_notify_key(seat, event->time_msec, event->keycode,
 		event->state);
