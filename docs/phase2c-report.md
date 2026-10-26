@@ -1,8 +1,8 @@
 # Seyrix Phase 2C engineering report
 
 **Status: incomplete.** The Phase 2C release builds, UEFI startup, compositor
-startup, output configuration, keyboard/pointer input, and multiple mapped
-windows were observed in QEMU. The functional window-move check failed because
+startup, output configuration, keyboard input, guest USB-tablet events, and
+multiple mapped windows were observed in QEMU. The functional window-move check failed because
 the final position matched its initial position. The integrated run did not
 reach workspace, popup, decoration, or clean-shutdown checks. Separate
 workspace-only runs booted the same ISO but stopped during second-window
@@ -102,7 +102,7 @@ reached the stricter move check and recorded an unchanged window position.
 | Native panel process startup | Process and layer surface observed | Compositor log; panel click was not reached by the workflow |
 | Output test/apply, position, scale 1.25, restore | Passed | `OUTPUT_CONFIGURATION=passed` on the final5 run |
 | Keyboard input | Passed | `KEYBOARD_INPUT=passed` |
-| Pointer input | Passed | `POINTER_INPUT=passed` with USB-tablet events |
+| Pointer input | Incomplete | USB-tablet events reached guest evdev; compositor pointer routing was not established |
 | Two simultaneous terminal windows | Passed | `WINDOWS_COEXIST=passed` |
 | Window move | Failed | Final5 initial and final scene positions were both `-51,26` |
 | Window resize | Incomplete | Not reached by the final5 workflow; an earlier run's old resize assertion also failed |
