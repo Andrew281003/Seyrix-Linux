@@ -77,7 +77,10 @@ static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 	} else if ((sym == XKB_KEY_q || sym == XKB_KEY_Q) &&
 			server->focused_window != NULL &&
 			seyrix_workspace_window_is_visible(server->focused_window)) {
-		wlr_log(WLR_INFO, "Close requested for focused application window");
+		const char *app_id = server->focused_window->xdg_toplevel->app_id != NULL ?
+			server->focused_window->xdg_toplevel->app_id : "(unset)";
+		wlr_log(WLR_INFO,
+			"Close requested for focused application window app_id=%s", app_id);
 		wlr_xdg_toplevel_send_close(server->focused_window->xdg_toplevel);
 	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
 			(modifiers & WLR_MODIFIER_SHIFT) != 0) {

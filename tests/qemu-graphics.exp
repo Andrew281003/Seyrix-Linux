@@ -654,9 +654,9 @@ if {$phase2b} {
         set guest_helper [file join [file dirname [file normalize [info script]]] qemu-guest-helper.sh]
         install_guest_helper $guest_helper
         set run_identity_path "/tmp/seyrix-qemu-test-run-id-$qemu_identity"
-        set run_identity_command "touch $run_identity_path"
+		set run_identity_command "touch $run_identity_path; if test -e $run_identity_path; then echo QEMU_TEST_RUN_ID=passed; else echo QEMU_TEST_RUN_ID=failed; fi"
         run_serial_check $run_identity_command \
-            [format {test -e %s && echo QEMU_TEST_RUN_ID=passed} $run_identity_path] \
+			{QEMU_TEST_RUN_ID=passed} \
             {QEMU_TEST_RUN_ID=failed} "record current QEMU test identity" 10
     }
     set compositor_startup_ms [expr {[clock milliseconds] - $compositor_command_started}]
@@ -937,6 +937,7 @@ if {$phase2b} {
             {bottom-right 400x300 {} in}
             {bottom-right {} 480x360 out}
         }
+        set resize_target_unavailable 0
         foreach resize_case $resize_cases {
             lassign $resize_case resize_edge resize_min resize_max resize_direction
             set start_command "bash /tmp/seyrix-qemu-guest-helper.sh resize-start $resize_edge"
@@ -958,7 +959,9 @@ if {$phase2b} {
             lassign $start_result start_status ready_edge target_pid target_surface scene_x scene_y initial_width initial_height pointer_x1 pointer_y1 pointer_x2 pointer_y2
             if {$start_status ne "pass"} {
                 puts "RESIZE_EDGE=$resize_edge INCOMPLETE reason=target-readiness"
-                continue
+                puts "RESIZE_REMAINING=NOT_RUN reason=shared-resize-client-readiness"
+                set resize_target_unavailable 1
+                break
             }
             qmp_mouse_drag $qmp $pointer_x1 $pointer_y1 $pointer_x2 $pointer_y2 left
             qmp_hmp $qmp "screendump $run_dir/seyrix-resize-$resize_edge-$resize_direction.ppm"
@@ -983,6 +986,9 @@ if {$phase2b} {
             } else {
                 puts "RESIZE_EDGE=$resize_edge direction=$resize_direction result=INCOMPLETE identity=$target_pid,$target_surface"
             }
+        }
+        if {$resize_target_unavailable} {
+            puts "WINDOW_RESIZE=INCOMPLETE reason=resize-client-target-readiness"
         }
     } else {
         puts "WINDOW_RESIZE=INCOMPLETE reason=phase2c-client-probe-required"
@@ -1015,13 +1021,13 @@ qmp_key_chord $qmp {meta_l} q
 
     qmp_key_chord $qmp {meta_l} q
     after 1500
-    set close_first_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 1 && "$destroyed" -ge 1 ]]; then echo WINDOW_CLOSE_FIRST=passed; else echo WINDOW_CLOSE_FIRST=failed; fi}
+    set close_first_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 1 && "$destroyed" -ge 1 ]]; then echo WINDOW_CLOSE_FIRST=passed; else echo WINDOW_CLOSE_FIRST=failed; printf 'WINDOW_CLOSE_DIAGNOSTICS_BEGIN\n'; pgrep -a -u 1000 -x weston-terminal || true; grep -E 'Close requested|Window destroyed|Window mapped|Focus changed|focused' /tmp/seyrix-compositor.log | tail -n 30; printf 'WINDOW_CLOSE_DIAGNOSTICS_END\n'; fi}
     send -- "$close_first_command\r"
     expect {
         -re {WINDOW_CLOSE_FIRST=passed} {}
         -re {WINDOW_CLOSE_FIRST=failed} {
             puts stderr "Super+Q did not close the focused Wayland application window."
-            exit 1
+            incr acceptance_failures
         }
         timeout {
             puts stderr "Timed out checking first-window close."
@@ -1041,7 +1047,7 @@ qmp_key_chord $qmp {meta_l} q
         -re {WINDOW_CLOSE=passed} {}
         -re {WINDOW_CLOSE=failed} {
             puts stderr "Both xdg-shell windows did not close cleanly."
-            exit 1
+            incr acceptance_failures
         }
         timeout {
             puts stderr "Timed out checking application window cleanup."

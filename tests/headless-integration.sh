@@ -120,6 +120,48 @@ run_probe() {
 	fi
 }
 
+run_pointer_watch_startup() {
+	local probe_log="$run_root/pointer_watch_startup.log" pid="" ready=0 status=0 no_pointer=0
+	SEYRIX_PROBE_LOG="$probe_log" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+		XDG_RUNTIME_DIR="$runtime_dir" "$probe_bin" --watch-pointer \
+		>> "$test_log" 2>&1 &
+	pid=$!
+	for _ in $(seq 1 100); do
+		if grep -q '^WATCH_POINTER_READY=1 ' "$probe_log" 2>/dev/null; then
+			ready=1
+			break
+		fi
+		if ! kill -0 "$pid" 2>/dev/null; then break; fi
+		sleep 0.1
+	done
+	if (( ready )); then
+		record pointer_watch_startup PASS "seat pointer capability and mapped probe surface; log=$probe_log"
+	elif grep -q '^GLOBALS=failed reason=pointer-capability-unavailable ' "$probe_log" 2>/dev/null; then
+		no_pointer=1
+		record pointer_watch_startup NOT_RUN "headless backend exposed no pointer capability; log=$probe_log"
+	else
+		record pointer_watch_startup FAIL "probe did not reach its mapped readiness marker; log=$probe_log"
+	fi
+	if same_process "$pid" "$probe_bin"; then
+		kill -TERM "$pid" 2>/dev/null || true
+		for _ in $(seq 1 30); do
+			if ! same_process "$pid" "$probe_bin"; then break; fi
+			sleep 0.1
+		done
+		if same_process "$pid" "$probe_bin"; then
+			kill -KILL "$pid" 2>/dev/null || true
+		fi
+	fi
+	wait "$pid" || status=$?
+	if (( ready )) && grep -q '^WATCH_POINTER_STOPPED=1$' "$probe_log"; then
+		record pointer_watch_cleanup PASS "SIGTERM observed and client exited; log=$probe_log"
+	elif (( no_pointer )); then
+		record pointer_watch_cleanup NOT_RUN "probe exited before pointer readiness; no watcher required cleanup"
+	else
+		record pointer_watch_cleanup FAIL "probe exit=$status; stopped marker missing; log=$probe_log"
+	fi
+}
+
 printf 'Run started UTC: %s\nSource branch: %s\nSource commit: %s\n' \
 	"$(date -u --iso-8601=seconds)" \
 	"$(git -C "$repo_root" branch --show-current)" \
@@ -173,8 +215,9 @@ if grep -q 'SEYRIX_COMPOSITOR_READY=1' "$log"; then
 	run_probe rapid_state rapid --rapid-state
 	run_probe client_decoration decoration --client-decoration
 	run_probe destroy_transition destroy --destroy-during-transition
+	run_pointer_watch_startup
 else
-	for name in state_cycle rapid_state client_decoration destroy_transition; do
+	for name in state_cycle rapid_state client_decoration destroy_transition pointer_watch_startup pointer_watch_cleanup; do
 		record "$name" INCOMPLETE "compositor never reached readiness"
 	done
 fi

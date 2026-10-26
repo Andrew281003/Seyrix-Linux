@@ -232,6 +232,22 @@ resize_start() {
         ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
     printf 'RESIZE_TARGET_FAILED edge=%s ready=%s map=%s\n' "$edge" \
       "${ready:-missing}" "${map_line:-missing}"
+    printf 'RESIZE_PROBE_LOG_BEGIN edge=%s path=%s\n' "$edge" "$log"
+    if [[ -r "$log" ]]; then
+      tail -n 40 "$log"
+    else
+      printf 'RESIZE_PROBE_LOG=missing\n'
+    fi
+    printf 'RESIZE_PROBE_STDOUT_BEGIN edge=%s path=%s\n' "$edge" "$output"
+    if [[ -r "$output" ]]; then
+      tail -n 40 "$output"
+    else
+      printf 'RESIZE_PROBE_STDOUT=missing\n'
+    fi
+    local app_id="seyrix.qemu.$run_id.resize.$edge.$direction"
+    printf 'RESIZE_COMPOSITOR_LOG_BEGIN edge=%s app_id=%s\n' "$edge" "$app_id"
+    grep -F "$app_id" "$geometry_log" | tail -n 20 || true
+    printf 'RESIZE_COMPOSITOR_LOG_END edge=%s\n' "$edge"
     resize_cleanup "$edge" "$direction"
     return 1
   fi

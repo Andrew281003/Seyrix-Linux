@@ -882,6 +882,8 @@ static const struct wl_pointer_listener pointer_listener = {
 static void seat_capabilities(void *data, struct wl_seat *seat,
 		uint32_t capabilities) {
 	struct probe *probe = data;
+	log_event(probe, "SEAT_CAPABILITIES mask=0x%x pointer=%d",
+		capabilities, (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0);
 	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) != 0 && probe->pointer == NULL) {
 		probe->pointer = wl_seat_get_pointer(seat);
 		wl_pointer_add_listener(probe->pointer, &pointer_listener, probe);
@@ -1126,14 +1128,30 @@ int main(int argc, char **argv) {
 	}
 	probe.registry = wl_display_get_registry(probe.display);
 	wl_registry_add_listener(probe.registry, &registry_listener, &probe);
-	if (wl_display_roundtrip(probe.display) < 0 || probe.compositor == NULL ||
-			probe.shm == NULL || probe.wm_base == NULL ||
-			((probe.resize_check || probe.watch_pointer) &&
-			(probe.seat == NULL || probe.pointer == NULL))) {
-		log_event(&probe, "GLOBALS=failed");
+	bool needs_pointer = probe.resize_check || probe.watch_pointer;
+	int registry_status = wl_display_roundtrip(probe.display);
+	if (registry_status < 0 || probe.compositor == NULL || probe.shm == NULL ||
+			probe.wm_base == NULL || (needs_pointer && probe.seat == NULL)) {
+		log_event(&probe,
+			"GLOBALS=failed roundtrip=%d compositor=%d shm=%d wm_base=%d seat=%d pointer=%d",
+			registry_status, probe.compositor != NULL, probe.shm != NULL,
+			probe.wm_base != NULL, probe.seat != NULL, probe.pointer != NULL);
 		probe.failed = true;
 		probe.done = true;
-	} else {
+	} else if (needs_pointer && wl_display_roundtrip(probe.display) < 0) {
+		log_event(&probe,
+			"GLOBALS=failed reason=seat-capability-roundtrip compositor=1 shm=1 wm_base=1 seat=%d pointer=%d",
+			probe.seat != NULL, probe.pointer != NULL);
+		probe.failed = true;
+		probe.done = true;
+	} else if (needs_pointer && probe.pointer == NULL) {
+		log_event(&probe,
+			"GLOBALS=failed reason=pointer-capability-unavailable compositor=1 shm=1 wm_base=1 seat=%d pointer=0",
+			probe.seat != NULL);
+		probe.failed = true;
+		probe.done = true;
+	}
+	if (!probe.failed) {
 		log_event(&probe, "GLOBALS=ready decoration=%d seat=%d",
 			probe.decoration_manager != NULL, probe.seat != NULL);
 		if (!create_toplevel(&probe)) {
