@@ -56,69 +56,173 @@ static void remember_shortcut_press(struct seyrix_keyboard *keyboard,
 	}
 }
 
+enum shortcut_action {
+	SHORTCUT_OPEN_TERMINAL,
+	SHORTCUT_EXIT,
+	SHORTCUT_CLOSE_WINDOW,
+	SHORTCUT_MINIMIZE,
+	SHORTCUT_RESTORE_MINIMIZED,
+	SHORTCUT_WORKSPACE,
+	SHORTCUT_WORKSPACE_RELATIVE,
+	SHORTCUT_MOVE_WORKSPACE_RELATIVE,
+	SHORTCUT_SET_MODE_FLOATING,
+	SHORTCUT_SET_MODE_TILING,
+	SHORTCUT_SET_MODE_HYBRID,
+	SHORTCUT_TOGGLE_FLOATING,
+	SHORTCUT_FOCUS_TILED_NEXT,
+	SHORTCUT_FOCUS_TILED_PREVIOUS,
+	SHORTCUT_MOVE_TILED_NEXT,
+	SHORTCUT_MOVE_TILED_PREVIOUS,
+	SHORTCUT_RATIO_LEFT,
+	SHORTCUT_RATIO_RIGHT,
+	SHORTCUT_RATIO_UP,
+	SHORTCUT_RATIO_DOWN,
+	SHORTCUT_TOGGLE_SPLIT_AXIS,
+	SHORTCUT_RELOAD_CONFIG,
+};
+
+struct shortcut_binding {
+	xkb_keysym_t sym;
+	uint32_t modifiers;
+	enum shortcut_action action;
+	int argument;
+};
+
+#define BINDING(key, mods, kind, value) \
+	{ .sym = (key), .modifiers = WLR_MODIFIER_LOGO | (mods), \
+		.action = (kind), .argument = (value) }
+
+static const struct shortcut_binding shortcut_bindings[] = {
+	BINDING(XKB_KEY_Return, 0, SHORTCUT_OPEN_TERMINAL, 0),
+	BINDING(XKB_KEY_q, 0, SHORTCUT_CLOSE_WINDOW, 0),
+	BINDING(XKB_KEY_q, WLR_MODIFIER_SHIFT, SHORTCUT_EXIT, 0),
+	BINDING(XKB_KEY_m, 0, SHORTCUT_MINIMIZE, 0),
+	BINDING(XKB_KEY_m, WLR_MODIFIER_SHIFT, SHORTCUT_RESTORE_MINIMIZED, 0),
+	BINDING(XKB_KEY_Left, 0, SHORTCUT_WORKSPACE_RELATIVE, -1),
+	BINDING(XKB_KEY_Right, 0, SHORTCUT_WORKSPACE_RELATIVE, 1),
+	BINDING(XKB_KEY_Left, WLR_MODIFIER_SHIFT,
+		SHORTCUT_MOVE_WORKSPACE_RELATIVE, -1),
+	BINDING(XKB_KEY_Right, WLR_MODIFIER_SHIFT,
+		SHORTCUT_MOVE_WORKSPACE_RELATIVE, 1),
+	BINDING(XKB_KEY_1, 0, SHORTCUT_WORKSPACE, 0),
+	BINDING(XKB_KEY_2, 0, SHORTCUT_WORKSPACE, 1),
+	BINDING(XKB_KEY_3, 0, SHORTCUT_WORKSPACE, 2),
+	BINDING(XKB_KEY_4, 0, SHORTCUT_WORKSPACE, 3),
+	BINDING(XKB_KEY_f, WLR_MODIFIER_SHIFT, SHORTCUT_SET_MODE_FLOATING, 0),
+	BINDING(XKB_KEY_t, WLR_MODIFIER_SHIFT, SHORTCUT_SET_MODE_TILING, 0),
+	BINDING(XKB_KEY_h, WLR_MODIFIER_SHIFT, SHORTCUT_SET_MODE_HYBRID, 0),
+	BINDING(XKB_KEY_f, 0, SHORTCUT_TOGGLE_FLOATING, 0),
+	BINDING(XKB_KEY_j, 0, SHORTCUT_FOCUS_TILED_NEXT, 0),
+	BINDING(XKB_KEY_k, 0, SHORTCUT_FOCUS_TILED_PREVIOUS, 0),
+	BINDING(XKB_KEY_j, WLR_MODIFIER_SHIFT, SHORTCUT_MOVE_TILED_NEXT, 0),
+	BINDING(XKB_KEY_k, WLR_MODIFIER_SHIFT, SHORTCUT_MOVE_TILED_PREVIOUS, 0),
+	BINDING(XKB_KEY_Left, WLR_MODIFIER_CTRL, SHORTCUT_RATIO_LEFT, 0),
+	BINDING(XKB_KEY_Right, WLR_MODIFIER_CTRL, SHORTCUT_RATIO_RIGHT, 0),
+	BINDING(XKB_KEY_Up, WLR_MODIFIER_CTRL, SHORTCUT_RATIO_UP, 0),
+	BINDING(XKB_KEY_Down, WLR_MODIFIER_CTRL, SHORTCUT_RATIO_DOWN, 0),
+	BINDING(XKB_KEY_o, 0, SHORTCUT_TOGGLE_SPLIT_AXIS, 0),
+	BINDING(XKB_KEY_r, WLR_MODIFIER_CTRL, SHORTCUT_RELOAD_CONFIG, 0),
+};
+
 static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 		const struct wlr_keyboard_key_event *event, xkb_keysym_t sym) {
 	struct seyrix_server *server = keyboard->server;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-	if ((modifiers & WLR_MODIFIER_LOGO) == 0 ||
-			event->state != WL_KEYBOARD_KEY_STATE_PRESSED) {
+	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED ||
+			(modifiers & WLR_MODIFIER_LOGO) == 0) {
 		return false;
 	}
-
-	bool handled = true;
-	if (sym == XKB_KEY_Return) {
-		if (!seyrix_spawn_terminal(server)) {
-			wlr_log(WLR_ERROR, "Super+Return could not start weston-terminal");
+	xkb_keysym_t normalized = xkb_keysym_to_lower(sym);
+	uint32_t relevant_modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT |
+		WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL;
+	uint32_t active_modifiers = modifiers & relevant_modifiers;
+	for (size_t i = 0; i < sizeof(shortcut_bindings) /
+			sizeof(shortcut_bindings[0]); i++) {
+		const struct shortcut_binding *binding = &shortcut_bindings[i];
+		if (normalized != binding->sym || active_modifiers != binding->modifiers) {
+			continue;
 		}
-	} else if ((sym == XKB_KEY_q || sym == XKB_KEY_Q) &&
-			(modifiers & WLR_MODIFIER_SHIFT) != 0) {
-		wlr_log(WLR_INFO, "Compositor exit requested by Super+Shift+Q");
-		wl_display_terminate(server->display);
-	} else if ((sym == XKB_KEY_q || sym == XKB_KEY_Q) &&
-			server->focused_window != NULL &&
-			seyrix_workspace_window_is_visible(server->focused_window)) {
-		const char *app_id = server->focused_window->xdg_toplevel->app_id != NULL ?
-			server->focused_window->xdg_toplevel->app_id : "(unset)";
-		wlr_log(WLR_INFO,
-			"Close requested for focused application window app_id=%s", app_id);
-		wlr_xdg_toplevel_send_close(server->focused_window->xdg_toplevel);
-	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
-			(modifiers & WLR_MODIFIER_SHIFT) != 0) {
-		seyrix_window_state_restore_minimized(server);
-	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
-			server->focused_window != NULL) {
-		seyrix_window_state_minimize(server->focused_window);
-	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
-			seyrix_window_state_restore_minimized(server)) {
-		/* Super+M restores the most recently listed minimized window if none is focused. */
-	} else if ((modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL)) == 0 &&
-			(sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
-		int direction = sym == XKB_KEY_Left ? -1 : 1;
-		if ((modifiers & WLR_MODIFIER_SHIFT) != 0) {
-			wlr_log(WLR_INFO,
-				"Workspace move shortcut direction=%d active=%zu focused=%s",
-				direction, server->active_workspace_index + 1,
-				server->focused_window != NULL &&
-				server->focused_window->xdg_toplevel->app_id != NULL ?
-					server->focused_window->xdg_toplevel->app_id : "none");
-			seyrix_workspace_move_focused(server, direction);
-		} else {
-			seyrix_workspace_switch_relative(server, direction);
+		switch (binding->action) {
+		case SHORTCUT_OPEN_TERMINAL:
+			if (!seyrix_spawn_terminal(server)) {
+				wlr_log(WLR_ERROR, "Super+Return could not start weston-terminal");
+			}
+			break;
+		case SHORTCUT_EXIT:
+			wlr_log(WLR_INFO, "Compositor exit requested by Super+Shift+Q");
+			wl_display_terminate(server->display);
+			break;
+		case SHORTCUT_CLOSE_WINDOW:
+			if (server->focused_window != NULL &&
+					seyrix_workspace_window_is_visible(server->focused_window)) {
+				wlr_xdg_toplevel_send_close(server->focused_window->xdg_toplevel);
+			}
+			break;
+		case SHORTCUT_MINIMIZE:
+			if (server->focused_window != NULL) {
+				seyrix_window_state_minimize(server->focused_window);
+			} else {
+				seyrix_window_state_restore_minimized(server);
+			}
+			break;
+		case SHORTCUT_RESTORE_MINIMIZED:
+			seyrix_window_state_restore_minimized(server);
+			break;
+		case SHORTCUT_WORKSPACE:
+			seyrix_workspace_switch(server, (size_t)binding->argument);
+			break;
+		case SHORTCUT_WORKSPACE_RELATIVE:
+			seyrix_workspace_switch_relative(server, binding->argument);
+			break;
+		case SHORTCUT_MOVE_WORKSPACE_RELATIVE:
+			seyrix_workspace_move_focused(server, binding->argument);
+			break;
+		case SHORTCUT_SET_MODE_FLOATING:
+			seyrix_wm_set_mode(server, SEYRIX_LAYOUT_FLOATING);
+			break;
+		case SHORTCUT_SET_MODE_TILING:
+			seyrix_wm_set_mode(server, SEYRIX_LAYOUT_TILING);
+			break;
+		case SHORTCUT_SET_MODE_HYBRID:
+			seyrix_wm_set_mode(server, SEYRIX_LAYOUT_HYBRID);
+			break;
+		case SHORTCUT_TOGGLE_FLOATING:
+			seyrix_wm_toggle_floating(server);
+			break;
+		case SHORTCUT_FOCUS_TILED_NEXT:
+			seyrix_wm_focus_tiled_neighbor(server, 1);
+			break;
+		case SHORTCUT_FOCUS_TILED_PREVIOUS:
+			seyrix_wm_focus_tiled_neighbor(server, -1);
+			break;
+		case SHORTCUT_MOVE_TILED_NEXT:
+			seyrix_wm_move_tiled_neighbor(server, 1);
+			break;
+		case SHORTCUT_MOVE_TILED_PREVIOUS:
+			seyrix_wm_move_tiled_neighbor(server, -1);
+			break;
+		case SHORTCUT_RATIO_LEFT:
+			seyrix_wm_adjust_split_ratio(server, SEYRIX_LAYOUT_HORIZONTAL, -25);
+			break;
+		case SHORTCUT_RATIO_RIGHT:
+			seyrix_wm_adjust_split_ratio(server, SEYRIX_LAYOUT_HORIZONTAL, 25);
+			break;
+		case SHORTCUT_RATIO_UP:
+			seyrix_wm_adjust_split_ratio(server, SEYRIX_LAYOUT_VERTICAL, -25);
+			break;
+		case SHORTCUT_RATIO_DOWN:
+			seyrix_wm_adjust_split_ratio(server, SEYRIX_LAYOUT_VERTICAL, 25);
+			break;
+		case SHORTCUT_TOGGLE_SPLIT_AXIS:
+			seyrix_wm_toggle_split_axis(server);
+			break;
+		case SHORTCUT_RELOAD_CONFIG:
+			(void)seyrix_wm_reload_config(server);
+			break;
 		}
-	} else if ((modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL |
-			WLR_MODIFIER_SHIFT)) == 0 && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
-		size_t index = (size_t)(sym - XKB_KEY_1);
-		/* Only the four initial workspaces exist in this phase. */
-		if (index < SEYRIX_WORKSPACE_COUNT) {
-			wlr_log(WLR_INFO,
-				"Direct workspace selection key=0x%x target=%zu current=%zu",
-				sym, index + 1, server->active_workspace_index + 1);
-			seyrix_workspace_switch(server, index);
-		}
-	} else {
-		handled = false;
+		return true;
 	}
-	return handled;
+	return false;
 }
 
 static void handle_keyboard_modifiers(struct wl_listener *listener, void *data) {
@@ -471,6 +575,9 @@ static void handle_cursor_button(struct wl_listener *listener, void *data) {
 				window->xdg_toplevel->app_id : "none");
 		if (window != NULL) {
 			seyrix_focus_window(server, window);
+			if (seyrix_wm_window_is_tiled(window)) {
+				seyrix_wm_toggle_floating(server);
+			}
 			if (event->button == BTN_LEFT) {
 				seyrix_begin_interactive(window, SEYRIX_CURSOR_MOVE, 0);
 			} else {

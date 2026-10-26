@@ -43,6 +43,15 @@ if [[ -n "${SEYRIX_HEADLESS_SANITIZERS:-}" &&
 fi
 mkdir -p "$build_root" "$stage_root" "$runtime_dir"
 chmod 700 "$runtime_dir"
+config_home="$run_root/config"
+mkdir -p "$config_home/seyrix"
+chmod 700 "$config_home" "$config_home/seyrix"
+cat > "$config_home/seyrix/window-management.conf" <<'EOF'
+version=1
+default_mode=hybrid
+app_id.7365797269782e706861736532632d70726f6265=floating
+EOF
+chmod 600 "$config_home/seyrix/window-management.conf"
 printf 'check\tstatus\tdetail\n' > "$result_file"
 
 log="$run_root/compositor.log"
@@ -106,10 +115,11 @@ wait_for() {
 
 run_probe() {
 	local name="$1" validation_mode="$2" probe_mode="$3"
+	shift 3
 	local probe_log="$run_root/${name}.log" status=0
 	if timeout --signal=TERM --kill-after=2s 60s env \
 		SEYRIX_PROBE_LOG="$probe_log" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-		XDG_RUNTIME_DIR="$runtime_dir" "$probe_bin" "$probe_mode" \
+		XDG_RUNTIME_DIR="$runtime_dir" "$probe_bin" "$probe_mode" "$@" \
 		>> "$test_log" 2>&1 &&
 		bash "$repo_root/tests/phase2c-probe-check.sh" "$validation_mode" "$probe_log" \
 		>> "$test_log" 2>&1; then
@@ -195,7 +205,7 @@ fi
 ln -s "$shell_bin" "$panel_link"
 created_panel_link=1
 
-export XDG_RUNTIME_DIR="$runtime_dir" WAYLAND_DISPLAY=wayland-0
+export XDG_RUNTIME_DIR="$runtime_dir" XDG_CONFIG_HOME="$config_home" WAYLAND_DISPLAY=wayland-0
 export WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_RENDERER=pixman
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1}"
 export UBSAN_OPTIONS="${UBSAN_OPTIONS:-halt_on_error=1:print_stacktrace=1}"
@@ -212,7 +222,7 @@ wait_for panel_mapped 30 \
 
 if grep -q 'SEYRIX_COMPOSITOR_READY=1' "$log"; then
 	run_probe state_cycle state --state-cycle
-	run_probe rapid_state rapid --rapid-state
+	run_probe rapid_state rapid --rapid-state --app-id seyrix.rapid-state-probe
 	run_probe client_decoration decoration --client-decoration
 	run_probe destroy_transition destroy --destroy-during-transition
 	run_pointer_watch_startup
@@ -226,6 +236,12 @@ outputs="$(XDG_RUNTIME_DIR="$runtime_dir" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" wlr
 printf 'OUTPUTS_BEFORE_BEGIN\n%s\nOUTPUTS_BEFORE_END\n' "$outputs" >> "$test_log"
 mapfile -t output_names < <(awk '/^[^[:space:]]/ { print $1 }' <<< "$outputs")
 if (( ${#output_names[@]} >= 2 )); then
+	workspace_output_count="$(grep -F 'assigned output ' "$log" | awk '$NF != "none" { print $NF }' | sort -u | wc -l)"
+	if (( workspace_output_count >= 2 )); then
+		record workspace_output_assignment PASS "four workspace assignments span $workspace_output_count enabled headless outputs"
+	else
+		record workspace_output_assignment FAIL "workspace assignment names show only $workspace_output_count output"
+	fi
 	output_a="${output_names[0]}"
 	output_b="${output_names[1]}"
 	if XDG_RUNTIME_DIR="$runtime_dir" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \

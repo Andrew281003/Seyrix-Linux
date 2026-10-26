@@ -186,6 +186,7 @@ static void handle_layout_change(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, server, output_layout_change);
 	position_backgrounds(server);
 	seyrix_layer_shell_outputs_changed(server);
+	seyrix_wm_outputs_changed(server);
 	seyrix_shell_outputs_changed(server);
 	seyrix_window_state_outputs_changed(server);
 	if (!server->output_manager_applying) {
@@ -225,8 +226,10 @@ static void handle_output_commit(struct wl_listener *listener, void *data) {
 	int width = 0;
 	int height = 0;
 	wlr_output_effective_resolution(output->wlr_output, &width, &height);
+	float scale = output->wlr_output->scale;
 	if (width <= 0 || height <= 0 ||
-			(width == output->width && height == output->height)) {
+			(width == output->width && height == output->height &&
+			scale == output->scale)) {
 		if (!output->server->output_manager_applying) {
 			output_manager_update(output->server);
 		}
@@ -234,11 +237,13 @@ static void handle_output_commit(struct wl_listener *listener, void *data) {
 	}
 	output->width = width;
 	output->height = height;
+	output->scale = scale;
 	wlr_scene_rect_set_size(output->background, width, height);
 	wlr_log(WLR_INFO, "Output %s active at %dx%d",
 		output->wlr_output->name, width, height);
 	seyrix_shell_outputs_changed(output->server);
 	seyrix_layer_shell_outputs_changed(output->server);
+	seyrix_wm_outputs_changed(output->server);
 	seyrix_window_state_outputs_changed(output->server);
 	if (!output->server->output_manager_applying) {
 		output_manager_update(output->server);
@@ -264,6 +269,8 @@ static void handle_output_destroy(struct wl_listener *listener, void *data) {
 	if (server->output_layout != NULL) {
 		wlr_output_layout_remove(server->output_layout, output->wlr_output);
 	}
+	seyrix_wm_outputs_changed(server);
+	seyrix_window_state_outputs_changed(server);
 	seyrix_shell_outputs_changed(server);
 	output_manager_update(server);
 	wlr_log(WLR_INFO, "Output %s removed", output->wlr_output->name);
@@ -345,6 +352,7 @@ static void handle_new_output(struct wl_listener *listener, void *data) {
 	handle_output_commit(&output->commit, NULL);
 	seyrix_shell_outputs_changed(server);
 	seyrix_layer_shell_outputs_changed(server);
+	seyrix_wm_outputs_changed(server);
 	seyrix_window_state_outputs_changed(server);
 	output_manager_update(server);
 	wlr_output_schedule_frame(wlr_output);

@@ -1,5 +1,6 @@
 #include "window-state.h"
 
+#include <limits.h>
 #include <stdlib.h>
 
 #include <wlr/util/box.h>
@@ -32,6 +33,20 @@ struct wlr_output *seyrix_window_state_output(struct seyrix_window *window) {
 
 static bool current_window_box(struct seyrix_window *window,
 	struct wlr_box *box);
+
+static int clamp_position(int value, int64_t minimum, int64_t maximum) {
+	if (maximum < minimum) {
+		return minimum < INT_MIN ? INT_MIN :
+			minimum > INT_MAX ? INT_MAX : (int)minimum;
+	}
+	if (value < minimum) {
+		return minimum < INT_MIN ? INT_MIN : (int)minimum;
+	}
+	if (value > maximum) {
+		return maximum > INT_MAX ? INT_MAX : (int)maximum;
+	}
+	return value;
+}
 
 static void remove_listener(struct wl_listener *listener) {
 	if (listener->link.prev != NULL && listener->link.next != NULL) {
@@ -71,6 +86,10 @@ static struct wlr_output *window_output(struct seyrix_window *window) {
 			output_is_live(server, window->xdg_toplevel->requested.fullscreen_output)) {
 		return window->xdg_toplevel->requested.fullscreen_output;
 	}
+	if (seyrix_wm_window_is_tiled(window) && window->workspace != NULL &&
+			output_is_live(server, window->workspace->output)) {
+		return window->workspace->output;
+	}
 	if (output_is_live(server, state->output)) {
 		return state->output;
 	}
@@ -84,7 +103,7 @@ static struct wlr_output *window_output(struct seyrix_window *window) {
 	double center_y = box.y + box.height / 2.0;
 	struct wlr_output *output = wlr_output_layout_output_at(
 		server->output_layout, center_x, center_y);
-	return output != NULL ? output : first_output(server);
+	return output_is_live(server, output) ? output : first_output(server);
 }
 
 static bool current_window_box(struct seyrix_window *window,
@@ -111,28 +130,44 @@ static void save_normal_box(struct seyrix_window *window) {
 
 static void constrain_normal_box(struct seyrix_window *window) {
 	struct seyrix_server *server = window->server;
-	struct wlr_box all = {0};
-	wlr_output_layout_get_box(server->output_layout, NULL, &all);
-	if (all.width <= 0 || all.height <= 0 || !window->window_state->normal_box_valid) {
+	if (!window->window_state->normal_box_valid) {
 		return;
 	}
 	struct wlr_box *box = &window->window_state->normal_box;
-	if (wlr_output_layout_output_at(server->output_layout,
-			box->x + box->width / 2.0, box->y + box->height / 2.0) != NULL) {
-		return;
-	}
-	struct wlr_output *output = first_output(server);
 	struct wlr_box target = {0};
+	struct wlr_output *output = wlr_output_layout_output_at(
+		server->output_layout, box->x + box->width / 2.0,
+		box->y + box->height / 2.0);
+	if (!output_is_live(server, output)) {
+		output = first_output(server);
+	}
 	if (output != NULL) {
 		wlr_output_layout_get_box(server->output_layout, output, &target);
 	}
 	if (target.width <= 0 || target.height <= 0) {
-		target = all;
+		wlr_output_layout_get_box(server->output_layout, NULL, &target);
 	}
-	int visible_width = box->width < target.width ? box->width : target.width;
-	int visible_height = box->height < target.height ? box->height : target.height;
-	box->x = target.x + (target.width - visible_width) / 2;
-	box->y = target.y + (target.height - visible_height) / 2;
+	if (target.width <= 0 || target.height <= 0) {
+		return;
+	}
+	int visible_width = box->width < 64 ? box->width : 64;
+	if (visible_width > target.width) {
+		visible_width = target.width;
+	}
+	int titlebar = seyrix_decoration_titlebar_height(window);
+	int visible_height = titlebar > 0 ? titlebar : 24;
+	if (visible_height > box->height) {
+		visible_height = box->height;
+	}
+	if (visible_height > target.height) {
+		visible_height = target.height;
+	}
+	int64_t minimum_x = (int64_t)target.x - box->width + visible_width;
+	int64_t maximum_x = (int64_t)target.x + target.width - visible_width;
+	int64_t minimum_y = target.y;
+	int64_t maximum_y = (int64_t)target.y + target.height - visible_height;
+	box->x = clamp_position(box->x, minimum_x, maximum_x);
+	box->y = clamp_position(box->y, minimum_y, maximum_y);
 }
 
 static void apply_requested_state(struct seyrix_window *window) {
@@ -176,6 +211,8 @@ static void apply_requested_state(struct seyrix_window *window) {
 		}
 		wlr_scene_node_set_position(&window->scene_tree->node, box.x, box.y);
 		wlr_xdg_toplevel_set_size(toplevel, box.width, client_height);
+	} else if (seyrix_wm_window_is_tiled(window)) {
+		state->output = window_output(window);
 	} else if (state->normal_box_valid) {
 		constrain_normal_box(window);
 		wlr_scene_node_set_position(&window->scene_tree->node,
@@ -185,6 +222,9 @@ static void apply_requested_state(struct seyrix_window *window) {
 		state->output = wlr_output_layout_output_at(window->server->output_layout,
 			state->normal_box.x + state->normal_box.width / 2.0,
 			state->normal_box.y + state->normal_box.height / 2.0);
+		if (!output_is_live(window->server, state->output)) {
+			state->output = first_output(window->server);
+		}
 	} else {
 		state->output = window_output(window);
 		wlr_xdg_toplevel_set_size(toplevel, 0, 0);
@@ -193,6 +233,7 @@ static void apply_requested_state(struct seyrix_window *window) {
 	seyrix_decoration_set_fullscreen(window, fullscreen);
 	wlr_xdg_toplevel_set_maximized(toplevel, maximized);
 	wlr_xdg_toplevel_set_fullscreen(toplevel, fullscreen);
+	seyrix_wm_set_layout_suspended(window, special || state->minimized);
 	if (xdg_surface->initialized) {
 		wlr_log(WLR_INFO,
 			"Window state requested: app_id=%s maximized=%d fullscreen=%d minimized=%d",
@@ -255,6 +296,7 @@ void seyrix_window_state_minimize(struct seyrix_window *window) {
 	seyrix_popup_dismiss_window(window);
 	window->window_state->minimized = true;
 	window->minimized = true;
+	seyrix_wm_set_layout_suspended(window, true);
 	wlr_scene_node_set_enabled(&window->scene_tree->node, false);
 	if (server->seat != NULL) {
 		wlr_seat_pointer_notify_clear_focus(server->seat);
@@ -279,6 +321,8 @@ static void handle_request_minimize(struct wl_listener *listener, void *data) {
 		state->minimized = false;
 		state->window->minimized = false;
 		wlr_scene_node_set_enabled(&state->window->scene_tree->node, true);
+		seyrix_wm_set_layout_suspended(state->window,
+			state->desired_maximized || state->desired_fullscreen);
 		if (seyrix_workspace_window_is_visible(state->window)) {
 			seyrix_focus_window(state->window->server, state->window);
 		}
@@ -340,7 +384,9 @@ void seyrix_window_state_commit(struct seyrix_window *window) {
 			window->xdg_toplevel->current.fullscreen) {
 		return;
 	}
-	save_normal_box(window);
+	if (!seyrix_wm_window_is_tiled(window)) {
+		save_normal_box(window);
+	}
 	if (window->mapped && !window->minimized &&
 			seyrix_workspace_window_is_visible(window)) {
 		wlr_scene_node_set_enabled(&window->scene_tree->node, true);
@@ -350,6 +396,7 @@ void seyrix_window_state_commit(struct seyrix_window *window) {
 
 void seyrix_window_state_capture_normal(struct seyrix_window *window) {
 	if (window == NULL || window->window_state == NULL ||
+			seyrix_wm_window_is_tiled(window) ||
 			window->xdg_toplevel->current.maximized ||
 			window->xdg_toplevel->current.fullscreen) {
 		return;
@@ -371,6 +418,9 @@ bool seyrix_window_state_restore_minimized(struct seyrix_server *server) {
 		}
 		window->minimized = false;
 		window->window_state->minimized = false;
+		seyrix_wm_set_layout_suspended(window,
+			window->window_state->desired_maximized ||
+			window->window_state->desired_fullscreen);
 		wlr_scene_node_set_enabled(&window->scene_tree->node, true);
 		seyrix_focus_window(server, window);
 		wlr_log(WLR_INFO, "Restored minimized window");
@@ -414,6 +464,10 @@ void seyrix_window_state_outputs_changed(struct seyrix_server *server) {
 					!window->xdg_toplevel->current.maximized &&
 					!window->xdg_toplevel->current.fullscreen) {
 				constrain_normal_box(window);
+				if (!seyrix_wm_window_is_tiled(window)) {
+					window->floating_box = window->window_state->normal_box;
+					window->floating_box_valid = true;
+				}
 			}
 			apply_requested_state(window);
 		}

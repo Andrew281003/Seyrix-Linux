@@ -23,6 +23,9 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "layout-engine.h"
+#include "wm-config.h"
+
 enum seyrix_cursor_mode {
 	SEYRIX_CURSOR_PASSTHROUGH,
 	SEYRIX_CURSOR_MOVE,
@@ -33,13 +36,21 @@ struct seyrix_window;
 struct seyrix_window_state;
 struct seyrix_decoration;
 struct seyrix_shell;
+struct seyrix_server;
 
-#define SEYRIX_WORKSPACE_COUNT 4U
+#define SEYRIX_WORKSPACE_COUNT SEYRIX_WM_WORKSPACE_COUNT
 
 struct seyrix_workspace {
+	struct seyrix_server *server;
 	struct wl_list windows;
 	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *tiled_layer;
+	struct wlr_scene_tree *floating_layer;
+	struct seyrix_layout_node *layout_root;
+	struct seyrix_layout_preferences preferences;
+	struct wlr_output *output;
 	struct seyrix_window *focused_window;
+	bool layout_constraint_blocked;
 };
 
 struct seyrix_server {
@@ -72,6 +83,7 @@ struct seyrix_server {
 	struct wl_list layer_surfaces;
 	struct wl_list popups;
 	struct seyrix_workspace workspaces[SEYRIX_WORKSPACE_COUNT];
+	struct seyrix_wm_config wm_config;
 
 	struct wl_listener new_output;
 	struct wl_listener output_layout_change;
@@ -99,6 +111,7 @@ struct seyrix_server {
 	struct seyrix_window *focused_window;
 	struct seyrix_window *grabbed_window;
 	size_t active_workspace_index;
+	size_t wm_output_count;
 	double grab_x;
 	double grab_y;
 	struct wlr_box grab_box;
@@ -124,6 +137,7 @@ struct seyrix_output {
 	struct wl_listener destroy;
 	int width;
 	int height;
+	float scale;
 	struct wlr_box usable_area;
 };
 
@@ -137,6 +151,7 @@ struct seyrix_window {
 	struct wlr_scene_tree *surface_tree;
 	struct seyrix_window_state *window_state;
 	struct seyrix_decoration *decoration;
+	struct wlr_box floating_box;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
@@ -145,8 +160,19 @@ struct seyrix_window {
 	struct wl_listener request_resize;
 	int last_width;
 	int last_height;
+	int last_min_width;
+	int last_min_height;
+	int last_max_width;
+	int last_max_height;
+	enum seyrix_window_classification classification;
 	bool mapped;
 	bool minimized;
+	bool classification_override;
+	bool classification_from_rule;
+	bool classification_initialized;
+	bool floating_box_valid;
+	bool layout_suspended;
+	bool layout_active;
 };
 
 struct seyrix_keyboard {
@@ -195,6 +221,34 @@ void seyrix_workspace_switch_relative(struct seyrix_server *server,
 	int direction);
 void seyrix_workspace_move_focused(struct seyrix_server *server,
 	int direction);
+
+bool seyrix_wm_init(struct seyrix_server *server);
+void seyrix_wm_finish(struct seyrix_server *server);
+void seyrix_wm_initialize_window(struct seyrix_window *window);
+struct wlr_scene_tree *seyrix_wm_scene_parent(struct seyrix_window *window);
+bool seyrix_wm_window_is_tiled(const struct seyrix_window *window);
+void seyrix_wm_window_mapped(struct seyrix_window *window);
+void seyrix_wm_window_unmapped(struct seyrix_window *window);
+void seyrix_wm_window_destroyed(struct seyrix_window *window);
+void seyrix_wm_window_committed(struct seyrix_window *window);
+void seyrix_wm_capture_floating(struct seyrix_window *window);
+void seyrix_wm_relayout_workspace(struct seyrix_workspace *workspace);
+void seyrix_wm_outputs_changed(struct seyrix_server *server);
+void seyrix_wm_set_layout_suspended(struct seyrix_window *window, bool suspended);
+void seyrix_wm_detach_window(struct seyrix_window *window);
+void seyrix_wm_attach_window(struct seyrix_window *window,
+	struct seyrix_workspace *workspace);
+void seyrix_wm_set_mode(struct seyrix_server *server,
+	enum seyrix_layout_mode mode);
+void seyrix_wm_toggle_floating(struct seyrix_server *server);
+void seyrix_wm_focus_tiled_neighbor(struct seyrix_server *server,
+	int direction);
+void seyrix_wm_move_tiled_neighbor(struct seyrix_server *server,
+	int direction);
+void seyrix_wm_adjust_split_ratio(struct seyrix_server *server,
+	enum seyrix_layout_axis axis, int delta);
+void seyrix_wm_toggle_split_axis(struct seyrix_server *server);
+bool seyrix_wm_reload_config(struct seyrix_server *server);
 
 bool seyrix_window_init(struct seyrix_server *server);
 void seyrix_window_finish(struct seyrix_server *server);

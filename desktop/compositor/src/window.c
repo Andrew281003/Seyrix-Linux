@@ -121,6 +121,7 @@ void seyrix_reset_cursor_mode(struct seyrix_server *server) {
 			"Resize gesture ended pid=%ld surface=%u at %dx%d",
 			(long)pid, surface_id, geometry.width, geometry.height);
 		seyrix_window_state_capture_normal(server->grabbed_window);
+		seyrix_wm_capture_floating(server->grabbed_window);
 		log_geometry_evidence("grab-end", server->grabbed_window);
 	} else if (server->cursor_mode == SEYRIX_CURSOR_MOVE &&
 			server->grabbed_window != NULL) {
@@ -132,6 +133,7 @@ void seyrix_reset_cursor_mode(struct seyrix_server *server) {
 			server->grabbed_window->scene_tree->node.x,
 			server->grabbed_window->scene_tree->node.y);
 		seyrix_window_state_capture_normal(server->grabbed_window);
+		seyrix_wm_capture_floating(server->grabbed_window);
 		log_geometry_evidence("grab-end", server->grabbed_window);
 	}
 	server->cursor_mode = SEYRIX_CURSOR_PASSTHROUGH;
@@ -141,6 +143,11 @@ void seyrix_reset_cursor_mode(struct seyrix_server *server) {
 void seyrix_begin_interactive(struct seyrix_window *window,
 		enum seyrix_cursor_mode mode, uint32_t edges) {
 	if (window == NULL || !window->mapped) {
+		return;
+	}
+	if (seyrix_wm_window_is_tiled(window)) {
+		wlr_log(WLR_INFO,
+			"Ignored free pointer grab for tiled window; use Alt+drag to float it");
 		return;
 	}
 	struct seyrix_server *server = window->server;
@@ -213,6 +220,8 @@ static void handle_window_map(struct wl_listener *listener, void *data) {
 		wlr_scene_node_set_position(&window->scene_tree->node, x, y);
 	}
 	seyrix_window_state_capture_normal(window);
+	seyrix_wm_capture_floating(window);
+	seyrix_wm_window_mapped(window);
 	wlr_log(WLR_INFO, "Window initial position: app_id=%s x=%d y=%d",
 		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
 		window->scene_tree->node.x, window->scene_tree->node.y);
@@ -270,6 +279,7 @@ static void handle_window_commit(struct wl_listener *listener, void *data) {
 		}
 	}
 	seyrix_window_state_commit(window);
+	seyrix_wm_window_committed(window);
 }
 
 static void handle_window_move(struct wl_listener *listener, void *data) {
@@ -297,6 +307,7 @@ static void handle_window_destroy(struct wl_listener *listener, void *data) {
 	struct seyrix_window *window = wl_container_of(listener, window, destroy);
 	seyrix_popup_dismiss_window(window);
 	unmap_window(window);
+	seyrix_wm_window_destroyed(window);
 
 	remove_listener(&window->map);
 	remove_listener(&window->unmap);
@@ -336,7 +347,11 @@ static void handle_new_toplevel(struct wl_listener *listener, void *data) {
 		free(window);
 		return;
 	}
-	window->scene_tree = wlr_scene_tree_create(workspace_tree);
+	struct wlr_scene_tree *scene_parent = seyrix_wm_scene_parent(window);
+	if (scene_parent == NULL) {
+		scene_parent = workspace_tree;
+	}
+	window->scene_tree = wlr_scene_tree_create(scene_parent);
 	if (window->scene_tree == NULL) {
 		wlr_log(WLR_ERROR, "Cannot add xdg-shell window to scene");
 		wlr_xdg_toplevel_send_close(xdg_toplevel);

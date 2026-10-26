@@ -62,6 +62,7 @@ struct probe {
 	int pointer_x;
 	int pointer_y;
 	bool cycle;
+	bool allow_managed_restore;
 	bool rapid_state;
 	bool destroy_after_initial;
 	bool decoration_check;
@@ -405,8 +406,16 @@ static void drive_after_configure(struct probe *probe) {
 		break;
 	case 2:
 		if (observed_state && !observed_maximized) {
-			if (probe->toplevel.width != probe->initial_width ||
-					probe->toplevel.height != probe->initial_height) {
+			if (probe->allow_managed_restore &&
+					(probe->toplevel.width <= 0 || probe->toplevel.height <= 0)) {
+				log_event(probe, "RESTORE_GEOMETRY=failed managed=%dx%d",
+					probe->toplevel.width, probe->toplevel.height);
+				probe->failed = true;
+				probe->done = true;
+				return;
+			} else if (!probe->allow_managed_restore &&
+					(probe->toplevel.width != probe->initial_width ||
+					probe->toplevel.height != probe->initial_height)) {
 					log_event(probe, "RESTORE_GEOMETRY=failed initial=%dx%d restored=%dx%d",
 						probe->initial_width, probe->initial_height,
 						probe->toplevel.width, probe->toplevel.height);
@@ -414,7 +423,9 @@ static void drive_after_configure(struct probe *probe) {
 					probe->done = true;
 					return;
 			}
-			log_event(probe, "RESTORE_GEOMETRY=passed width=%d height=%d",
+			log_event(probe, probe->allow_managed_restore ?
+				"RESTORE_GEOMETRY=passed managed width=%d height=%d" :
+				"RESTORE_GEOMETRY=passed width=%d height=%d",
 					probe->toplevel.width, probe->toplevel.height);
 			probe->cycle_step = 3;
 			log_event(probe, "REQUEST_FULLSCREEN=1");
@@ -432,8 +443,16 @@ static void drive_after_configure(struct probe *probe) {
 		break;
 	case 4:
 		if (observed_state && !observed_fullscreen) {
-			if (probe->toplevel.width != probe->initial_width ||
-					probe->toplevel.height != probe->initial_height) {
+			if (probe->allow_managed_restore &&
+					(probe->toplevel.width <= 0 || probe->toplevel.height <= 0)) {
+				log_event(probe, "RESTORE_AFTER_FULLSCREEN=failed managed=%dx%d",
+					probe->toplevel.width, probe->toplevel.height);
+				probe->failed = true;
+				probe->done = true;
+				return;
+			} else if (!probe->allow_managed_restore &&
+					(probe->toplevel.width != probe->initial_width ||
+					probe->toplevel.height != probe->initial_height)) {
 				log_event(probe, "RESTORE_AFTER_FULLSCREEN=failed initial=%dx%d restored=%dx%d",
 					probe->initial_width, probe->initial_height,
 					probe->toplevel.width, probe->toplevel.height);
@@ -441,7 +460,9 @@ static void drive_after_configure(struct probe *probe) {
 				probe->done = true;
 				return;
 			}
-			log_event(probe, "RESTORE_AFTER_FULLSCREEN=passed width=%d height=%d",
+			log_event(probe, probe->allow_managed_restore ?
+				"RESTORE_AFTER_FULLSCREEN=passed managed width=%d height=%d" :
+				"RESTORE_AFTER_FULLSCREEN=passed width=%d height=%d",
 				probe->toplevel.width, probe->toplevel.height);
 			if (!probe->decoration_server_side) {
 				log_event(probe, "DECORATION_ASSERTION=failed expected=server_side");
@@ -1022,7 +1043,7 @@ static void destroy_roles(struct probe_surface *target) {
 
 static void usage(const char *program) {
 	fprintf(stderr,
-		"Usage: %s [--state-cycle | --rapid-state | --client-decoration | --destroy-during-transition | --resize EDGE | --watch-pointer] [--initial-size WxH] [--min-size WxH] [--max-size WxH] [--title TEXT] [--app-id ID] [--log PATH]\n",
+		"Usage: %s [--state-cycle [--allow-managed-restore] | --rapid-state | --client-decoration | --destroy-during-transition | --resize EDGE | --watch-pointer] [--initial-size WxH] [--min-size WxH] [--max-size WxH] [--title TEXT] [--app-id ID] [--log PATH]\n",
 		program);
 }
 
@@ -1050,6 +1071,8 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--state-cycle") == 0) {
 			probe.cycle = true;
+		} else if (strcmp(argv[i], "--allow-managed-restore") == 0) {
+			probe.allow_managed_restore = true;
 		} else if (strcmp(argv[i], "--rapid-state") == 0) {
 			probe.rapid_state = true;
 		} else if (strcmp(argv[i], "--client-decoration") == 0) {
@@ -1098,7 +1121,8 @@ int main(int argc, char **argv) {
 	int mode_count = (int)probe.cycle + (int)probe.rapid_state +
 		(int)probe.destroy_after_initial + (int)probe.decoration_check +
 		(int)probe.resize_check + (int)probe.watch_pointer;
-	if (mode_count > 1 || !prepare_initial_size(&probe)) {
+	if (mode_count > 1 || (probe.allow_managed_restore && !probe.cycle) ||
+			!prepare_initial_size(&probe)) {
 		usage(argv[0]);
 		return 2;
 	}

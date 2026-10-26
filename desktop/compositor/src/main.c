@@ -192,6 +192,9 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		wlr_log(WLR_ERROR, "Cannot attach scene to output layout");
 		return false;
 	}
+	if (!seyrix_wm_init(server)) {
+		return false;
+	}
 	if (!seyrix_workspaces_init(server)) {
 		return false;
 	}
@@ -255,7 +258,7 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		renderer_request != NULL ? renderer_request : "wlroots automatic selection");
 	wlr_log(WLR_INFO, "Running Seyrix compositor on WAYLAND_DISPLAY=%s", socket);
 	wlr_log(WLR_INFO,
-		"Shortcuts: Super+Return opens terminal; Super+Q closes focused window; Super+Shift+Q exits; Super+Left/Right switches workspace; Super+Shift+Left/Right moves a window; Super+1..4 selects a workspace");
+		"Shortcuts: Super+Return terminal; Super+Q close; Super+Shift+Q exit; Super+Left/Right workspace; Super+Shift+Left/Right migrate window; Super+1..4 workspace; Super+Shift+F/T/H set Floating/Tiling/Hybrid; Super+F toggle focused classification; Super+J/K focus tiled neighbor; Super+Shift+J/K reorder tiled window; Super+Ctrl+arrows adjust split ratio; Super+O changes split orientation; Super+Ctrl+R reload config");
 	if (!seyrix_spawn_terminal(server)) {
 		wlr_log(WLR_ERROR, "Startup terminal failed; use Super+Return to retry");
 	}
@@ -280,6 +283,7 @@ void seyrix_server_finish(struct seyrix_server *server) {
 	seyrix_input_finish(server);
 	seyrix_shell_finish(server);
 	seyrix_workspaces_finish(server);
+	seyrix_wm_finish(server);
 
 	if (server->sigint_source != NULL) {
 		wl_event_source_remove(server->sigint_source);

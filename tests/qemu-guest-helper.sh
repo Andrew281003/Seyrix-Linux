@@ -20,6 +20,7 @@ fail() {
 runtime_dir=/run/user/1000
 compositor_log=/tmp/seyrix-compositor.log
 geometry_log=/tmp/seyrix-compositor.log
+evdev_log=/tmp/seyrix-evtest-mouse.log
 wayland_display="$(sed -n 's/.*WAYLAND_DISPLAY=\([^ ]*\).*/\1/p' "$compositor_log" | head -n 1)"
 [[ -n "$wayland_display" ]] || fail "wayland-display-unavailable"
 
@@ -180,7 +181,20 @@ resize_cleanup() {
     printf 'RESIZE_CLIENT_CLEANUP pid=%s surface=%s app_id=%s run=%s\n' \
       "$pid" "${surface:-unmapped}" "$app_id" "$run_id"
     kill -TERM "$pid" 2>/dev/null || true
+    for _ in $(seq 1 12); do
+      probe_identity_matches "$pid" "$app_id" || return 0
+      sleep 0.25
+    done
+    if probe_identity_matches "$pid" "$app_id" &&
+        process_has_arg_pair "$pid" --resize "$edge"; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
   fi
+}
+
+resize_cleanup_command() {
+  resize_cleanup "$1" "$2"
+  echo RESIZE_CLEANUP=passed
 }
 
 qmp_coordinate() {
@@ -199,11 +213,10 @@ resize_start() {
   local log="/tmp/seyrix-resize-$edge-$direction.log"
   local output="/tmp/seyrix-resize-$edge-$direction.stdout"
   local identity="/tmp/seyrix-resize-$edge-$direction.identity"
+  local app_id="seyrix.qemu.$(test_run_id).resize.$edge.$direction"
   rm -f -- "$log" "$output" "$identity"
-  local run_id
-  run_id="$(test_run_id)"
   local -a args=(--resize "$edge" --title "Seyrix QEMU Resize $edge" \
-    --app-id "seyrix.qemu.$run_id.resize.$edge.$direction" --initial-size 440x320 --log "$log")
+    --app-id "$app_id" --initial-size 440x320 --log "$log")
   [[ -z "$min_size" ]] || args+=(--min-size "$min_size")
   [[ -z "$max_size" ]] || args+=(--max-size "$max_size")
   nohup runuser -u seyrix -- env XDG_RUNTIME_DIR="$runtime_dir" \
@@ -333,8 +346,6 @@ resize_check() {
     "$geometry_log" | tail -n 1 || true)"
   grab_end_line="$(grep -F "GEOMETRY_EVIDENCE event=grab-end pid=$pid surface=$surface " \
     "$geometry_log" | tail -n 1 || true)"
-  commit_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$pid surface=$surface " \
-    "$geometry_log" | tail -n 1 || true)"
   [[ "$before" =~ ^([0-9]+)x([0-9]+)$ ]] || before=""
   if [[ -n "$before" ]]; then
     before_width="${BASH_REMATCH[1]}"
@@ -345,6 +356,17 @@ resize_check() {
     after_width="${BASH_REMATCH[1]}"
     after_height="${BASH_REMATCH[2]}"
   fi
+  for _ in $(seq 1 50); do
+    commit_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$pid surface=$surface " \
+      "$geometry_log" | tail -n 1 || true)"
+    actual_width="$(field "$commit_line" width || true)"
+    actual_height="$(field "$commit_line" height || true)"
+    if [[ "$actual_width" == "$after_width" &&
+          "$actual_height" == "$after_height" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
   if [[ ! "$before_width" =~ ^[0-9]+$ || ! "$before_height" =~ ^[0-9]+$ ||
         ! "$after_width" =~ ^[0-9]+$ || ! "$after_height" =~ ^[0-9]+$ ]]; then
     printf 'RESIZE_ASSERTION_FAILED edge=%s reason=malformed-probe-geometry before=%s after=%s\n' \
@@ -352,8 +374,6 @@ resize_check() {
     resize_cleanup "$edge" "$direction"
     return 1
   fi
-  actual_width="$(field "$commit_line" width || true)"
-  actual_height="$(field "$commit_line" height || true)"
   actual_x="$(field "$commit_line" x || true)"
   actual_y="$(field "$commit_line" y || true)"
   local expected_width_change=0 expected_height_change=0
@@ -559,6 +579,221 @@ watch_stop() {
   echo WATCH_POINTER_STOPPED=passed
 }
 
+wm_snapshot() {
+  local label="$1" expected_count="$2" require_disjoint="${3:-0}"
+  local visibility="${4:-contained}"
+  local -a pids=() rows=()
+  local -a geometry_lines=()
+  local log_line output_line output_width output_height path ready
+  local pid surface x y width height
+  if [[ "$visibility" != contained && "$visibility" != visible ]]; then
+    fail "invalid-window-visibility-policy-$visibility"
+  fi
+  for _ in $(seq 1 30); do
+    mapfile -t pids < <(pgrep -u 1000 -x weston-terminal | sort -n || true)
+    geometry_lines=()
+    if [[ "${#pids[@]}" -eq "$expected_count" ]]; then
+      for pid in "${pids[@]}"; do
+        log_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$pid " \
+          "$geometry_log" | tail -n 1 || true)"
+        geometry_lines+=("$log_line")
+      done
+      if (( ${#geometry_lines[@]} == expected_count )); then
+        ready=1
+        for log_line in "${geometry_lines[@]}"; do
+          [[ -n "$log_line" ]] || ready=0
+        done
+        if (( ready )); then break; fi
+      fi
+    fi
+    sleep 0.5
+  done
+  if [[ "${#pids[@]}" -ne "$expected_count" ]]; then
+    printf 'WM_GEOMETRY_FAILED expected_processes=%s actual_processes=%s\n' \
+      "$expected_count" "${#pids[@]}"
+    return 1
+  fi
+  output_line="$(grep -E 'Output .* active at [0-9]+x[0-9]+' "$geometry_log" | tail -n 1)"
+  output_width="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\1/p' <<< "$output_line")"
+  output_height="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\2/p' <<< "$output_line")"
+  if [[ ! "$output_width" =~ ^[0-9]+$ || ! "$output_height" =~ ^[0-9]+$ ]]; then
+    printf 'WM_GEOMETRY_FAILED reason=output-size-unavailable line=%s\n' \
+      "${output_line:-missing}"
+    return 1
+  fi
+  path="/tmp/seyrix-wm-$label.geometry"
+  : > "$path"
+  for index in "${!pids[@]}"; do
+    pid="${pids[$index]}"
+    log_line="${geometry_lines[$index]}"
+    surface="$(field "$log_line" surface || true)"
+    x="$(field "$log_line" x || true)"
+    y="$(field "$log_line" y || true)"
+    width="$(field "$log_line" width || true)"
+    height="$(field "$log_line" height || true)"
+    if [[ ! "$surface" =~ ^[0-9]+$ || ! "$x" =~ ^-?[0-9]+$ ||
+          ! "$y" =~ ^-?[0-9]+$ || ! "$width" =~ ^[1-9][0-9]*$ ||
+          ! "$height" =~ ^[1-9][0-9]*$ ]]; then
+      printf 'WM_GEOMETRY_FAILED pid=%s surface=%s rect=%s,%s %sx%s output=%sx%s\n' \
+        "$pid" "${surface:-missing}" "${x:-missing}" "${y:-missing}" \
+        "${width:-missing}" "${height:-missing}" "$output_width" "$output_height"
+      return 1
+    fi
+    if [[ "$visibility" == contained ]]; then
+      if (( x < 0 || y < 0 || x + width > output_width ||
+          y + height > output_height )); then
+        printf 'WM_GEOMETRY_FAILED pid=%s surface=%s rect=%s,%s %sx%s output=%sx%s policy=contained\n' \
+          "$pid" "$surface" "$x" "$y" "$width" "$height" \
+          "$output_width" "$output_height"
+        return 1
+      fi
+    else
+      local visible_width visible_height
+      visible_width=$(( (x + width < output_width ? x + width : output_width) -
+        (x > 0 ? x : 0) ))
+      visible_height=$(( (y + height < output_height ? y + height : output_height) -
+        (y > 0 ? y : 0) ))
+      if (( visible_width < (width < 64 ? width : 64) ||
+          visible_height < (height < 64 ? height : 64) )); then
+        printf 'WM_GEOMETRY_FAILED pid=%s surface=%s rect=%s,%s %sx%s output=%sx%s visible=%sx%s\n' \
+          "$pid" "$surface" "$x" "$y" "$width" "$height" \
+          "$output_width" "$output_height" "$visible_width" "$visible_height"
+        return 1
+      fi
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$pid" "$surface" "$x" "$y" "$width" "$height" >> "$path"
+    printf 'WM_GEOMETRY_SAMPLE label=%s pid=%s surface=%s rect=%s,%s %sx%s\n' \
+      "$label" "$pid" "$surface" "$x" "$y" "$width" "$height"
+  done
+  if [[ "$require_disjoint" == 1 ]]; then
+    mapfile -t rows < "$path"
+    local i j pid_a surface_a x_a y_a w_a h_a pid_b surface_b x_b y_b w_b h_b
+    for ((i = 0; i < ${#rows[@]}; i++)); do
+      IFS=$'\t' read -r pid_a surface_a x_a y_a w_a h_a <<< "${rows[$i]}"
+      for ((j = i + 1; j < ${#rows[@]}; j++)); do
+        IFS=$'\t' read -r pid_b surface_b x_b y_b w_b h_b <<< "${rows[$j]}"
+        if ! (( x_a + w_a <= x_b || x_b + w_b <= x_a ||
+                y_a + h_a <= y_b || y_b + h_b <= y_a )); then
+          printf 'WM_GEOMETRY_FAILED reason=overlap pid_a=%s pid_b=%s\n' \
+            "$pid_a" "$pid_b"
+          return 1
+        fi
+      done
+    done
+    printf 'WM_TILED_NONOVERLAP=passed count=%s\n' "${#rows[@]}"
+  fi
+  printf 'WM_GEOMETRY_SNAPSHOT=passed label=%s count=%s\n' "$label" "$expected_count"
+}
+
+move_baseline() {
+  local map_line commit_line output_line pid surface x y width height
+  local output_width output_height start_x start_y end_x end_y
+  local qmp_start_x qmp_start_y qmp_end_x qmp_end_y
+  local end_before button_before alt_before gesture_before classification_before
+  local evdev_button_before evdev_x_before evdev_y_before
+  map_line="$(grep -E 'GEOMETRY_EVIDENCE event=map pid=[0-9]+ surface=[0-9]+' \
+    "$geometry_log" | tail -n 1 || true)"
+  pid="$(field "$map_line" pid || true)"
+  surface="$(field "$map_line" surface || true)"
+  if [[ ! "$pid" =~ ^[0-9]+$ || ! "$surface" =~ ^[0-9]+$ ]]; then
+    printf 'WINDOW_MOVE_BASELINE=failed reason=latest-mapped-window-unavailable\n'
+    return 1
+  fi
+  commit_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$pid surface=$surface " \
+    "$geometry_log" | tail -n 1 || true)"
+  x="$(field "$commit_line" x || true)"
+  y="$(field "$commit_line" y || true)"
+  width="$(field "$commit_line" width || true)"
+  height="$(field "$commit_line" height || true)"
+  output_line="$(grep -E 'Output .* active at [0-9]+x[0-9]+' \
+    "$geometry_log" | tail -n 1 || true)"
+  output_width="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\1/p' \
+    <<< "$output_line")"
+  output_height="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\2/p' \
+    <<< "$output_line")"
+  if [[ ! "$x" =~ ^-?[0-9]+$ || ! "$y" =~ ^-?[0-9]+$ ||
+        ! "$width" =~ ^[1-9][0-9]*$ || ! "$height" =~ ^[1-9][0-9]*$ ||
+        ! "$output_width" =~ ^[1-9][0-9]*$ ||
+        ! "$output_height" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'WINDOW_MOVE_BASELINE=failed reason=committed-geometry-unavailable pid=%s surface=%s\n' \
+      "$pid" "$surface"
+    return 1
+  fi
+  start_x=$((x + width / 2))
+  start_y=$((y + height / 2))
+  end_x=$((start_x + 40))
+  end_y=$((start_y + 35))
+  if (( end_x >= output_width )); then end_x=$((start_x - 40)); fi
+  if (( end_y >= output_height )); then end_y=$((start_y - 35)); fi
+  if (( start_x < 0 || start_x >= output_width || start_y < 0 ||
+        start_y >= output_height || end_x < 0 || end_y < 0 )); then
+    printf 'WINDOW_MOVE_BASELINE=failed reason=window-center-outside-output pid=%s rect=%s,%s %sx%s output=%sx%s\n' \
+      "$pid" "$x" "$y" "$width" "$height" "$output_width" "$output_height"
+    return 1
+  fi
+  qmp_start_x=$((start_x * 32767 / output_width))
+  qmp_start_y=$((start_y * 32767 / output_height))
+  qmp_end_x=$((end_x * 32767 / output_width))
+  qmp_end_y=$((end_y * 32767 / output_height))
+  end_before="$(grep -Fc "GEOMETRY_EVIDENCE event=grab-end pid=$pid surface=$surface " \
+    "$geometry_log" || true)"
+  button_before="$(grep -Fc 'Pointer button press button=272' \
+    "$geometry_log" || true)"
+  alt_before="$(grep -Fc 'Alt pointer gesture button=272' \
+    "$geometry_log" || true)"
+  gesture_before="$(grep -Fc 'Window move gesture started' \
+    "$geometry_log" || true)"
+  classification_before="$(grep -Fc 'Focused window classification changed to floating' \
+    "$geometry_log" || true)"
+  evdev_button_before="$(grep -Ec 'Event: time .*code 272 \(BTN_LEFT\)' \
+    "$evdev_log" || true)"
+  evdev_x_before="$(grep -Ec 'Event: time .*code 0 \(ABS_X\)' \
+    "$evdev_log" || true)"
+  evdev_y_before="$(grep -Ec 'Event: time .*code 1 \(ABS_Y\)' \
+    "$evdev_log" || true)"
+  printf '%s %s %s %s %s %s %s %s %s %s %s\n' \
+    "$pid" "$surface" "$x" "$y" "$end_before" "$button_before" \
+    "$alt_before" "$gesture_before" "$classification_before" "$evdev_button_before" \
+    "$evdev_x_before $evdev_y_before" > /tmp/seyrix-window-move-before
+  printf 'WINDOW_MOVE_TARGET_PID=%s\nWINDOW_MOVE_TARGET_SURFACE=%s\n' \
+    "$pid" "$surface"
+  printf 'WINDOW_MOVE_INITIAL_SCENE=%s,%s SIZE=%sx%s OUTPUT=%sx%s\n' \
+    "$x" "$y" "$width" "$height" "$output_width" "$output_height"
+  printf 'WINDOW_MOVE_BASELINE=ready qmp_start=%s,%s qmp_end=%s,%s\n' \
+    "$qmp_start_x" "$qmp_start_y" "$qmp_end_x" "$qmp_end_y"
+}
+
+wm_same_identity() {
+  local first="/tmp/seyrix-wm-$1.geometry" second="/tmp/seyrix-wm-$2.geometry"
+  if cmp -s <(cut -f1,2 "$first") <(cut -f1,2 "$second"); then
+    printf 'WM_SURFACE_IDENTITY=preserved before=%s after=%s\n' "$1" "$2"
+  else
+    printf 'WM_SURFACE_IDENTITY=failed before=%s after=%s\n' "$1" "$2"
+    return 1
+  fi
+}
+
+wm_same_geometry() {
+  local first="/tmp/seyrix-wm-$1.geometry" second="/tmp/seyrix-wm-$2.geometry"
+  if cmp -s <(cut -f3-6 "$first") <(cut -f3-6 "$second"); then
+    printf 'WM_GEOMETRY_RESTORED=passed before=%s after=%s\n' "$1" "$2"
+  else
+    printf 'WM_GEOMETRY_RESTORED=failed before=%s after=%s\n' "$1" "$2"
+    return 1
+  fi
+}
+
+wm_geometry_changed() {
+  local first="/tmp/seyrix-wm-$1.geometry" second="/tmp/seyrix-wm-$2.geometry"
+  if ! cmp -s <(cut -f5-6 "$first") <(cut -f5-6 "$second"); then
+    printf 'WM_GEOMETRY_CHANGED=passed before=%s after=%s\n' "$1" "$2"
+  else
+    printf 'WM_GEOMETRY_CHANGED=failed before=%s after=%s\n' "$1" "$2"
+    return 1
+  fi
+}
+
 popup_process_alive() {
   local run_id app_id pid
   run_id="$(test_run_id)"
@@ -575,11 +810,17 @@ popup_process_alive() {
 case "${1:-}" in
   resize-start) shift; resize_start "$@" ;;
   resize-check) shift; resize_check "$@" ;;
+  resize-cleanup) shift; resize_cleanup_command "$@" ;;
   watch-start) watch_start ;;
   watch-baseline) watch_baseline ;;
   watch-hidden-baseline) watch_baseline WATCH_POINTER_HIDDEN_BASELINE ;;
   watch-check-hidden) watch_check_hidden ;;
   watch-stop) watch_stop ;;
+  move-baseline) move_baseline ;;
+  wm-snapshot) shift; wm_snapshot "$@" ;;
+  wm-same-identity) shift; wm_same_identity "$@" ;;
+  wm-same-geometry) shift; wm_same_geometry "$@" ;;
+  wm-geometry-changed) shift; wm_geometry_changed "$@" ;;
   popup-alive) popup_process_alive ;;
   terminate-client) shift; kill_probe_client "$@" ;;
   crash-panel) kill_panel_child ;;

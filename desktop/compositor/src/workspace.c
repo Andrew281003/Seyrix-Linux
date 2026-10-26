@@ -47,11 +47,20 @@ bool seyrix_workspaces_init(struct seyrix_server *server) {
 	server->active_workspace_index = 0;
 	for (size_t i = 0; i < SEYRIX_WORKSPACE_COUNT; i++) {
 		struct seyrix_workspace *workspace = &server->workspaces[i];
+		workspace->server = server;
 		wl_list_init(&workspace->windows);
 		workspace->focused_window = NULL;
+		workspace->preferences = server->wm_config.workspaces[i];
 		workspace->scene_tree = wlr_scene_tree_create(server->window_layer);
 		if (workspace->scene_tree == NULL) {
 			wlr_log(WLR_ERROR, "Cannot create scene tree for workspace %zu", i + 1);
+			seyrix_workspaces_finish(server);
+			return false;
+		}
+		workspace->tiled_layer = wlr_scene_tree_create(workspace->scene_tree);
+		workspace->floating_layer = wlr_scene_tree_create(workspace->scene_tree);
+		if (workspace->tiled_layer == NULL || workspace->floating_layer == NULL) {
+			wlr_log(WLR_ERROR, "Cannot create window layers for workspace %zu", i + 1);
 			seyrix_workspaces_finish(server);
 			return false;
 		}
@@ -77,6 +86,11 @@ void seyrix_workspaces_finish(struct seyrix_server *server) {
 			wlr_scene_node_destroy(&workspace->scene_tree->node);
 		}
 		workspace->scene_tree = NULL;
+		workspace->tiled_layer = NULL;
+		workspace->floating_layer = NULL;
+		seyrix_layout_destroy(&workspace->layout_root, NULL);
+		workspace->output = NULL;
+		workspace->server = NULL;
 		workspace->focused_window = NULL;
 		if (workspace->windows.next != NULL && workspace->windows.prev != NULL) {
 			wl_list_init(&workspace->windows);
@@ -146,6 +160,7 @@ void seyrix_workspace_window_unmapped(struct seyrix_window *window) {
 	if (window->workspace->focused_window == window) {
 		window->workspace->focused_window = NULL;
 	}
+	seyrix_wm_window_unmapped(window);
 }
 
 void seyrix_workspace_record_focus(struct seyrix_server *server,
@@ -292,13 +307,15 @@ void seyrix_workspace_move_focused(struct seyrix_server *server,
 	if (server->grabbed_window == window) {
 		seyrix_reset_cursor_mode(server);
 	}
+	seyrix_wm_detach_window(window);
 	if (source->focused_window == window) {
 		source->focused_window = NULL;
 	}
 	wl_list_remove(&window->workspace_link);
 	wl_list_insert(&destination->windows, &window->workspace_link);
 	window->workspace = destination;
-	wlr_scene_node_reparent(&window->scene_tree->node, destination->scene_tree);
+	seyrix_wm_relayout_workspace(source);
+	seyrix_wm_attach_window(window, destination);
 	if (server->seat != NULL) {
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}

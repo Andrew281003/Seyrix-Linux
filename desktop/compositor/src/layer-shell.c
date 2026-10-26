@@ -169,6 +169,7 @@ static void handle_layer_commit(struct wl_listener *listener, void *data) {
 				previous_usable_area.width != output->usable_area.width ||
 				previous_usable_area.height != output->usable_area.height)) {
 			seyrix_window_state_outputs_changed(record->server);
+			seyrix_wm_outputs_changed(record->server);
 			break;
 		}
 	}
@@ -179,6 +180,7 @@ static void handle_layer_map(struct wl_listener *listener, void *data) {
 	struct seyrix_layer_surface *record = wl_container_of(listener, record, map);
 	arrange_output(record->server, record->output);
 	seyrix_window_state_outputs_changed(record->server);
+	seyrix_wm_outputs_changed(record->server);
 	wlr_log(WLR_INFO, "Layer shell surface mapped namespace=%s",
 		record->surface->namespace != NULL ? record->surface->namespace : "");
 }
@@ -188,6 +190,7 @@ static void handle_layer_unmap(struct wl_listener *listener, void *data) {
 	struct seyrix_layer_surface *record = wl_container_of(listener, record, unmap);
 	arrange_output(record->server, record->output);
 	seyrix_window_state_outputs_changed(record->server);
+	seyrix_wm_outputs_changed(record->server);
 }
 
 static void handle_layer_new_popup(struct wl_listener *listener, void *data) {
@@ -214,6 +217,7 @@ static void handle_layer_destroy(struct wl_listener *listener, void *data) {
 	free(record);
 	arrange_output(server, output);
 	seyrix_window_state_outputs_changed(server);
+	seyrix_wm_outputs_changed(server);
 }
 
 static void handle_new_layer_surface(struct wl_listener *listener, void *data) {

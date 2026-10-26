@@ -50,6 +50,9 @@ executable(
     'src/layer-shell.c',
     'src/shell.c',
     'src/workspace.c',
+    'src/layout-engine.c',
+    'src/wm-config.c',
+    'src/window-management.c',
   ) + [layer_shell_protocol, output_management_protocol],
   c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
   dependencies: [wlroots, wayland_server, xkbcommon],
@@ -63,3 +66,14 @@ geometry_test = executable(
   dependencies: [wlroots, wayland_server],
 )
 test('compositor geometry', geometry_test)
+
+window_management_test = executable(
+  'compositor-window-management-test',
+  files(
+    '../../tests/compositor-window-management-test.c',
+    'src/layout-engine.c',
+    'src/wm-config.c',
+  ),
+  c_args: ['-D_POSIX_C_SOURCE=200809L'],
+)
+test('compositor window management', window_management_test)
