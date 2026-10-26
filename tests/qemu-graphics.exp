@@ -35,6 +35,7 @@ set phase2b 0
 set phase2c 0
 set sanitizers_enabled 0
 set renderer_request ""
+set egl_lifecycle_control 0
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		($env(SEYRIX_QEMU_WORKFLOW) eq "phase2b" ||
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c")} {
@@ -50,6 +51,10 @@ if {[info exists env(SEYRIX_QEMU_SANITIZERS)] &&
 }
 if {[info exists env(SEYRIX_QEMU_RENDERER)]} {
 	set renderer_request $env(SEYRIX_QEMU_RENDERER)
+}
+if {[info exists env(SEYRIX_QEMU_EGL_LIFECYCLE_CONTROL)] &&
+		$env(SEYRIX_QEMU_EGL_LIFECYCLE_CONTROL) eq "1"} {
+	set egl_lifecycle_control 1
 }
 
 proc qemu_cmdline {pid} {
@@ -1382,14 +1387,14 @@ if {$phase2b} {
             send -- "$interaction_command\r"
             puts "STRESS_MOVE_RESIZE=INCOMPLETE reason=requires-same-window-scene-geometry"
             expect {
+                -re {STRESS_RESIZE_COUNT=[0-9]+\r} {}
+                timeout {puts stderr "Timed out reading stress interaction counters."; exit 1}
+                eof {puts stderr "QEMU exited reading stress interaction counters."; exit 1}
+            }
+            expect {
                 -re {STRESS_MOVE_RESIZE=INCOMPLETE} {}
                 timeout {puts stderr "Timed out checking stress movement and resize."; exit 1}
                 eof {puts stderr "QEMU exited checking stress movement and resize."; exit 1}
-            }
-            expect {
-                -re {STRESS_RESIZE_COUNT=[0-9]+} {}
-                timeout {puts stderr "Timed out reading stress interaction counters."; exit 1}
-                eof {puts stderr "QEMU exited reading stress interaction counters."; exit 1}
             }
             qmp_key_chord $qmp {meta_l} q
             after 700
@@ -1487,7 +1492,7 @@ if {$phase2b} {
     }
 
     qmp_key_chord $qmp {meta_l shift} q
-    set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'OUTPUT_TEARDOWN_LOG='; if grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo unexpected; else echo clean; fi; printf 'CLEAN_STOP_LOG='; if grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log; then echo present; else echo missing; fi; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
+    set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; if grep -Eq 'AddressSanitizer:|LeakSanitizer:|runtime error:' /tmp/seyrix-compositor.log; then cat /tmp/seyrix-compositor.log; else tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; fi; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'OUTPUT_TEARDOWN_LOG='; if grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo unexpected; else echo clean; fi; printf 'CLEAN_STOP_LOG='; if grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log; then echo present; else echo missing; fi; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
     send -- "$compositor_exit_command\r"
     expect {
         -re {COMPOSITOR_EXIT=passed} {}
@@ -1722,6 +1727,41 @@ expect {
 }
 qmp_hmp $qmp "screendump $run_dir/tty1-after-wayland-exit.ppm"
 puts "SESSION_EXIT=passed"
+}
+
+if {$egl_lifecycle_control} {
+	set timeout 120
+	puts "STAGE_BEGIN name={direct Mesa EGL GBM lifecycle sanitizer control} timeout_s=120"
+	set egl_control_command {ASAN_OPTIONS=detect_leaks=1 /usr/local/bin/seyrix-egl-gbm-lifecycle-control; egl_control_status=$?; echo EGL_CONTROL_EXIT=$egl_control_status}
+	send -- "$egl_control_command\r"
+	set egl_control_renderer_llvmpipe 0
+	set egl_control_exit -1
+	set egl_control_incomplete 0
+	expect {
+		-re {EGL_CONTROL_GL_RENDERER=llvmpipe[^\r\n]*\r} {
+			set egl_control_renderer_llvmpipe 1
+			exp_continue
+		}
+		-re {EGL_CONTROL_EXIT=([0-9]+)\r} {
+			set egl_control_exit $expect_out(1,string)
+		}
+		timeout {
+			puts stderr "STAGE_RESULT name={direct Mesa EGL GBM lifecycle sanitizer control} result=INCOMPLETE reason=timeout"
+			set egl_control_incomplete 1
+		}
+		eof {
+			puts stderr "STAGE_RESULT name={direct Mesa EGL GBM lifecycle sanitizer control} result=INCOMPLETE reason=guest-exit"
+			set egl_control_incomplete 1
+		}
+	}
+	if {$egl_control_incomplete} {
+		incr acceptance_failures
+	} elseif {$egl_control_exit eq "0" && $egl_control_renderer_llvmpipe} {
+		puts "STAGE_RESULT name={direct Mesa EGL GBM lifecycle sanitizer control} result=PASS"
+	} else {
+		puts stderr "STAGE_RESULT name={direct Mesa EGL GBM lifecycle sanitizer control} result=FAIL exit=$egl_control_exit renderer_llvmpipe=$egl_control_renderer_llvmpipe"
+		incr acceptance_failures
+	}
 }
 
 set shutdown_command {printf 'SEYRIX_GRAPHICS_CHECK_END\n'; systemctl poweroff}

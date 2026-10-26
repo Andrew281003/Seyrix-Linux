@@ -1,0 +1,103 @@
+STAGE_BEGIN name={record current QEMU test identity} utc=2026-10-26T14:54:12Z timeout_s=10
+STAGE_RESULT name={record current QEMU test identity} result=PASS duration_ms=74
+STAGE_BEGIN name={mapped-window geometry and pointer evidence baseline} timeout_s=20
+STAGE_BEGIN name={real Alt+left movement with same-window scene geometry change} timeout_s=15
+STAGE_BEGIN name={interactive xdg resize top mapped-target readiness} utc=2026-10-26T14:54:32Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize top mapped-target readiness} result=PASS duration_ms=1414
+STAGE_BEGIN name={compositor resize grab start for top normal} utc=2026-10-26T14:54:33Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize top normal} utc=2026-10-26T14:54:34Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize top normal} result=PASS duration_ms=454
+STAGE_BEGIN name={interactive xdg resize bottom mapped-target readiness} utc=2026-10-26T14:54:34Z timeout_s=55
+STAGE_BEGIN name={compositor resize grab start for bottom normal} utc=2026-10-26T14:54:36Z timeout_s=20
+STAGE_RESULT name={compositor resize grab start for bottom normal} result=PASS duration_ms=102
+STAGE_BEGIN name={committed geometry and constraints for xdg resize bottom normal} utc=2026-10-26T14:54:36Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize bottom normal} result=PASS duration_ms=519
+STAGE_BEGIN name={interactive xdg resize left mapped-target readiness} utc=2026-10-26T14:54:37Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize left mapped-target readiness} result=PASS duration_ms=1403
+STAGE_BEGIN name={compositor resize grab start for left normal} utc=2026-10-26T14:54:38Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize left normal} utc=2026-10-26T14:54:39Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize left normal} result=PASS duration_ms=424
+STAGE_BEGIN name={interactive xdg resize right mapped-target readiness} utc=2026-10-26T14:54:39Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize right mapped-target readiness} result=PASS duration_ms=1325
+STAGE_BEGIN name={compositor resize grab start for right normal} utc=2026-10-26T14:54:40Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize right normal} utc=2026-10-26T14:54:41Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize right normal} result=PASS duration_ms=505
+STAGE_BEGIN name={interactive xdg resize top-left mapped-target readiness} utc=2026-10-26T14:54:41Z timeout_s=55
+STAGE_BEGIN name={compositor resize grab start for top-left normal} utc=2026-10-26T14:54:43Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize top-left normal} utc=2026-10-26T14:54:43Z timeout_s=55
+STAGE_BEGIN name={interactive xdg resize top-right mapped-target readiness} utc=2026-10-26T14:54:44Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize top-right mapped-target readiness} result=PASS duration_ms=1363
+STAGE_BEGIN name={compositor resize grab start for top-right normal} utc=2026-10-26T14:54:45Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize top-right normal} utc=2026-10-26T14:54:46Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize top-right normal} result=PASS duration_ms=543
+STAGE_BEGIN name={interactive xdg resize bottom-left mapped-target readiness} utc=2026-10-26T14:54:46Z timeout_s=55
+STAGE_BEGIN name={compositor resize grab start for bottom-left normal} utc=2026-10-26T14:54:48Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize bottom-left normal} utc=2026-10-26T14:54:48Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize bottom-left normal} result=PASS duration_ms=1425
+STAGE_BEGIN name={interactive xdg resize bottom-right mapped-target readiness} utc=2026-10-26T14:54:50Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize bottom-right mapped-target readiness} result=PASS duration_ms=1333
+STAGE_BEGIN name={compositor resize grab start for bottom-right normal} utc=2026-10-26T14:54:51Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize bottom-right normal} utc=2026-10-26T14:54:52Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize bottom-right normal} result=PASS duration_ms=1400
+STAGE_BEGIN name={interactive xdg resize bottom-right mapped-target readiness} utc=2026-10-26T14:54:53Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize bottom-right mapped-target readiness} result=PASS duration_ms=1335
+STAGE_BEGIN name={compositor resize grab start for bottom-right in} utc=2026-10-26T14:54:54Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize bottom-right in} utc=2026-10-26T14:54:55Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize bottom-right in} result=PASS duration_ms=1416
+STAGE_BEGIN name={interactive xdg resize bottom-right mapped-target readiness} utc=2026-10-26T14:54:56Z timeout_s=55
+STAGE_RESULT name={interactive xdg resize bottom-right mapped-target readiness} result=PASS duration_ms=1376
+STAGE_BEGIN name={compositor resize grab start for bottom-right out} utc=2026-10-26T14:54:58Z timeout_s=20
+STAGE_BEGIN name={committed geometry and constraints for xdg resize bottom-right out} utc=2026-10-26T14:54:58Z timeout_s=55
+STAGE_RESULT name={committed geometry and constraints for xdg resize bottom-right out} result=PASS duration_ms=1412
+STAGE_BEGIN name={native panel workspace selection and process retention} utc=2026-10-26T14:55:09Z timeout_s=20
+STAGE_RESULT name={native panel workspace selection and process retention} result=PASS duration_ms=186
+STAGE_BEGIN name={workspace one activation before no-wrap check} utc=2026-10-26T14:55:09Z timeout_s=25
+STAGE_BEGIN name={workspace one first terminal process and map readiness} utc=2026-10-26T14:55:10Z timeout_s=70
+STAGE_BEGIN name={workspace one first terminal command marker} utc=2026-10-26T14:55:21Z timeout_s=20
+STAGE_BEGIN name={workspace one active visible-client boundary baseline} utc=2026-10-26T14:55:26Z timeout_s=20
+STAGE_BEGIN name={workspace one no-wrap with visible client still interactive} utc=2026-10-26T14:55:31Z timeout_s=20
+STAGE_BEGIN name={maximize/fullscreen configure-cycle probe} utc=2026-10-26T14:55:44Z timeout_s=360
+STAGE_BEGIN name={rapid xdg-shell state transition probe} utc=2026-10-26T14:55:57Z timeout_s=360
+STAGE_BEGIN name={client-side decoration negotiation probe} utc=2026-10-26T14:56:11Z timeout_s=360
+STAGE_BEGIN name={window destruction during pending state transition probe} utc=2026-10-26T14:56:24Z timeout_s=360
+STAGE_BEGIN name={nested xdg popup creation and configure probe} utc=2026-10-26T14:56:49Z timeout_s=360
+STAGE_RESULT name={nested xdg popup creation and configure probe} result=PASS duration_ms=68
+STAGE_BEGIN name={minimize and workspace switch while an xdg popup grab is active} utc=2026-10-26T14:56:53Z timeout_s=360
+STAGE_BEGIN name={client destruction during an active nested popup grab} utc=2026-10-26T14:56:58Z timeout_s=360
+STAGE_RESULT name={client destruction during an active nested popup grab} result=PASS duration_ms=3931
+STAGE_BEGIN name={xdg popup dismissal protocol probe} utc=2026-10-26T14:57:04Z timeout_s=360
+STAGE_BEGIN name={second terminal process and same-PID toplevel map readiness} utc=2026-10-26T14:57:04Z timeout_s=70
+STAGE_BEGIN name={workspace one second terminal command marker} utc=2026-10-26T14:57:15Z timeout_s=20
+STAGE_BEGIN name={hidden-workspace pointer watcher map readiness} utc=2026-10-26T14:57:15Z timeout_s=55
+STAGE_RESULT name={hidden-workspace pointer watcher map readiness} result=PASS duration_ms=1314
+STAGE_BEGIN name={visible pointer watcher button callback positive control} utc=2026-10-26T14:57:17Z timeout_s=20
+STAGE_BEGIN name={workspace two activation before hidden-client input checks} utc=2026-10-26T14:57:17Z timeout_s=25
+STAGE_BEGIN name={active workspace terminal process and map readiness} utc=2026-10-26T14:57:18Z timeout_s=70
+STAGE_BEGIN name={active workspace terminal command marker} utc=2026-10-26T14:57:27Z timeout_s=20
+STAGE_BEGIN name={pointer event baseline after hiding watcher workspace} utc=2026-10-26T14:57:27Z timeout_s=20
+STAGE_BEGIN name={hidden workspace pointer event isolation} utc=2026-10-26T14:57:27Z timeout_s=20
+STAGE_BEGIN name={stop pointer watcher by recorded PID and identity} utc=2026-10-26T14:57:27Z timeout_s=20
+STAGE_BEGIN name={keyboard isolation with a visible client on the active workspace} utc=2026-10-26T14:57:31Z timeout_s=20
+STAGE_BEGIN name={record workspace terminal process baseline} utc=2026-10-26T14:57:31Z timeout_s=20
+STAGE_BEGIN name={reset workspace focus marker files} utc=2026-10-26T14:57:31Z timeout_s=20
+STAGE_BEGIN name={per-workspace focus history restoration} utc=2026-10-26T14:57:35Z timeout_s=360
+STAGE_BEGIN name={record move-right log baseline} utc=2026-10-26T14:57:35Z timeout_s=360
+STAGE_BEGIN name={moving a focused window to the next workspace} utc=2026-10-26T14:57:36Z timeout_s=360
+STAGE_RESULT name={moving a focused window to the next workspace} result=PASS duration_ms=272
+STAGE_BEGIN name={reset workspace two focus marker files} utc=2026-10-26T14:57:36Z timeout_s=20
+STAGE_BEGIN name={focus restoration on the second workspace} utc=2026-10-26T14:57:42Z timeout_s=360
+STAGE_BEGIN name={record move-left log baseline} utc=2026-10-26T14:57:42Z timeout_s=360
+STAGE_BEGIN name={moving a focused window to the previous workspace} utc=2026-10-26T14:57:43Z timeout_s=360
+STAGE_RESULT name={moving a focused window to the previous workspace} result=PASS duration_ms=282
+STAGE_BEGIN name={Super+3 selects workspace 3} utc=2026-10-26T14:57:44Z timeout_s=20
+STAGE_BEGIN name={Super+3 selection and hidden-window input isolation} utc=2026-10-26T14:57:50Z timeout_s=360
+STAGE_BEGIN name={Super+4 selects workspace 4} utc=2026-10-26T14:57:50Z timeout_s=20
+STAGE_BEGIN name={workspace four active terminal process and map readiness} utc=2026-10-26T14:57:51Z timeout_s=70
+STAGE_BEGIN name={workspace four visible terminal command marker} utc=2026-10-26T14:58:00Z timeout_s=20
+STAGE_BEGIN name={workspace four active visible-client boundary baseline} utc=2026-10-26T14:58:00Z timeout_s=20
+STAGE_BEGIN name={workspace four no-wrap with visible client still interactive} utc=2026-10-26T14:58:06Z timeout_s=20
+STAGE_BEGIN name={application persistence while windows migrate between workspaces} utc=2026-10-26T14:58:13Z timeout_s=360
+STAGE_BEGIN name={closing windows on separate workspaces} utc=2026-10-26T14:58:22Z timeout_s=360
+STAGE_BEGIN name={panel process crash isolation} utc=2026-10-26T14:58:22Z timeout_s=360
+STAGE_BEGIN name={compositor input after panel crash} utc=2026-10-26T14:58:29Z timeout_s=360
+STAGE_RESULT name={compositor input after panel crash} result=PASS duration_ms=139

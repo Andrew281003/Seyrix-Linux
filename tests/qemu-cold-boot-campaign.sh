@@ -61,7 +61,7 @@ trap 'handle_campaign_signal TERM 143' TERM
 trap 'handle_campaign_signal HUP 129' HUP
 
 summary="$evidence_root/campaign.tsv"
-printf 'run\tresult\texit_code\tstarted_utc\tfinished_utc\tboot_to_login_ms\tcompositor_ready_ms\tcompositor_startup_ms\tapplication_launch\tcompositor_exit\tguest_shutdown\n' > "$summary"
+printf 'run\tresult\texit_code\tstarted_utc\tfinished_utc\tboot_to_login_ms\tcompositor_ready_ms\tcompositor_startup_ms\trenderer_identity\tapplication_launch\tcompositor_exit\tguest_shutdown\n' > "$summary"
 failures=0
 
 for ((run = 1; run <= run_count; run++)); do
@@ -96,6 +96,7 @@ for ((run = 1; run <= run_count; run++)); do
     boot_to_login_ms="$(sed -n 's/.*BOOT_TO_LOGIN_MS=\([0-9][0-9]*\).*/\1/p' "$test_log" | tail -n 1)"
     compositor_ready_ms="$(sed -n 's/.*GRAPHICAL_BOOT_MS=\([0-9][0-9]*\).*/\1/p' "$test_log" | tail -n 1)"
     compositor_startup_ms="$(sed -n 's/.*COMPOSITOR_STARTUP_MS=\([0-9][0-9]*\).*/\1/p' "$test_log" | tail -n 1)"
+    renderer_identity="$(sed -n 's/.*GL renderer: //p' "$test_log" | head -n 1 | tr -d '\r')"
     application_launch="$(sed -n 's/.*APPLICATION_LAUNCH=\(passed\|failed\).*/\1/p' "$test_log" | tail -n 1)"
     compositor_exit="$(sed -n 's/.*COMPOSITOR_EXIT=\(passed\|failed\).*/\1/p' "$test_log" | tail -n 1)"
     guest_shutdown="$(sed -n 's/.*CLEAN_SHUTDOWN=\(passed\|failed\).*/\1/p' "$test_log" | tail -n 1)"
@@ -104,17 +105,27 @@ for ((run = 1; run <= run_count; run++)); do
       warning_inputs+=("$run_dir/serial.log")
     fi
     grep -Ein '(^\[[[:space:]]*[0-9]+(\.[0-9]+)?\].*(warning|warn|error|oops|panic|segfault)|^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+ \[(warning|warn|error)\]|AddressSanitizer|runtime error:|^qemu-system-x86_64: (warning|error))' "${warning_inputs[@]}" > "$run_dir/warnings-errors.log" || true
+    if [[ ! "$renderer_identity" =~ ^llvmpipe([[:space:]]|$) ]]; then
+      printf 'Required llvmpipe renderer was not observed; recorded identity: %s\n' \
+        "${renderer_identity:-not-reached}" >> "$run_dir/warnings-errors.log"
+      if [[ "$result" == passed ]]; then
+        result="failed"
+        exit_code=1
+        failures=$((failures + 1))
+      fi
+    fi
   else
     boot_to_login_ms=""
     compositor_ready_ms=""
     compositor_startup_ms=""
+    renderer_identity="not-reached"
     application_launch=""
     compositor_exit=""
     guest_shutdown=""
     : > "$run_dir/warnings-errors.log"
   fi
 
-  for variable in boot_to_login_ms compositor_ready_ms compositor_startup_ms application_launch compositor_exit guest_shutdown; do
+  for variable in boot_to_login_ms compositor_ready_ms compositor_startup_ms renderer_identity application_launch compositor_exit guest_shutdown; do
     if [[ -z "${!variable}" ]]; then
       printf -v "$variable" 'not-reached'
     fi
@@ -124,12 +135,12 @@ for ((run = 1; run <= run_count; run++)); do
       "$run_id" "$result" "$exit_code" "$started_utc" "$finished_utc"
     printf 'Boot to serial login ms: %s\nCompositor ready from QEMU start ms: %s\n' \
       "$boot_to_login_ms" "$compositor_ready_ms"
-    printf 'Compositor startup ms: %s\nApplication launch: %s\nCompositor exit: %s\nGuest shutdown: %s\n' \
-      "$compositor_startup_ms" "$application_launch" "$compositor_exit" "$guest_shutdown"
+    printf 'Compositor startup ms: %s\nRenderer identity: %s\nApplication launch: %s\nCompositor exit: %s\nGuest shutdown: %s\n' \
+      "$compositor_startup_ms" "$renderer_identity" "$application_launch" "$compositor_exit" "$guest_shutdown"
   } > "$run_dir/run-result.txt"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$run_id" "$result" "$exit_code" "$started_utc" "$finished_utc" \
-    "$boot_to_login_ms" "$compositor_ready_ms" "$compositor_startup_ms" \
+    "$boot_to_login_ms" "$compositor_ready_ms" "$compositor_startup_ms" "$renderer_identity" \
     "$application_launch" "$compositor_exit" "$guest_shutdown" >> "$summary"
   echo "[$run/$run_count] $result; evidence: $run_dir"
 done

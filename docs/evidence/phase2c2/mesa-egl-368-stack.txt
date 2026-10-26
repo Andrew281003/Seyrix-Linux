@@ -1,0 +1,13 @@
+Direct leak of 368 byte(s) in 1 object(s) allocated from:
+
+    #0 0x7f613980cea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+
+    #1 0x7f6137b2990b  (/usr/lib/../lib/libEGL_mesa.so.0+0x1a90b) (BuildId: f5b4c5531e150775af105a811e633f65e15bbe4f)
+
+    #2 0x7f6137b188b9  (/usr/lib/../lib/libEGL_mesa.so.0+0x98b9) (BuildId: f5b4c5531e150775af105a811e633f65e15bbe4f)
+
+    #3 0x7f61395c85ba  (/usr/lib/libwlroots-0.20.so+0x385ba) (BuildId: 2cd3a56136647a9da32b9a682606911aa2498393)
+
+    #4 0x7f61395c94e8  (/usr/lib/libwlroots-0.20.so+0x394e8) (BuildId: 2cd3a56136647a9da32b9a682606911aa2498393)
+
+    #5 0x7f61395c9752 in wlr_egl_create_with_drm_fd (/usr/lib/libwlroots-0.20.so+0x39752) (BuildId: 2cd3a56136647a9da32b9a682606911aa2498393)
