@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <linux/input-event-codes.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -67,10 +68,39 @@ struct probe {
 	bool request_client_decoration;
 	bool decoration_server_side;
 	bool decoration_client_side;
+	bool resize_check;
+	bool watch_pointer;
+	bool resize_requested;
+	bool resize_saw_active;
+	bool observed_resizing;
+	bool min_size_set;
+	bool max_size_set;
+	uint32_t resize_edges;
+	const char *resize_edge_name;
+	const char *title;
+	const char *app_id;
+	int min_width;
+	int min_height;
+	int max_width;
+	int max_height;
+	int resize_before_width;
+	int resize_before_height;
+	unsigned int pointer_enter_count;
+	unsigned int pointer_motion_count;
+	unsigned int pointer_button_count;
+	char generated_title[128];
+	char generated_app_id[96];
 	bool started;
 	bool done;
 	bool failed;
 };
+
+static volatile sig_atomic_t stop_requested;
+
+static void handle_stop_signal(int signal_number) {
+	(void)signal_number;
+	stop_requested = 1;
+}
 
 static void log_event(struct probe *probe, const char *format, ...) {
 	va_list args;
@@ -88,6 +118,83 @@ static const char *surface_name(enum surface_kind kind) {
 	case SURFACE_NESTED_POPUP: return "nested-popup";
 	}
 	return "unknown";
+}
+
+static bool parse_size(const char *value, int *width, int *height) {
+	char *width_end = NULL;
+	char *height_end = NULL;
+	errno = 0;
+	long parsed_width = strtol(value, &width_end, 10);
+	if (errno != 0 || width_end == value ||
+			(*width_end != 'x' && *width_end != 'X')) {
+		return false;
+	}
+	errno = 0;
+	long parsed_height = strtol(width_end + 1, &height_end, 10);
+	if (errno != 0 || height_end == width_end + 1 || *height_end != '\0' ||
+			parsed_width < 1 || parsed_height < 1 ||
+			parsed_width > 8192 || parsed_height > 8192) {
+		return false;
+	}
+	*width = (int)parsed_width;
+	*height = (int)parsed_height;
+	return true;
+}
+
+static bool parse_resize_edge(const char *value, uint32_t *edges,
+		const char **name) {
+	if (strcmp(value, "top") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+	} else if (strcmp(value, "bottom") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+	} else if (strcmp(value, "left") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+	} else if (strcmp(value, "right") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+	} else if (strcmp(value, "top-left") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT;
+	} else if (strcmp(value, "top-right") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
+	} else if (strcmp(value, "bottom-left") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
+	} else if (strcmp(value, "bottom-right") == 0) {
+		*edges = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+	} else {
+		return false;
+	}
+	*name = value;
+	return true;
+}
+
+static int constrain_dimension(int value, int minimum, int maximum) {
+	if (minimum > 0 && value < minimum) {
+		value = minimum;
+	}
+	if (maximum > 0 && value > maximum) {
+		value = maximum;
+	}
+	return value;
+}
+
+static bool prepare_initial_size(struct probe *probe) {
+	if (probe->initial_width <= 0) {
+		probe->initial_width = 440;
+	}
+	if (probe->initial_height <= 0) {
+		probe->initial_height = 320;
+	}
+	if ((probe->min_size_set && probe->max_size_set) &&
+			(probe->min_width > probe->max_width ||
+			probe->min_height > probe->max_height)) {
+		return false;
+	}
+	probe->initial_width = constrain_dimension(probe->initial_width,
+		probe->min_size_set ? probe->min_width : 0,
+		probe->max_size_set ? probe->max_width : 0);
+	probe->initial_height = constrain_dimension(probe->initial_height,
+		probe->min_size_set ? probe->min_height : 0,
+		probe->max_size_set ? probe->max_height : 0);
+	return true;
 }
 
 static bool has_state(const struct wl_array *states, uint32_t wanted) {
@@ -190,6 +297,100 @@ static bool observed_maximized;
 static bool observed_fullscreen;
 static bool observed_state;
 
+static void request_rapid_state_transition(struct probe *probe) {
+	struct xdg_toplevel *top = probe->toplevel.toplevel;
+	switch (probe->cycle_step) {
+	case 1:
+		log_event(probe, "RAPID_REQUEST_MAXIMIZE=1");
+		xdg_toplevel_set_maximized(top);
+		break;
+	case 2:
+		log_event(probe, "RAPID_REQUEST_MAXIMIZE=0");
+		xdg_toplevel_unset_maximized(top);
+		break;
+	case 3:
+		log_event(probe, "RAPID_REQUEST_FULLSCREEN=1");
+		xdg_toplevel_set_fullscreen(top, NULL);
+		break;
+	case 4:
+		log_event(probe, "RAPID_REQUEST_FULLSCREEN=0");
+		xdg_toplevel_unset_fullscreen(top);
+		break;
+	default:
+		return;
+	}
+	wl_surface_commit(probe->toplevel.surface);
+}
+
+static void drive_rapid_state_after_configure(struct probe *probe) {
+	if (!probe->rapid_state || probe->done || !probe->started ||
+			!observed_state || probe->cycle_step < 1 || probe->cycle_step > 4) {
+		return;
+	}
+	bool expected_maximized = probe->cycle_step == 1;
+	bool expected_fullscreen = probe->cycle_step == 3;
+	if (observed_maximized != expected_maximized ||
+			observed_fullscreen != expected_fullscreen) {
+		log_event(probe,
+			"RAPID_STATE_STALE_CONFIGURE step=%d maximized=%d fullscreen=%d",
+			probe->cycle_step, observed_maximized, observed_fullscreen);
+		observed_state = false;
+		return;
+	}
+	log_event(probe,
+		"RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=%d maximized=%d fullscreen=%d width=%d height=%d",
+		probe->cycle_step, observed_maximized, observed_fullscreen,
+		probe->toplevel.width, probe->toplevel.height);
+	if (probe->cycle_step == 4) {
+		log_event(probe, "RAPID_STATE_CYCLE=passed");
+		probe->done = true;
+	} else {
+		probe->cycle_step++;
+		request_rapid_state_transition(probe);
+	}
+	observed_state = false;
+}
+
+static void drive_resize_after_configure(struct probe *probe,
+		uint32_t serial) {
+	if (!probe->resize_check || probe->done || !probe->resize_requested ||
+			!observed_state) {
+		return;
+	}
+	log_event(probe,
+		"RESIZE_CONFIGURE_ACK_COMMIT serial=%u resizing=%d width=%d height=%d",
+		serial, probe->observed_resizing, probe->toplevel.width,
+		probe->toplevel.height);
+	observed_state = false;
+	if (probe->observed_resizing) {
+		probe->resize_saw_active = true;
+		return;
+	}
+	if (!probe->resize_saw_active) {
+		return;
+	}
+	probe->resize_saw_active = false;
+	bool changed = probe->resize_before_width != probe->toplevel.width ||
+		probe->resize_before_height != probe->toplevel.height;
+	log_event(probe,
+		"RESIZE_GEOMETRY edge=%s before=%dx%d after=%dx%d changed=%d",
+		probe->resize_edge_name, probe->resize_before_width,
+		probe->resize_before_height, probe->toplevel.width,
+		probe->toplevel.height, changed);
+	probe->done = true;
+	if (probe->toplevel.width <= 0 || probe->toplevel.height <= 0 ||
+			(!changed && !probe->min_size_set && !probe->max_size_set)) {
+		log_event(probe,
+			"RESIZE_COMPLETE=failed edge=%s reason=%s",
+			probe->resize_edge_name,
+			changed ? "invalid-committed-geometry" : "geometry-unchanged");
+		probe->failed = true;
+		return;
+	}
+	log_event(probe, "RESIZE_COMPLETE=passed edge=%s",
+		probe->resize_edge_name);
+}
+
 static void drive_after_configure(struct probe *probe) {
 	if (!probe->cycle || probe->done || !probe->started) return;
 	struct xdg_toplevel *top = probe->toplevel.toplevel;
@@ -264,18 +465,32 @@ static void xdg_toplevel_configure(void *data, struct xdg_toplevel *toplevel,
 	struct probe *probe = data;
 	observed_maximized = has_state(states, XDG_TOPLEVEL_STATE_MAXIMIZED);
 	observed_fullscreen = has_state(states, XDG_TOPLEVEL_STATE_FULLSCREEN);
+	probe->observed_resizing = has_state(states, XDG_TOPLEVEL_STATE_RESIZING);
 	observed_state = true;
 	log_event(probe,
-		"CONFIGURE_TOPLEVEL width=%d height=%d maximized=%d fullscreen=%d",
-		width, height, observed_maximized, observed_fullscreen);
-	if (width > 0) probe->toplevel.width = width;
-	if (height > 0) probe->toplevel.height = height;
+		"CONFIGURE_TOPLEVEL width=%d height=%d maximized=%d fullscreen=%d resizing=%d",
+		width, height, observed_maximized, observed_fullscreen,
+		probe->observed_resizing);
+	if (width > 0) {
+		probe->toplevel.width = constrain_dimension(width,
+			probe->min_size_set ? probe->min_width : 0,
+			probe->max_size_set ? probe->max_width : 0);
+	}
+	if (height > 0) {
+		probe->toplevel.height = constrain_dimension(height,
+			probe->min_size_set ? probe->min_height : 0,
+			probe->max_size_set ? probe->max_height : 0);
+	}
 	(void)toplevel;
 }
 
 static void xdg_toplevel_close(void *data, struct xdg_toplevel *toplevel) {
 	struct probe *probe = data;
 	log_event(probe, "CLOSE_REQUEST=received");
+	if (probe->resize_check && !probe->done) {
+		log_event(probe, "RESIZE_COMPLETE=failed reason=close-request");
+		probe->failed = true;
+	}
 	probe->done = true;
 	(void)toplevel;
 }
@@ -317,6 +532,12 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface,
 		probe->done = true;
 		return;
 	}
+	if (target->kind == SURFACE_TOPLEVEL && observed_state) {
+		log_event(probe,
+			"TOPLEVEL_ACK_COMMIT=passed serial=%u maximized=%d fullscreen=%d width=%d height=%d",
+			serial, observed_maximized, observed_fullscreen,
+			target->width, target->height);
+	}
 
 	if (target->kind == SURFACE_TOPLEVEL && !probe->started) {
 		probe->started = true;
@@ -341,15 +562,24 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface,
 			log_event(probe, "REQUEST_MAXIMIZE=1");
 			xdg_toplevel_set_maximized(target->toplevel);
 			wl_surface_commit(target->surface);
+		} else if (probe->resize_check) {
+			probe->resize_before_width = target->width;
+			probe->resize_before_height = target->height;
+			log_event(probe,
+				"RESIZE_READY=1 pid=%ld surface=%u app_id=%s title=%s initial_size=%dx%d edge=%s",
+				(long)getpid(), wl_proxy_get_id((struct wl_proxy *)target->xdg_surface),
+				probe->app_id, probe->title, target->width, target->height,
+				probe->resize_edge_name);
+		} else if (probe->watch_pointer) {
+			log_event(probe,
+				"WATCH_POINTER_READY pid=%ld surface=%u app_id=%s title=%s initial_size=%dx%d",
+				(long)getpid(), wl_proxy_get_id((struct wl_proxy *)target->xdg_surface),
+				probe->app_id, probe->title, target->width, target->height);
 		} else if (probe->rapid_state) {
 			log_event(probe, "RAPID_STATE_REQUESTS=begin");
 			observed_state = false;
-			xdg_toplevel_set_maximized(target->toplevel);
-			xdg_toplevel_unset_maximized(target->toplevel);
-			xdg_toplevel_set_fullscreen(target->toplevel, NULL);
-			xdg_toplevel_unset_fullscreen(target->toplevel);
-			wl_surface_commit(target->surface);
-			probe->cycle_step = 5;
+			probe->cycle_step = 1;
+			request_rapid_state_transition(probe);
 		} else if (probe->decoration_check) {
 			bool matches = probe->request_client_decoration ?
 				probe->decoration_client_side : probe->decoration_server_side;
@@ -361,11 +591,10 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface,
 		}
 	} else if (target->kind == SURFACE_TOPLEVEL && probe->cycle) {
 		drive_after_configure(probe);
-	} else if (target->kind == SURFACE_TOPLEVEL && probe->rapid_state &&
-			probe->cycle_step == 5 && observed_state &&
-			!observed_maximized && !observed_fullscreen) {
-		log_event(probe, "RAPID_STATE_CYCLE=passed");
-		probe->done = true;
+	} else if (target->kind == SURFACE_TOPLEVEL && probe->rapid_state) {
+		drive_rapid_state_after_configure(probe);
+	} else if (target->kind == SURFACE_TOPLEVEL && probe->resize_check) {
+		drive_resize_after_configure(probe, serial);
 	}
 }
 
@@ -495,8 +724,14 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
 	probe->pointer_surface = wl_surface_get_user_data(surface);
 	probe->pointer_x = wl_fixed_to_int(sx);
 	probe->pointer_y = wl_fixed_to_int(sy);
+	if (probe->watch_pointer && probe->pointer_surface == &probe->toplevel) {
+		probe->pointer_enter_count++;
+		log_event(probe,
+			"WATCH_POINTER_ENTER count=%u serial=%u surface=toplevel x=%d y=%d",
+			probe->pointer_enter_count, serial, probe->pointer_x,
+			probe->pointer_y);
+	}
 	(void)pointer;
-	(void)serial;
 	(void)sx;
 	(void)sy;
 }
@@ -504,9 +739,11 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
 static void pointer_leave(void *data, struct wl_pointer *pointer,
 		uint32_t serial, struct wl_surface *surface) {
 	struct probe *probe = data;
+	if (probe->watch_pointer && probe->pointer_surface == &probe->toplevel) {
+		log_event(probe, "WATCH_POINTER_LEAVE serial=%u surface=toplevel", serial);
+	}
 	probe->pointer_surface = NULL;
 	(void)pointer;
-	(void)serial;
 	(void)surface;
 }
 
@@ -515,6 +752,13 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
 	struct probe *probe = data;
 	probe->pointer_x = wl_fixed_to_int(sx);
 	probe->pointer_y = wl_fixed_to_int(sy);
+	if (probe->watch_pointer && probe->pointer_surface == &probe->toplevel) {
+		probe->pointer_motion_count++;
+		log_event(probe,
+			"WATCH_POINTER_MOTION count=%u surface=toplevel x=%d y=%d",
+			probe->pointer_motion_count, probe->pointer_x,
+			probe->pointer_y);
+	}
 	(void)pointer;
 	(void)time;
 	(void)sx;
@@ -524,6 +768,36 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
 static void pointer_button(void *data, struct wl_pointer *pointer,
 		uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
 	struct probe *probe = data;
+	if (probe->watch_pointer && probe->pointer_surface == &probe->toplevel) {
+		probe->pointer_button_count++;
+		log_event(probe,
+			"WATCH_POINTER_BUTTON count=%u surface=toplevel serial=%u button=%u state=%s x=%d y=%d",
+			probe->pointer_button_count, serial, button,
+			state == WL_POINTER_BUTTON_STATE_PRESSED ? "pressed" : "released",
+			probe->pointer_x, probe->pointer_y);
+	}
+	if (probe->resize_check && !probe->resize_requested &&
+			probe->pointer_surface == &probe->toplevel &&
+			button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		if (probe->seat == NULL || probe->toplevel.toplevel == NULL) {
+			log_event(probe, "RESIZE_REQUEST=failed reason=missing-seat-or-toplevel");
+			probe->failed = true;
+			probe->done = true;
+			return;
+		}
+		probe->resize_requested = true;
+		log_event(probe,
+			"RESIZE_POINTER_PRESS serial=%u surface=toplevel x=%d y=%d",
+			serial, probe->pointer_x, probe->pointer_y);
+		log_event(probe, "RESIZE_REQUEST edge=%s serial=%u",
+			probe->resize_edge_name, serial);
+		xdg_toplevel_resize(probe->toplevel.toplevel, probe->seat,
+			serial, probe->resize_edges);
+		return;
+	}
+	if (probe->watch_pointer) {
+		return;
+	}
 	if (button != BTN_LEFT || state != WL_POINTER_BUTTON_STATE_PRESSED ||
 			probe->pointer_surface == NULL || probe->seat == NULL) return;
 	struct probe_surface *target = probe->pointer_surface;
@@ -676,6 +950,8 @@ static bool create_toplevel(struct probe *probe) {
 	struct probe_surface *target = &probe->toplevel;
 	target->probe = probe;
 	target->kind = SURFACE_TOPLEVEL;
+	target->width = probe->initial_width;
+	target->height = probe->initial_height;
 	target->surface = wl_compositor_create_surface(probe->compositor);
 	if (target->surface == NULL) return false;
 	wl_surface_set_user_data(target->surface, target);
@@ -686,8 +962,20 @@ static bool create_toplevel(struct probe *probe) {
 	target->toplevel = xdg_surface_get_toplevel(target->xdg_surface);
 	if (target->toplevel == NULL) return false;
 	xdg_toplevel_add_listener(target->toplevel, &toplevel_listener, probe);
-	xdg_toplevel_set_title(target->toplevel, "Seyrix Phase 2C Protocol Probe");
-	xdg_toplevel_set_app_id(target->toplevel, "seyrix.phase2c-probe");
+	const char *title = probe->title != NULL ? probe->title :
+		"Seyrix Phase 2C Protocol Probe";
+	const char *app_id = probe->app_id != NULL ? probe->app_id :
+		"seyrix.phase2c-probe";
+	xdg_toplevel_set_title(target->toplevel, title);
+	xdg_toplevel_set_app_id(target->toplevel, app_id);
+	if (probe->min_size_set) {
+		xdg_toplevel_set_min_size(target->toplevel, probe->min_width,
+			probe->min_height);
+	}
+	if (probe->max_size_set) {
+		xdg_toplevel_set_max_size(target->toplevel, probe->max_width,
+			probe->max_height);
+	}
 	if (probe->decoration_manager != NULL) {
 		target->decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(
 			probe->decoration_manager, target->toplevel);
@@ -731,7 +1019,26 @@ static void destroy_roles(struct probe_surface *target) {
 }
 
 static void usage(const char *program) {
-	fprintf(stderr, "Usage: %s [--state-cycle | --rapid-state | --client-decoration | --destroy-during-transition] [--log PATH]\n", program);
+	fprintf(stderr,
+		"Usage: %s [--state-cycle | --rapid-state | --client-decoration | --destroy-during-transition | --resize EDGE | --watch-pointer] [--initial-size WxH] [--min-size WxH] [--max-size WxH] [--title TEXT] [--app-id ID] [--log PATH]\n",
+		program);
+}
+
+static void prepare_identity(struct probe *probe) {
+	if (probe->title == NULL && probe->resize_check) {
+		snprintf(probe->generated_title, sizeof(probe->generated_title),
+			"Seyrix Resize Probe %s", probe->resize_edge_name);
+		probe->title = probe->generated_title;
+	} else if (probe->title == NULL && probe->watch_pointer) {
+		probe->title = "Seyrix Pointer Watch Probe";
+	}
+	if (probe->app_id == NULL && probe->resize_check) {
+		snprintf(probe->generated_app_id, sizeof(probe->generated_app_id),
+			"seyrix.resize-probe.%s", probe->resize_edge_name);
+		probe->app_id = probe->generated_app_id;
+	} else if (probe->app_id == NULL && probe->watch_pointer) {
+		probe->app_id = "seyrix.pointer-watch-probe";
+	}
 }
 
 int main(int argc, char **argv) {
@@ -748,6 +1055,37 @@ int main(int argc, char **argv) {
 			probe.request_client_decoration = true;
 		} else if (strcmp(argv[i], "--destroy-during-transition") == 0) {
 			probe.destroy_after_initial = true;
+		} else if (strcmp(argv[i], "--resize") == 0 && i + 1 < argc) {
+			probe.resize_check = true;
+			if (!parse_resize_edge(argv[++i], &probe.resize_edges,
+					&probe.resize_edge_name)) {
+				usage(argv[0]);
+				return 2;
+			}
+		} else if (strcmp(argv[i], "--watch-pointer") == 0) {
+			probe.watch_pointer = true;
+		} else if (strcmp(argv[i], "--initial-size") == 0 && i + 1 < argc) {
+			if (!parse_size(argv[++i], &probe.initial_width,
+					&probe.initial_height)) {
+				usage(argv[0]);
+				return 2;
+			}
+		} else if (strcmp(argv[i], "--min-size") == 0 && i + 1 < argc) {
+			probe.min_size_set = true;
+			if (!parse_size(argv[++i], &probe.min_width, &probe.min_height)) {
+				usage(argv[0]);
+				return 2;
+			}
+		} else if (strcmp(argv[i], "--max-size") == 0 && i + 1 < argc) {
+			probe.max_size_set = true;
+			if (!parse_size(argv[++i], &probe.max_width, &probe.max_height)) {
+				usage(argv[0]);
+				return 2;
+			}
+		} else if (strcmp(argv[i], "--title") == 0 && i + 1 < argc) {
+			probe.title = argv[++i];
+		} else if (strcmp(argv[i], "--app-id") == 0 && i + 1 < argc) {
+			probe.app_id = argv[++i];
 		} else if (strcmp(argv[i], "--log") == 0 && i + 1 < argc) {
 			log_path = argv[++i];
 		} else {
@@ -755,6 +1093,14 @@ int main(int argc, char **argv) {
 			return 2;
 		}
 	}
+	int mode_count = (int)probe.cycle + (int)probe.rapid_state +
+		(int)probe.destroy_after_initial + (int)probe.decoration_check +
+		(int)probe.resize_check + (int)probe.watch_pointer;
+	if (mode_count > 1 || !prepare_initial_size(&probe)) {
+		usage(argv[0]);
+		return 2;
+	}
+	prepare_identity(&probe);
 	probe.log = fopen(log_path, "w");
 	if (probe.log == NULL) {
 		fprintf(stderr, "cannot open %s: %s\n", log_path, strerror(errno));
@@ -762,8 +1108,15 @@ int main(int argc, char **argv) {
 	}
 	setvbuf(probe.log, NULL, _IOLBF, 0);
 	wl_list_init(&probe.buffers);
-	log_event(&probe, "PROBE_START mode=%s", probe.cycle ? "state-cycle" :
-		probe.destroy_after_initial ? "destroy-during-transition" : "interactive");
+	const char *mode = probe.cycle ? "state-cycle" : probe.rapid_state ?
+		"rapid-state" : probe.decoration_check ? "decoration" :
+		probe.destroy_after_initial ? "destroy-during-transition" :
+		probe.resize_check ? "resize" : probe.watch_pointer ?
+		"watch-pointer" : "interactive";
+	log_event(&probe, "PROBE_START mode=%s", mode);
+	if (probe.watch_pointer) {
+		signal(SIGTERM, handle_stop_signal);
+	}
 
 	probe.display = wl_display_connect(NULL);
 	if (probe.display == NULL) {
@@ -774,7 +1127,9 @@ int main(int argc, char **argv) {
 	probe.registry = wl_display_get_registry(probe.display);
 	wl_registry_add_listener(probe.registry, &registry_listener, &probe);
 	if (wl_display_roundtrip(probe.display) < 0 || probe.compositor == NULL ||
-			probe.shm == NULL || probe.wm_base == NULL) {
+			probe.shm == NULL || probe.wm_base == NULL ||
+			((probe.resize_check || probe.watch_pointer) &&
+			(probe.seat == NULL || probe.pointer == NULL))) {
 		log_event(&probe, "GLOBALS=failed");
 		probe.failed = true;
 		probe.done = true;
@@ -790,24 +1145,49 @@ int main(int argc, char **argv) {
 
 	uint64_t deadline_ms = 0;
 	if (probe.cycle || probe.rapid_state || probe.decoration_check ||
-			probe.destroy_after_initial) {
+			probe.destroy_after_initial || probe.resize_check) {
 		deadline_ms = 120000;
 	}
 	uint64_t elapsed_ms = 0;
-	while (!probe.done) {
-		if (wl_display_dispatch_pending(probe.display) < 0) break;
-		if (wl_display_flush(probe.display) < 0 && errno != EAGAIN) break;
+	while (!probe.done && !(probe.watch_pointer && stop_requested)) {
+		if (wl_display_dispatch_pending(probe.display) < 0) {
+			log_event(&probe, "WAYLAND_DISCONNECT=dispatch-pending");
+			probe.failed = true;
+			break;
+		}
+		if (wl_display_flush(probe.display) < 0 && errno != EAGAIN) {
+			log_event(&probe, "WAYLAND_DISCONNECT=flush errno=%d", errno);
+			probe.failed = true;
+			break;
+		}
 		struct pollfd pfd = {.fd = wl_display_get_fd(probe.display), .events = POLLIN};
 		int timeout = 1000;
 		int ready = poll(&pfd, 1, timeout);
 		elapsed_ms += timeout;
-		if (ready < 0 && errno != EINTR) break;
-		if (ready > 0 && wl_display_dispatch(probe.display) < 0) break;
+		if (ready < 0 && errno != EINTR) {
+			log_event(&probe, "POLL_FAILED errno=%d", errno);
+			probe.failed = true;
+			break;
+		}
+		if (ready > 0 && wl_display_dispatch(probe.display) < 0) {
+			log_event(&probe, "WAYLAND_DISCONNECT=dispatch");
+			probe.failed = true;
+			break;
+		}
 		if (deadline_ms != 0 && elapsed_ms >= deadline_ms) {
 			log_event(&probe, "PROBE_TIMEOUT=1");
 			probe.failed = true;
 			break;
 		}
+	}
+	if (probe.watch_pointer && stop_requested) {
+		log_event(&probe, "WATCH_POINTER_STOPPED=1");
+		probe.done = true;
+	}
+	if (probe.resize_check && !probe.done) {
+		log_event(&probe, "RESIZE_COMPLETE=failed reason=%s",
+			probe.failed ? "timeout-or-protocol-error" : "display-disconnected");
+		probe.failed = true;
 	}
 
 	/* Active popup roles are defunct only after popup_done; disconnect cleans

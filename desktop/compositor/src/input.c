@@ -7,6 +7,7 @@
 #include <wlr/util/log.h>
 
 #include "decoration.h"
+#include "geometry.h"
 #include "shell.h"
 #include "window-state.h"
 
@@ -290,6 +291,23 @@ static struct seyrix_window *window_at(struct seyrix_server *server,
 	return tree != NULL ? tree->node.data : NULL;
 }
 
+static void window_identity(struct seyrix_window *window, pid_t *pid,
+		uint32_t *surface_id) {
+	*pid = 0;
+	*surface_id = 0;
+	if (window == NULL || window->xdg_toplevel == NULL ||
+			window->xdg_toplevel->base == NULL) {
+		return;
+	}
+	struct wlr_xdg_surface *surface = window->xdg_toplevel->base;
+	if (surface->resource != NULL) {
+		*surface_id = wl_resource_get_id(surface->resource);
+	}
+	if (surface->client != NULL && surface->client->client != NULL) {
+		wl_client_get_credentials(surface->client->client, pid, NULL, NULL);
+	}
+}
+
 static void process_cursor_resize(struct seyrix_server *server) {
 	struct seyrix_window *window = server->grabbed_window;
 	if (window == NULL || !window->mapped) {
@@ -297,69 +315,38 @@ static void process_cursor_resize(struct seyrix_server *server) {
 		return;
 	}
 
-	double border_x = server->cursor->x - server->grab_x;
-	double border_y = server->cursor->y - server->grab_y;
-	int left = server->grab_box.x;
-	int right = server->grab_box.x + server->grab_box.width;
-	int top = server->grab_box.y;
-	int bottom = server->grab_box.y + server->grab_box.height;
-	if ((server->resize_edges & WLR_EDGE_LEFT) != 0) {
-		left = (int)border_x;
-		if (left >= right) {
-			left = right - 1;
-		}
-	} else if ((server->resize_edges & WLR_EDGE_RIGHT) != 0) {
-		right = (int)border_x;
-		if (right <= left) {
-			right = left + 1;
-		}
-	}
-	if ((server->resize_edges & WLR_EDGE_TOP) != 0) {
-		top = (int)border_y;
-		if (top >= bottom) {
-			top = bottom - 1;
-		}
-	} else if ((server->resize_edges & WLR_EDGE_BOTTOM) != 0) {
-		bottom = (int)border_y;
-		if (bottom <= top) {
-			bottom = top + 1;
-		}
-	}
-
 	struct wlr_xdg_toplevel *toplevel = window->xdg_toplevel;
-	int width = right - left;
-	int height = bottom - top;
-	if (toplevel->current.min_width > 0 && width < toplevel->current.min_width) {
-		width = toplevel->current.min_width;
+	struct seyrix_resize_geometry resize;
+	if (!seyrix_calculate_resize(&server->grab_box,
+			server->cursor->x, server->cursor->y,
+			server->grab_x, server->grab_y, server->resize_edges,
+			toplevel->current.min_width, toplevel->current.min_height,
+			toplevel->current.max_width, toplevel->current.max_height,
+			window->xdg_toplevel->base->geometry.x,
+			window->xdg_toplevel->base->geometry.y,
+			seyrix_decoration_titlebar_height(window), &resize)) {
+		return;
 	}
-	if (toplevel->current.min_height > 0 && height < toplevel->current.min_height) {
-		height = toplevel->current.min_height;
-	}
-	if (toplevel->current.max_width > 0 && width > toplevel->current.max_width) {
-		width = toplevel->current.max_width;
-	}
-	if (toplevel->current.max_height > 0 && height > toplevel->current.max_height) {
-		height = toplevel->current.max_height;
-	}
-
-	struct wlr_box *geometry = &toplevel->base->geometry;
 	wlr_scene_node_set_position(&window->scene_tree->node,
-		left - geometry->x,
-		top - geometry->y - seyrix_decoration_titlebar_height(window));
-	wlr_xdg_toplevel_set_size(toplevel, width, height);
+		resize.scene_x, resize.scene_y);
+	wlr_xdg_toplevel_set_size(toplevel, resize.width, resize.height);
 }
 
 static void process_cursor_motion(struct seyrix_server *server,
 		uint32_t time_msec) {
 	if (server->cursor_mode == SEYRIX_CURSOR_MOVE) {
 		if (server->grabbed_window != NULL && server->grabbed_window->mapped) {
+			pid_t pid;
+			uint32_t surface_id;
+			window_identity(server->grabbed_window, &pid, &surface_id);
 			int x = (int)(server->cursor->x - server->grab_x);
 			int y = (int)(server->cursor->y - server->grab_y);
 			wlr_scene_node_set_position(
 				&server->grabbed_window->scene_tree->node, x, y);
 			wlr_log(WLR_INFO,
-				"Window move update: cursor=%.1f,%.1f position=%d,%d",
-				server->cursor->x, server->cursor->y, x, y);
+				"Window move update: pid=%ld surface=%u cursor=%.1f,%.1f position=%d,%d",
+				(long)pid, surface_id, server->cursor->x, server->cursor->y,
+				x, y);
 		}
 		return;
 	}
@@ -402,8 +389,13 @@ static void handle_cursor_motion_absolute(struct wl_listener *listener,
 	struct seyrix_server *server =
 		wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
-	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
-		event->x, event->y);
+	if (!seyrix_cursor_warp_absolute(server->cursor, &event->pointer->base,
+			event->x, event->y)) {
+		wlr_log(WLR_ERROR,
+			"Ignored invalid absolute pointer coordinates device=%s x=%.5f y=%.5f",
+			event->pointer->base.name, event->x, event->y);
+		return;
+	}
 	process_cursor_motion(server, event->time_msec);
 }
 

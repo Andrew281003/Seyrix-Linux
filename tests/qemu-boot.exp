@@ -8,12 +8,115 @@ if {$argc < 3} {
 set serial_log [lindex $argv 0]
 set qemu [lindex $argv 1]
 set qemu_args [lrange $argv 2 end]
+if {![info exists env(SEYRIX_QEMU_LOCK_HELD)] ||
+		$env(SEYRIX_QEMU_LOCK_HELD) ne "1"} {
+	puts stderr "UEFI boot tests must run through qemu-uefi.sh so the ownership lock is held."
+	exit 2
+}
+set run_dir [file dirname $serial_log]
+set qemu_identity ""
+for {set index 0} {$index + 1 < [llength $qemu_args]} {incr index} {
+	if {[lindex $qemu_args $index] eq "-name"} {
+		set qemu_identity [lindex $qemu_args [expr {$index + 1}]]
+		break
+	}
+}
+if {$qemu_identity eq ""} {
+	puts stderr "QEMU arguments have no run-specific -name identity."
+	exit 2
+}
+set qemu_pid -1
+set qemu_spawn_id -1
 set timeout 360
 log_file -noappend $serial_log
 log_user 1
 set boot_started [clock milliseconds]
 
+proc qemu_cmdline {pid} {
+	set path "/proc/$pid/cmdline"
+	if {![file readable $path] || [catch {set channel [open $path r]}]} {
+		return ""
+	}
+	fconfigure $channel -translation binary -encoding binary
+	set command_line [read $channel]
+	close $channel
+	return $command_line
+}
+
+proc qemu_is_owned {pid} {
+	global qemu_identity
+	set command_line [qemu_cmdline $pid]
+	return [expr {$command_line ne "" &&
+		[string first $qemu_identity $command_line] >= 0}]
+}
+
+proc cleanup_owned_qemu {reason} {
+	global qemu_pid qemu_spawn_id run_dir qemu_identity
+	if {$qemu_pid <= 0} {
+		return
+	}
+	if {![qemu_is_owned $qemu_pid]} {
+		if {$qemu_spawn_id ne -1} {catch {wait -i $qemu_spawn_id}}
+		return
+	}
+	set command_line [qemu_cmdline $qemu_pid]
+	if {![catch {set channel [open "$run_dir/qemu-process-before-cleanup.txt" w]}]} {
+		set printable [string map [list "\x00" " "] $command_line]
+		puts $channel "Cleanup reason: $reason"
+		puts $channel "QEMU PID: $qemu_pid"
+		puts $channel "Expected run identity: $qemu_identity"
+		puts $channel "Command line: $printable"
+		catch {puts $channel [exec ps -p $qemu_pid -o pid=,ppid=,stat=,etimes=,comm=]}
+		close $channel
+	}
+	puts stderr "Stopping QEMU owned by this run: PID $qemu_pid ($reason)."
+	if {[catch {exec kill -TERM $qemu_pid} kill_error]} {
+		puts stderr "Could not send SIGTERM to owned QEMU PID $qemu_pid: $kill_error"
+		return
+	}
+	for {set attempt 0} {$attempt < 20} {incr attempt} {
+		after 250
+		if {![qemu_is_owned $qemu_pid]} {
+			if {$qemu_spawn_id ne -1} {catch {wait -i $qemu_spawn_id}}
+			return
+		}
+	}
+	if {[qemu_is_owned $qemu_pid]} {
+		puts stderr "Owned QEMU PID $qemu_pid did not stop within 5 seconds; sending SIGKILL after identity recheck."
+		if {[catch {exec kill -KILL $qemu_pid} kill_error]} {
+			puts stderr "Could not send SIGKILL to owned QEMU PID $qemu_pid: $kill_error"
+		}
+	}
+	for {set attempt 0} {$attempt < 8} {incr attempt} {
+		after 250
+		if {![qemu_is_owned $qemu_pid]} {
+			break
+		}
+	}
+	if {$qemu_spawn_id ne -1} {
+		catch {wait -i $qemu_spawn_id}
+	}
+}
+
+rename exit expect_exit
+proc exit {{status 0}} {
+	global qemu_pid
+	if {$status != 0 && $qemu_pid > 0} {
+		cleanup_owned_qemu "test-exit-$status"
+	}
+	expect_exit $status
+}
+trap {cleanup_owned_qemu "SIGINT"; expect_exit 130} SIGINT
+trap {cleanup_owned_qemu "SIGTERM"; expect_exit 143} SIGTERM
+trap {cleanup_owned_qemu "SIGHUP"; expect_exit 129} SIGHUP
+
 spawn -noecho $qemu {*}$qemu_args
+set qemu_spawn_id $spawn_id
+set qemu_pid [exp_pid -i $qemu_spawn_id]
+set pid_channel [open "$run_dir/qemu.pid" w]
+puts $pid_channel $qemu_pid
+close $pid_channel
+puts "QEMU_PID=$qemu_pid"
 
 expect {
     -re {seyrix-dev login:} {

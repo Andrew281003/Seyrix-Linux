@@ -16,6 +16,7 @@
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/util/log.h>
 
+#include "decoration.h"
 #include "layer-shell.h"
 #include "popup.h"
 #include "shell.h"
@@ -203,7 +204,8 @@ bool seyrix_server_init(struct seyrix_server *server) {
 	}
 
 	if (!seyrix_output_init(server) || !seyrix_window_init(server) ||
-			!seyrix_popup_init(server) || !seyrix_layer_shell_init(server) ||
+			!seyrix_popup_init(server) || !seyrix_decoration_init(server) ||
+			!seyrix_layer_shell_init(server) ||
 			!seyrix_input_init(server)) {
 		return false;
 	}

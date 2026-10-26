@@ -2,6 +2,9 @@
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
+  exec bash "$script_dir/qemu-lock.sh" -- "$script_dir/qemu-graphics.sh" "$@"
+fi
 if (( $# != 1 )); then
   echo "Usage: $0 /path/to/seyrix-development.iso" >&2
   exit 2
@@ -22,6 +25,7 @@ done
 
 qemu_bin="$(command -v qemu-system-x86_64)"
 workflow="${SEYRIX_QEMU_WORKFLOW:-phase2a}"
+export SEYRIX_QEMU_WORKFLOW="$workflow"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
 renderer_request="${SEYRIX_QEMU_RENDERER:-}"
@@ -63,6 +67,7 @@ if [[ ! -r "$ovmf_code" || ! -r "$ovmf_vars_template" ]]; then
 fi
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+qemu_name="seyrix-${workflow}-graphics-test-${run_id}"
 run_dir="${SEYRIX_QEMU_GRAPHICS_DIR:-${HOME}/.cache/seyrix-linux/qemu-graphics-${run_id}}"
 if [[ -e "$run_dir" ]]; then
   echo "QEMU graphics test directory already exists: $run_dir" >&2
@@ -71,12 +76,112 @@ if [[ -e "$run_dir" ]]; then
 fi
 mkdir -p "$run_dir"
 
+run_started_utc="$(date -u --iso-8601=seconds)"
 monitor_port="${SEYRIX_QEMU_MONITOR_PORT:-$((40000 + RANDOM % 20000))}"
+run_status=1
+expect_pid=""
+expect_is_owned() {
+  local pid="$1" parent expect_executable actual_executable
+  local -a process_args=()
+  [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/cmdline" ]] || return 1
+  parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+  expect_executable="$(readlink -f "$(command -v expect)")"
+  actual_executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  mapfile -d '' -t process_args < "/proc/$pid/cmdline" 2>/dev/null || return 1
+  [[ "$parent" == "$$" && "$actual_executable" == "$expect_executable" &&
+      "${process_args[1]:-}" == "$script_dir/qemu-graphics.exp" &&
+      "${process_args[2]:-}" == "$run_dir" &&
+      "${process_args[3]:-}" == "$monitor_port" &&
+      "${process_args[4]:-}" == "$qemu_bin" ]]
+}
+finish_graphics_run() {
+  local status=$?
+  trap - EXIT
+  {
+    printf 'Run finished UTC: %s\n' "$(date -u --iso-8601=seconds)"
+    printf 'Run exit status: %s\n' "$status"
+    printf 'Expect PID: %s\n' "${expect_pid:-not-started}"
+  } >> "$run_dir/run-metadata.txt"
+  if [[ -n "${SEYRIX_QEMU_LOCK_OWNER_FILE:-}" && -r "$SEYRIX_QEMU_LOCK_OWNER_FILE" ]]; then
+    cp -- "$SEYRIX_QEMU_LOCK_OWNER_FILE" "$run_dir/qemu-lock-owner.txt"
+  fi
+  if [[ -f "$run_dir/test.log" ]]; then
+    grep -E '^STAGE_BEGIN |^STAGE_RESULT ' "$run_dir/test.log" \
+      > "$run_dir/stage-results.log" || true
+  else
+    : > "$run_dir/stage-results.log"
+  fi
+  if [[ -f "$run_dir/qemu.pid" ]]; then
+    local qemu_pid
+    qemu_pid="$(<"$run_dir/qemu.pid")"
+    {
+      printf 'Observed UTC: %s\n' "$(date -u --iso-8601=seconds)"
+      printf 'QEMU PID: %s\n' "$qemu_pid"
+      if [[ "$qemu_pid" =~ ^[0-9]+$ && -r "/proc/$qemu_pid/cmdline" ]]; then
+        local qemu_cmdline
+        qemu_cmdline="$(tr '\0' ' ' < "/proc/$qemu_pid/cmdline" 2>/dev/null || true)"
+        if [[ "$qemu_cmdline" == *"$qemu_name"* ]]; then
+          printf 'Owned process state: still-running-after-test\n'
+          printf 'Command line: %s\n' "$qemu_cmdline"
+          sed -n '1,8p' "/proc/$qemu_pid/status" 2>/dev/null || true
+        else
+          printf 'Owned process state: PID-reused-or-identity-mismatch; no signal sent\n'
+        fi
+      else
+        printf 'Owned process state: exited\n'
+      fi
+    } > "$run_dir/qemu-process-state.txt"
+  else
+    printf 'QEMU PID was not recorded before test exit.\n' > "$run_dir/qemu-process-state.txt"
+  fi
+  shopt -s nullglob
+  local screenshots=("$run_dir"/*.ppm)
+  if (( ${#screenshots[@]} > 0 )); then
+    sha256sum "${screenshots[@]}" > "$run_dir/screenshots.sha256"
+  else
+    : > "$run_dir/screenshots.sha256"
+  fi
+  if (( status != 0 )); then
+    local run_result="FAIL"
+    if [[ ! -f "$run_dir/test.log" ]] || \
+        grep -Eq 'STAGE_RESULT .*result=INCOMPLETE|Timed out|QEMU exited before|Could not connect to QMP' \
+          "$run_dir/test.log"; then
+      run_result="INCOMPLETE"
+    fi
+    {
+      printf 'Run result: %s\nFailure exit status: %s\nFinished UTC: %s\n' \
+        "$run_result" "$status" "$(date -u --iso-8601=seconds)"
+      printf 'Tests after the first failing or interrupted stage may be NOT RUN; '
+      printf 'stage evidence is in test.log and stage-results.log.\n'
+    } > "$run_dir/run-result.txt"
+  else
+    printf 'Run result: PASS\nFinished UTC: %s\n' \
+      "$(date -u --iso-8601=seconds)" > "$run_dir/run-result.txt"
+  fi
+  exit "$status"
+}
+trap finish_graphics_run EXIT
+handle_graphics_signal() {
+  local signal="$1"
+  local status="$2"
+  trap - INT TERM HUP
+  if expect_is_owned "$expect_pid" && kill -0 "$expect_pid" 2>/dev/null; then
+    kill -s "$signal" "$expect_pid" 2>/dev/null || true
+    wait "$expect_pid" 2>/dev/null || true
+  elif [[ -n "$expect_pid" ]] && kill -0 "$expect_pid" 2>/dev/null; then
+    echo "Refusing to signal Expect PID $expect_pid: run identity changed." >&2
+  fi
+  exit "$status"
+}
+trap 'handle_graphics_signal INT 130' INT
+trap 'handle_graphics_signal TERM 143' TERM
+trap 'handle_graphics_signal HUP 129' HUP
+
 ovmf_vars="$run_dir/OVMF_VARS.fd"
 cp "$ovmf_vars_template" "$ovmf_vars"
 
 qemu_args=(
-  -name "seyrix-${workflow}-graphics-test"
+  -name "$qemu_name"
 )
 if [[ -n "$tcg_thread" ]]; then
   qemu_args+=(-machine q35 -accel "tcg,thread=${tcg_thread}")
@@ -128,15 +233,28 @@ qemu_args+=(
   printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
   printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
   printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
+  printf 'QEMU run ID: %s\n' "$run_id"
+  printf 'QEMU lock file: %s\n' "${SEYRIX_QEMU_LOCK_FILE:-unavailable}"
+  printf 'QEMU lock timeout seconds: %s\n' "${SEYRIX_QEMU_LOCK_TIMEOUT_SEC:-30}"
+  printf 'QEMU lock token: %s\n' "${SEYRIX_QEMU_LOCK_TOKEN:-unavailable}"
+  printf 'Run started UTC: %s\n' "$run_started_utc"
 } > "$run_dir/run-metadata.txt"
 
-if ! expect "$script_dir/qemu-graphics.exp" "$run_dir" "$monitor_port" "$qemu_bin" \
-  "${qemu_args[@]}" > "$run_dir/test.log" 2>&1; then
+if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
+  echo "Internal error: QEMU acceptance is not running under its ownership lock." >&2
+  exit 2
+fi
+expect "$script_dir/qemu-graphics.exp" "$run_dir" "$monitor_port" "$qemu_bin" \
+  "${qemu_args[@]}" > "$run_dir/test.log" 2>&1 &
+expect_pid=$!
+if wait "$expect_pid"; then
+  run_status=0
+else
+  run_status=$?
   tail -n 60 "$run_dir/test.log" >&2
-  exit 1
+  exit "$run_status"
 fi
 
-grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
+grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
   "$run_dir/test.log"
-sha256sum "$run_dir"/*.ppm > "$run_dir/screenshots.sha256"
 printf 'QEMU %s graphics test passed. Evidence: %s\n' "$workflow" "$run_dir"

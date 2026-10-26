@@ -22,8 +22,40 @@ wsl -d archlinux -u root -- bash "$repoWsl/build/build-phase2c-iso.sh"
 Use a new `SEYRIX_BUILD_ROOT` for each build; the script deliberately refuses
 to reuse a nonempty path. It compiles the C17 compositor, native protocol
 probe, and native `seyrix-shell`, stages them into a fresh Archiso profile,
-and records tool versions, package manifests, profile hashes, ISO size, and
-checksum under `/root/.cache/seyrix-linux/phase2c-<UTC timestamp>/`.
+and runs the compositor's deterministic Meson tests before packaging. It records
+tool versions, package manifests, profile hashes, source branch/commit/worktree
+state, sanitizer setting, ISO size, and checksum under
+`/root/.cache/seyrix-linux/phase2c-<UTC timestamp>/`. Set
+`SEYRIX_BUILD_SANITIZERS=address,undefined` for an instrumented compositor ISO;
+the allowed values are `address`, `undefined`, and `address,undefined`.
+
+## Layer A and Layer B checks
+
+The build's Meson test exercises edge/corner resize geometry, min/max anchor
+constraints, title-bar offsets, and wlroots absolute-pointer mapping on a
+positioned headless output. Run the compositor's live headless integration
+workflow inside Arch WSL as root:
+
+```sh
+tests/headless-integration.sh
+```
+
+The integration runner builds the current compositor, native probe, and panel
+in a unique directory, then starts the actual compositor with two headless
+outputs and Pixman. It checks mapped terminal/panel readiness, maximize and
+restore, fullscreen and exit, separate rapid state transitions, server/client
+decoration negotiation, toplevel destruction, output scale changes, disabling
+and restoring one output, panel reassignment, rejection of a zero-enabled-head
+configuration, and clean compositor shutdown. Logs and a TSV result matrix are
+kept in `/root/.cache/seyrix-linux/headless-<UTC timestamp>/`.
+
+Run the same integration workflow with compositor sanitizers enabled by
+setting `SEYRIX_HEADLESS_SANITIZERS=address,undefined`. It scans the completed
+compositor log for ASan, UBSan, and LSan reports after clients and the server
+exit. The headless path does not exercise USB tablet event delivery, interactive
+window movement/resizing, workspace shortcuts and migration, physical output
+hotplug, UEFI boot, or guest shutdown; those require Layer C or a separate
+physical-output environment.
 
 ## Run the Phase 2C QEMU workflow
 
@@ -41,9 +73,22 @@ wsl -d archlinux -u root -- bash "$repoWsl/tests/qemu-phase2c.sh" `
 
 Single-threaded TCG has been more reliable for the serial login prompt under
 this WSL2 host. Run only one graphical QEMU test at a time to avoid competing
-TCG guests. Do not treat a successful boot or protocol advertisement as
-functional evidence for a window interaction; inspect the per-test result
-markers and screenshots.
+TCG guests. The QEMU scripts enter `tests/qemu-lock.sh`, which uses a bounded
+`flock` wait and refuses to start while any QEMU system process is already
+running. It records the lock owner and run token. Each run has a unique QEMU
+`-name`, logs and screenshots are retained under its evidence directory, and
+Expect cleanup rechecks the exact run identity before signaling QEMU. A signal
+or cleanup must never be used to stop an unrelated guest. The cold-boot
+campaign holds the same lock across its sequential runs.
+
+Do not treat a successful boot or protocol advertisement as functional
+evidence for a window interaction; inspect the per-test stage results and
+screenshots. A command marker proves only that the shell command ran. Window
+readiness requires both the expected client process and a compositor map
+record. Movement requires the same mapped `(pid, surface)` to show a measured
+scene-coordinate change, accompanied by evdev and compositor button/gesture
+evidence. Failed runs retain their logs, process state, timestamps, and
+screenshots; diagnostic retries remain separate runs.
 
 For a focused workspace run, set `SEYRIX_QEMU_WORKSPACE_ONLY=1` before
 invoking `tests/qemu-phase2c.sh`. This mode starts its workspace checks after
@@ -90,6 +135,11 @@ application startup from boot-to-compositor readiness. Record renderer
 identity, package count, resident memory, and ISO size from the guest/build
 artifacts. Do not report FPS or frame-time data unless those measurements are
 added and collected.
+
+For Phase 2C.1, retain the Layer A/B result directories and each Layer C run
+directory as separate evidence. Mark checks PASS, FAIL, INCOMPLETE, or NOT RUN;
+never upgrade a failed interaction to PASS because a later diagnostic retry
+succeeded.
 
 The Phase 2B.1 report remains the source for the unresolved scheduler panic
 and Mesa EGL sanitizer allocation. The earlier `enqueue_task_fair` panic was

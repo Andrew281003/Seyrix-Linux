@@ -56,3 +56,10 @@ executable(
   install: true,
   install_dir: get_option('bindir'),
 )
+
+geometry_test = executable(
+  'compositor-geometry-test',
+  '../../tests/compositor-geometry-test.c',
+  dependencies: [wlroots, wayland_server],
+)
+test('compositor geometry', geometry_test)

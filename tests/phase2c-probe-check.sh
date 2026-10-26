@@ -36,6 +36,10 @@ case "$mode" in
     ;;
   rapid)
     require 'RAPID_STATE_REQUESTS=begin'
+    require 'RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=1'
+    require 'RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=2'
+    require 'RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=3'
+    require 'RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=4'
     require 'RAPID_STATE_CYCLE=passed'
     ;;
   decoration)

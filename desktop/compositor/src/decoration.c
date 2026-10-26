@@ -183,6 +183,11 @@ static void update_effective_mode(struct seyrix_decoration *decoration) {
 }
 
 static void set_requested_mode(struct seyrix_decoration *decoration) {
+	if (decoration->protocol->toplevel == NULL ||
+			decoration->protocol->toplevel->base == NULL ||
+			!decoration->protocol->toplevel->base->initialized) {
+		return;
+	}
 	enum wlr_xdg_toplevel_decoration_v1_mode requested =
 		decoration->protocol->requested_mode;
 	enum wlr_xdg_toplevel_decoration_v1_mode mode =
@@ -211,6 +216,16 @@ static void handle_decoration_commit(struct wl_listener *listener, void *data) {
 	(void)data;
 	struct seyrix_decoration *decoration =
 		wl_container_of(listener, decoration, commit);
+	if (!decoration->protocol->toplevel->base->initialized) {
+		return;
+	}
+	if (decoration->protocol->current.mode !=
+			(decoration->protocol->requested_mode ==
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE ?
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE :
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE)) {
+		set_requested_mode(decoration);
+	}
 	int current = effective_titlebar_height(decoration);
 	if (current != decoration->applied_titlebar_height) {
 		update_effective_mode(decoration);

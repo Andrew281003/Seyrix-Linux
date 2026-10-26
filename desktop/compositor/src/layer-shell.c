@@ -116,8 +116,15 @@ void seyrix_layer_shell_outputs_changed(struct seyrix_server *server) {
 		if (surface->output != NULL && surface->output->enabled) {
 			continue;
 		}
-		surface->output = first_output(server, surface->output);
-		surface->surface->output = surface->output;
+		struct wlr_output *replacement = first_output(server, surface->output);
+		if (replacement != surface->output) {
+			surface->output = replacement;
+			surface->surface->output = replacement;
+			wlr_log(WLR_INFO, "Layer surface %s moved to output %s",
+				surface->surface->namespace != NULL ?
+					surface->surface->namespace : "",
+				replacement != NULL ? replacement->name : "none");
+		}
 	}
 	struct seyrix_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
@@ -129,13 +136,42 @@ static void handle_layer_commit(struct wl_listener *listener, void *data) {
 	(void)data;
 	struct seyrix_layer_surface *record =
 		wl_container_of(listener, record, commit);
+	uint32_t layout_fields = WLR_LAYER_SURFACE_V1_STATE_DESIRED_SIZE |
+		WLR_LAYER_SURFACE_V1_STATE_ANCHOR |
+		WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_ZONE |
+		WLR_LAYER_SURFACE_V1_STATE_MARGIN |
+		WLR_LAYER_SURFACE_V1_STATE_LAYER |
+		WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_EDGE;
+	bool layout_changed =
+		(record->surface->current.committed & layout_fields) != 0;
 	if (record->surface->current.layer != record->layer) {
 		record->layer = record->surface->current.layer;
 		wlr_scene_node_reparent(&record->scene_surface->tree->node,
 			scene_layer(record->server, record->layer));
+		layout_changed = true;
+	}
+	if (!layout_changed) {
+		return;
+	}
+	struct seyrix_output *output;
+	struct wlr_box previous_usable_area = {0};
+	wl_list_for_each(output, &record->server->outputs, link) {
+		if (output->wlr_output == record->output) {
+			previous_usable_area = output->usable_area;
+			break;
+		}
 	}
 	arrange_output(record->server, record->output);
-	seyrix_window_state_outputs_changed(record->server);
+	wl_list_for_each(output, &record->server->outputs, link) {
+		if (output->wlr_output == record->output &&
+				(previous_usable_area.x != output->usable_area.x ||
+				previous_usable_area.y != output->usable_area.y ||
+				previous_usable_area.width != output->usable_area.width ||
+				previous_usable_area.height != output->usable_area.height)) {
+			seyrix_window_state_outputs_changed(record->server);
+			break;
+		}
+	}
 }
 
 static void handle_layer_map(struct wl_listener *listener, void *data) {

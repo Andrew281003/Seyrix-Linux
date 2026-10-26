@@ -5,6 +5,7 @@
 #include <wlr/util/log.h>
 
 #include "decoration.h"
+#include "geometry.h"
 #include "popup.h"
 #include "window-state.h"
 
@@ -13,6 +14,31 @@ static void remove_listener(struct wl_listener *listener) {
 		wl_list_remove(&listener->link);
 		wl_list_init(&listener->link);
 	}
+}
+
+static void window_identity(struct seyrix_window *window, pid_t *pid,
+		uint32_t *surface_id) {
+	*pid = 0;
+	*surface_id = 0;
+	struct wlr_xdg_surface *surface = window->xdg_toplevel->base;
+	if (surface->resource != NULL) {
+		*surface_id = wl_resource_get_id(surface->resource);
+	}
+	if (surface->client != NULL && surface->client->client != NULL) {
+		wl_client_get_credentials(surface->client->client, pid, NULL, NULL);
+	}
+}
+
+static void log_geometry_evidence(const char *event,
+		struct seyrix_window *window) {
+	pid_t pid;
+	uint32_t surface_id;
+	window_identity(window, &pid, &surface_id);
+	struct wlr_box geometry = window->xdg_toplevel->base->geometry;
+	wlr_log(WLR_INFO,
+		"GEOMETRY_EVIDENCE event=%s pid=%ld surface=%u x=%d y=%d width=%d height=%d",
+		event, (long)pid, surface_id, window->scene_tree->node.x,
+		window->scene_tree->node.y, geometry.width, geometry.height);
 }
 
 void seyrix_focus_window(struct seyrix_server *server,
@@ -84,18 +110,29 @@ void seyrix_focus_next_window(struct seyrix_server *server,
 void seyrix_reset_cursor_mode(struct seyrix_server *server) {
 	if (server->cursor_mode == SEYRIX_CURSOR_RESIZE &&
 			server->grabbed_window != NULL) {
+		pid_t pid;
+		uint32_t surface_id;
+		window_identity(server->grabbed_window, &pid, &surface_id);
+		struct wlr_box geometry =
+			server->grabbed_window->xdg_toplevel->base->geometry;
 		wlr_xdg_toplevel_set_resizing(
 			server->grabbed_window->xdg_toplevel, false);
-		wlr_log(WLR_INFO, "Resize gesture ended at %dx%d",
-			server->grabbed_window->xdg_toplevel->base->geometry.width,
-			server->grabbed_window->xdg_toplevel->base->geometry.height);
+		wlr_log(WLR_INFO,
+			"Resize gesture ended pid=%ld surface=%u at %dx%d",
+			(long)pid, surface_id, geometry.width, geometry.height);
 		seyrix_window_state_capture_normal(server->grabbed_window);
+		log_geometry_evidence("grab-end", server->grabbed_window);
 	} else if (server->cursor_mode == SEYRIX_CURSOR_MOVE &&
 			server->grabbed_window != NULL) {
-		wlr_log(WLR_INFO, "Window moved to %d,%d",
+		pid_t pid;
+		uint32_t surface_id;
+		window_identity(server->grabbed_window, &pid, &surface_id);
+		wlr_log(WLR_INFO, "Window moved to pid=%ld surface=%u %d,%d",
+			(long)pid, surface_id,
 			server->grabbed_window->scene_tree->node.x,
 			server->grabbed_window->scene_tree->node.y);
 		seyrix_window_state_capture_normal(server->grabbed_window);
+		log_geometry_evidence("grab-end", server->grabbed_window);
 	}
 	server->cursor_mode = SEYRIX_CURSOR_PASSTHROUGH;
 	server->grabbed_window = NULL;
@@ -120,23 +157,21 @@ void seyrix_begin_interactive(struct seyrix_window *window,
 			server->grab_x, server->grab_y);
 		return;
 	}
-	wlr_log(WLR_INFO, "Window resize gesture started app_id=%s edges=%u",
-		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
-		edges);
-
 	struct wlr_box geometry = window->xdg_toplevel->base->geometry;
 	int titlebar = seyrix_decoration_titlebar_height(window);
-	double right = window->scene_tree->node.x + geometry.x + geometry.width;
-	double bottom = window->scene_tree->node.y + titlebar + geometry.y + geometry.height;
-	server->grab_x = server->cursor->x -
-		((edges & WLR_EDGE_RIGHT) != 0 ? right :
-			window->scene_tree->node.x + geometry.x);
-	server->grab_y = server->cursor->y -
-		((edges & WLR_EDGE_BOTTOM) != 0 ? bottom :
-			window->scene_tree->node.y + titlebar + geometry.y);
 	server->grab_box = geometry;
 	server->grab_box.x += window->scene_tree->node.x;
 	server->grab_box.y += window->scene_tree->node.y + titlebar;
+	if (!seyrix_resize_grab_offsets(&server->grab_box, edges,
+			server->cursor->x, server->cursor->y,
+			&server->grab_x, &server->grab_y)) {
+		server->cursor_mode = SEYRIX_CURSOR_PASSTHROUGH;
+		server->grabbed_window = NULL;
+		return;
+	}
+	wlr_log(WLR_INFO, "Window resize gesture started app_id=%s edges=%u",
+		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
+		edges);
 	server->resize_edges = edges;
 	wlr_xdg_toplevel_set_resizing(window->xdg_toplevel, true);
 }
@@ -167,6 +202,7 @@ static void handle_window_map(struct wl_listener *listener, void *data) {
 	wlr_log(WLR_INFO, "Window initial position: app_id=%s x=%d y=%d",
 		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
 		window->scene_tree->node.x, window->scene_tree->node.y);
+	log_geometry_evidence("map", window);
 	if (seyrix_workspace_window_is_visible(window)) {
 		seyrix_focus_window(window->server, window);
 	}
@@ -216,6 +252,7 @@ static void handle_window_commit(struct wl_listener *listener, void *data) {
 			window->last_height = geometry->height;
 			wlr_log(WLR_INFO, "Window geometry committed: %dx%d",
 				geometry->width, geometry->height);
+			log_geometry_evidence("commit", window);
 		}
 	}
 	seyrix_window_state_commit(window);

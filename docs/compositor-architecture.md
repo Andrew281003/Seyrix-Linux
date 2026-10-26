@@ -53,6 +53,13 @@ seat focus. Pointer hit testing walks the enabled scene, so disabled workspace
 trees cannot receive pointer focus. Workspace switches clear pointer focus and
 restore the destination workspace's remembered eligible window.
 
+Absolute device coordinates are passed to `wlr_cursor_warp_absolute`, which
+maps normalized device coordinates into the output layout. Pointer hit testing,
+interactive grabs, and scene-node positions then use layout coordinates. A
+resize keeps the unselected client edge anchored when min/max constraints clamp
+the requested size; the compositor sends the constrained size through xdg-shell
+and records the resulting committed geometry.
+
 `window-state.c` owns maximize, unmaximize, fullscreen, restore geometry, and
 minimize state. It tracks the requested state separately from wlroots'
 committed xdg-toplevel state. The compositor sends size and state configure
@@ -79,7 +86,9 @@ testing and title-bar geometry use the same decoration state as rendering.
 usable area. The native `seyrix-shell` client is a separate C process. It maps
 a small top-layer panel, handles pointer clicks for workspace selection, and
 communicates selection requests and active-workspace updates over a private
-local socket. A panel crash closes the channel but does not stop the
+local socket. When an output is disabled or removed, the protocol surface and
+its compositor record move together to a remaining enabled output and are
+rearranged there. A panel crash closes the channel but does not stop the
 compositor.
 
 `output.c` owns one record and scene output per connected output. It enables

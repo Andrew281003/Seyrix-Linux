@@ -143,6 +143,9 @@ static void apply_requested_state(struct seyrix_window *window) {
 	struct seyrix_window_state *state = window->window_state;
 	struct wlr_xdg_toplevel *toplevel = window->xdg_toplevel;
 	struct wlr_xdg_surface *xdg_surface = toplevel->base;
+	if (!xdg_surface->initialized) {
+		return;
+	}
 	bool fullscreen = state->desired_fullscreen;
 	bool maximized = state->desired_maximized && !fullscreen;
 	bool special = fullscreen || maximized;

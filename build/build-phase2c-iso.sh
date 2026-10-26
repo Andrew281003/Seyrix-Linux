@@ -18,7 +18,7 @@ if (( EUID != 0 )); then
   exit 2
 fi
 
-for command in mkarchiso pacman sha256sum meson ninja pkg-config wayland-scanner; do
+for command in mkarchiso pacman sha256sum meson ninja pkg-config wayland-scanner git; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command is missing: $command" >&2
     exit 2
@@ -30,6 +30,13 @@ if ! pkg-config --exists wlroots-0.20 ||
   echo "Install wlroots0.20 development files from the active Arch repositories." >&2
   echo "Expected pkg-config dependency wlroots-0.20 in the 0.20 API series." >&2
   exit 2
+fi
+
+sanitizers="${SEYRIX_BUILD_SANITIZERS:-}"
+if [[ -n "$sanitizers" && "$sanitizers" != address &&
+		"$sanitizers" != undefined && "$sanitizers" != address,undefined ]]; then
+	echo "SEYRIX_BUILD_SANITIZERS must be empty, address, undefined, or address,undefined." >&2
+	exit 2
 fi
 
 if ! pkg-config --exists wlr-protocols ||
@@ -56,9 +63,15 @@ if [[ -n "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   exit 2
 fi
 
+compositor_build_args=(--buildtype=release --prefix=/usr --wrap-mode=nofallback)
+if [[ -n "$sanitizers" ]]; then
+	compositor_build_args=(--buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback
+		"-Db_sanitize=$sanitizers")
+fi
 meson setup "$compositor_build_dir" "$repo_root/desktop/compositor" \
-  --buildtype=release --prefix=/usr --wrap-mode=nofallback
+	"${compositor_build_args[@]}"
 ninja -C "$compositor_build_dir"
+meson test -C "$compositor_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$compositor_build_dir"
 
 meson setup "$protocol_probe_build_dir" "$repo_root/desktop/protocol-probe" \
@@ -112,6 +125,15 @@ pacman-conf --repo-list > "$metadata_dir/repositories.txt"
   printf 'SOURCE_DATE_EPOCH: %s\n' "$SOURCE_DATE_EPOCH"
   printf 'Build host kernel: %s\n' "$(uname -r)"
   printf 'Build host virtualization: %s\n' "$(systemd-detect-virt 2>/dev/null || true)"
+  printf 'Source branch: %s\n' "$(git -C "$repo_root" branch --show-current)"
+  printf 'Source commit: %s\n' "$(git -C "$repo_root" rev-parse HEAD)"
+  if [[ -z "$(git -C "$repo_root" status --porcelain)" ]]; then
+    printf 'Source worktree: clean\n'
+  else
+    printf 'Source worktree: modified\n'
+    git -C "$repo_root" status --short >> "$metadata_dir/build-environment.txt"
+  fi
+  printf 'Compositor sanitizers: %s\n' "${sanitizers:-none}"
   printf 'Base profile source: %s\n' "$repo_root/config/archiso"
   printf 'Graphics overlay source: %s\n' "$repo_root/config/graphics-overlay"
   printf 'Compositor overlay source: %s\n' "$repo_root/config/compositor-overlay"
