@@ -95,6 +95,12 @@ static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 			(sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
 		int direction = sym == XKB_KEY_Left ? -1 : 1;
 		if ((modifiers & WLR_MODIFIER_SHIFT) != 0) {
+			wlr_log(WLR_INFO,
+				"Workspace move shortcut direction=%d active=%zu focused=%s",
+				direction, server->active_workspace_index + 1,
+				server->focused_window != NULL &&
+				server->focused_window->xdg_toplevel->app_id != NULL ?
+					server->focused_window->xdg_toplevel->app_id : "none");
 			seyrix_workspace_move_focused(server, direction);
 		} else {
 			seyrix_workspace_switch_relative(server, direction);
@@ -104,6 +110,9 @@ static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 		size_t index = (size_t)(sym - XKB_KEY_1);
 		/* Only the four initial workspaces exist in this phase. */
 		if (index < SEYRIX_WORKSPACE_COUNT) {
+			wlr_log(WLR_INFO,
+				"Direct workspace selection key=0x%x target=%zu current=%zu",
+				sym, index + 1, server->active_workspace_index + 1);
 			seyrix_workspace_switch(server, index);
 		}
 	} else {
@@ -140,7 +149,15 @@ static void handle_keyboard_key(struct wl_listener *listener, void *data) {
 	const xkb_keysym_t *syms = NULL;
 	int count = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state,
 		keycode, &syms);
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
 	for (int i = 0; i < count; i++) {
+		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED &&
+				(modifiers & WLR_MODIFIER_LOGO) != 0 &&
+				event->keycode >= KEY_1 && event->keycode <= KEY_4) {
+			wlr_log(WLR_INFO,
+				"Super number input keycode=%u keysym=0x%x modifiers=0x%x",
+				event->keycode, syms[i], modifiers);
+		}
 		if (handle_shortcut(keyboard, event, syms[i])) {
 			remember_shortcut_press(keyboard, event->keycode);
 			return;
@@ -325,9 +342,8 @@ static void process_cursor_resize(struct seyrix_server *server) {
 			server->grab_x, server->grab_y, server->resize_edges,
 			toplevel->current.min_width, toplevel->current.min_height,
 			toplevel->current.max_width, toplevel->current.max_height,
-			window->xdg_toplevel->base->geometry.x,
-			window->xdg_toplevel->base->geometry.y,
-			seyrix_decoration_titlebar_height(window), &resize)) {
+			server->grab_geometry_x, server->grab_geometry_y,
+			server->grab_titlebar_height, &resize)) {
 		return;
 	}
 	wlr_scene_node_set_position(&window->scene_tree->node,

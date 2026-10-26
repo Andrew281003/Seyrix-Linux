@@ -102,6 +102,9 @@ struct seyrix_server {
 	double grab_x;
 	double grab_y;
 	struct wlr_box grab_box;
+	int grab_geometry_x;
+	int grab_geometry_y;
+	int grab_titlebar_height;
 	uint32_t resize_edges;
 	uint32_t consumed_pointer_button;
 	uint64_t started_at_ms;

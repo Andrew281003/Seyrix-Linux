@@ -58,7 +58,11 @@ maps normalized device coordinates into the output layout. Pointer hit testing,
 interactive grabs, and scene-node positions then use layout coordinates. A
 resize keeps the unselected client edge anchored when min/max constraints clamp
 the requested size; the compositor sends the constrained size through xdg-shell
-and records the resulting committed geometry.
+and records the resulting committed geometry. Each resize grab snapshots the
+client geometry offsets and effective title-bar height at gesture start, then
+uses that same coordinate frame while the client acknowledges and commits new
+sizes. This prevents a client geometry change during the configure cycle from
+shifting the scene origin of an anchored edge.
 
 `window-state.c` owns maximize, unmaximize, fullscreen, restore geometry, and
 minimize state. It tracks the requested state separately from wlroots'

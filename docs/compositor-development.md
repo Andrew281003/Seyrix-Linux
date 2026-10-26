@@ -32,9 +32,9 @@ the allowed values are `address`, `undefined`, and `address,undefined`.
 ## Layer A and Layer B checks
 
 The build's Meson test exercises edge/corner resize geometry, min/max anchor
-constraints, title-bar offsets, and wlroots absolute-pointer mapping on a
-positioned headless output. Run the compositor's live headless integration
-workflow inside Arch WSL as root:
+constraints, captured resize-start geometry offsets, title-bar offsets, and
+wlroots absolute-pointer mapping on a positioned headless output. Run the
+compositor's live headless integration workflow inside Arch WSL as root:
 
 ```sh
 tests/headless-integration.sh

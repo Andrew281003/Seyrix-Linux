@@ -71,6 +71,25 @@ static void test_resize_edges_and_corners(void) {
 		100, 100, 250, 150, "bottom-right corner");
 }
 
+static void test_resize_uses_grab_start_geometry_offset(void) {
+	/* The client geometry box begins below the server-side titlebar. */
+	struct wlr_box initial = {
+		.x = 100, .y = 93, .width = 440, .height = 320,
+	};
+	double grab_x;
+	double grab_y;
+	struct seyrix_resize_geometry result;
+	CHECK(seyrix_resize_grab_offsets(&initial, WLR_EDGE_BOTTOM,
+		200, 413, &grab_x, &grab_y),
+		"bottom resize captures the initial client geometry edge");
+	CHECK(seyrix_calculate_resize(&initial, 200, 453, grab_x, grab_y,
+		WLR_EDGE_BOTTOM, 1, 1, 0, 0, 0, 0, 26, &result),
+		"bottom resize uses the captured geometry coordinate frame");
+	CHECK(result.scene_y == 67 && result.client_y == 93 &&
+		result.height == 360,
+		"bottom resize keeps the original scene top anchored after client configure");
+}
+
 static void test_resize_constraints_preserve_anchors(void) {
 	struct wlr_box initial = { .x = 100, .y = 100, .width = 200, .height = 120 };
 	struct seyrix_resize_geometry result;
@@ -200,6 +219,7 @@ static void test_wlroots_absolute_pointer_transform(void) {
 
 int main(void) {
 	test_resize_edges_and_corners();
+	test_resize_uses_grab_start_geometry_offset();
 	test_resize_constraints_preserve_anchors();
 	test_wlroots_absolute_pointer_transform();
 	if (failures != 0) {

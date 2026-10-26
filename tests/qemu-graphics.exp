@@ -269,21 +269,24 @@ proc install_guest_helper {helper_path} {
     send -i $qemu_spawn_id -- "cat > /tmp/seyrix-qemu-guest-helper.sh <<'SEYRIX_GUEST_HELPER_EOF'\r"
     set helper_payload [string map [list "\n" "\r"] $helper_source]
     send -i $qemu_spawn_id -- $helper_payload
-    send -i $qemu_spawn_id -- "\rSEYRIX_GUEST_HELPER_EOF\r"
-    expect -i $qemu_spawn_id {
-        -re {root@seyrix-dev[^\r\n]*# ?$} {}
+    send -i $qemu_spawn_id -- "\rSEYRIX_GUEST_HELPER_EOF\rif chmod +x /tmp/seyrix-qemu-guest-helper.sh && bash -n /tmp/seyrix-qemu-guest-helper.sh; then echo QEMU_GUEST_HELPER=installed; else echo QEMU_GUEST_HELPER=failed; fi\r"
+    expect -i $qemu_spawn_id \
+        -re {QEMU_GUEST_HELPER=installed} {} \
+        -re {QEMU_GUEST_HELPER=failed} {
+            set timeout $saved_timeout
+            puts stderr "The QEMU guest helper failed its shell syntax check."
+            exit 1
+        } \
         timeout {
             set timeout $saved_timeout
             puts stderr "Timed out installing the QEMU guest helper."
             exit 1
-        }
+        } \
         eof {
             puts stderr "QEMU exited while installing the guest helper."
             exit 1
         }
-    }
     set timeout $saved_timeout
-    puts "QEMU_GUEST_HELPER=installed"
 }
 
 proc run_serial_capture {command success_pattern failure_pattern description stage_timeout} {
@@ -296,7 +299,7 @@ proc run_serial_capture {command success_pattern failure_pattern description sta
     send -i $qemu_spawn_id -- "$command\r"
     set result incomplete
     set captured {}
-    expect -i $qemu_spawn_id {
+    expect -i $qemu_spawn_id \
         -re $success_pattern {
             set result pass
             for {set index 1} {$index < 20} {incr index} {
@@ -304,15 +307,14 @@ proc run_serial_capture {command success_pattern failure_pattern description sta
                     lappend captured $expect_out($index,string)
                 }
             }
-        }
-        -re $failure_pattern {set result fail}
-        timeout {set result incomplete}
+        } \
+        -re $failure_pattern {set result fail} \
+        timeout {set result incomplete} \
         eof {
             puts stderr "STAGE_RESULT name={$description} result=INCOMPLETE reason=qemu-eof"
             puts stderr "QEMU exited during $description."
             exit 1
         }
-    }
     set duration_ms [expr {[clock milliseconds] - $started_ms}]
     if {$result eq "pass"} {
         puts "STAGE_RESULT name={$description} result=PASS duration_ms=$duration_ms"
@@ -337,32 +339,31 @@ proc run_serial_check {command success_pattern failure_pattern description {stag
     set timestamp [clock format [clock seconds] -gmt 1 -format {%Y-%m-%dT%H:%M:%SZ}]
     puts "STAGE_BEGIN name={$description} utc=$timestamp timeout_s=$timeout"
     send -i $qemu_spawn_id -- "$command\r"
-    expect -i $qemu_spawn_id {
+    expect -i $qemu_spawn_id \
         -re $success_pattern {
             set last_serial_check_result pass
             set duration_ms [expr {[clock milliseconds] - $started_ms}]
             puts "STAGE_RESULT name={$description} result=PASS duration_ms=$duration_ms"
-        }
+        } \
         -re $failure_pattern {
             set last_serial_check_result fail
             set duration_ms [expr {[clock milliseconds] - $started_ms}]
             puts stderr "STAGE_RESULT name={$description} result=FAIL duration_ms=$duration_ms"
             puts stderr "$description failed."
             incr acceptance_failures
-        }
+        } \
         timeout {
             set last_serial_check_result incomplete
             set duration_ms [expr {[clock milliseconds] - $started_ms}]
             puts stderr "STAGE_RESULT name={$description} result=INCOMPLETE reason=timeout duration_ms=$duration_ms timeout_s=$timeout"
             puts stderr "Timed out: $description."
             incr acceptance_failures
-        }
+        } \
         eof {
             puts stderr "STAGE_RESULT name={$description} result=INCOMPLETE reason=qemu-eof"
             puts stderr "QEMU exited: $description."
             exit 1
         }
-    }
     set timeout $saved_timeout
 }
 
@@ -953,7 +954,7 @@ if {$phase2b} {
             }
             append start_command " $resize_direction"
             set start_result [run_serial_capture $start_command \
-                {RESIZE_TARGET_READY edge=([^ ]+) pid=([0-9]+) surface=([0-9]+) scene=(-?[0-9]+),(-?[0-9]+) size=([0-9]+)x([0-9]+) qmp_start=([0-9]+),([0-9]+) qmp_end=([0-9]+),([0-9]+)} \
+                {RESIZE_TARGET_READY edge=([^ ]+) pid=([0-9]+) surface=([0-9]+) scene=(-?[0-9]+),(-?[0-9]+) size=([0-9]+)x([0-9]+) qmp_start=([0-9]+),([0-9]+) qmp_end=([0-9]+),([0-9]+)\r} \
                 {RESIZE_TARGET_FAILED|QEMU_GUEST_HELPER=failed} \
                 "interactive xdg resize $resize_edge mapped-target readiness" 55]
             lassign $start_result start_status ready_edge target_pid target_surface scene_x scene_y initial_width initial_height pointer_x1 pointer_y1 pointer_x2 pointer_y2
@@ -963,7 +964,23 @@ if {$phase2b} {
                 set resize_target_unavailable 1
                 break
             }
-            qmp_mouse_drag $qmp $pointer_x1 $pointer_y1 $pointer_x2 $pointer_y2 left
+            qmp_mouse_move $qmp $pointer_x1 $pointer_y1
+            after 100
+            qmp_mouse_button $qmp left 1
+            set resize_grab_command [format {for n in $(seq 1 100); do grep -Fq 'RESIZE_FRAME_START pid=%s surface=%s ' /tmp/seyrix-compositor.log && break; sleep 0.1; done; if grep -Fq 'RESIZE_FRAME_START pid=%s surface=%s ' /tmp/seyrix-compositor.log; then echo RESIZE_GRAB_STARTED=passed; else echo RESIZE_GRAB_STARTED=failed; fi} \
+                $target_pid $target_surface $target_pid $target_surface]
+            run_serial_check $resize_grab_command {RESIZE_GRAB_STARTED=passed} \
+                {RESIZE_GRAB_STARTED=failed} \
+                "compositor resize grab start for $resize_edge $resize_direction" 20
+            if {$last_serial_check_result ne "pass"} {
+                qmp_mouse_button $qmp left 0
+                puts "RESIZE_EDGE=$resize_edge direction=$resize_direction result=INCOMPLETE reason=grab-start-not-observed"
+                continue
+            }
+            qmp_mouse_move $qmp $pointer_x2 $pointer_y2
+            after 250
+            qmp_mouse_button $qmp left 0
+            after 100
             qmp_hmp $qmp "screendump $run_dir/seyrix-resize-$resize_edge-$resize_direction.ppm"
             set check_command "bash /tmp/seyrix-qemu-guest-helper.sh resize-check $resize_edge"
             if {$resize_min ne ""} {
@@ -978,7 +995,7 @@ if {$phase2b} {
             }
             append check_command " $resize_direction"
             set check_result [run_serial_capture $check_command \
-                {RESIZE_ASSERTION=passed edge=([^ ]+) before=([0-9]+x[0-9]+) after=([0-9]+x[0-9]+) scene=(-?[0-9]+),(-?[0-9]+)} \
+                {RESIZE_ASSERTION=passed edge=([^ ]+) before=([0-9]+x[0-9]+) after=([0-9]+x[0-9]+) scene=(-?[0-9]+),(-?[0-9]+)\r} \
                 {RESIZE_ASSERTION_FAILED|QEMU_GUEST_HELPER=failed} \
                 "committed geometry and constraints for xdg resize $resize_edge $resize_direction" 55]
             if {[lindex $check_result 0] eq "pass"} {
@@ -993,9 +1010,6 @@ if {$phase2b} {
     } else {
         puts "WINDOW_RESIZE=INCOMPLETE reason=phase2c-client-probe-required"
     }
-
-qmp_key_chord $qmp {meta_l} q
-    after 500
 
     qmp_mouse_move $qmp 2815 20479
     qmp_mouse_click $qmp
@@ -1019,9 +1033,11 @@ qmp_key_chord $qmp {meta_l} q
         }
     }
 
+    set close_first_baseline_command {terminal_processes=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); if [[ "$terminal_processes" -eq 2 ]]; then printf '%s\n' "$destroyed" > /tmp/seyrix-close-first-destroyed-before; echo WINDOW_CLOSE_BASELINE=passed; else echo WINDOW_CLOSE_BASELINE=failed; printf 'WINDOW_CLOSE_BASELINE_DIAGNOSTICS terminals=%s destroyed=%s\n' "$terminal_processes" "$destroyed"; fi}
+    run_serial_check $close_first_baseline_command {WINDOW_CLOSE_BASELINE=passed} {WINDOW_CLOSE_BASELINE=failed} "record two-window close baseline" 20
     qmp_key_chord $qmp {meta_l} q
     after 1500
-    set close_first_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 1 && "$destroyed" -ge 1 ]]; then echo WINDOW_CLOSE_FIRST=passed; else echo WINDOW_CLOSE_FIRST=failed; printf 'WINDOW_CLOSE_DIAGNOSTICS_BEGIN\n'; pgrep -a -u 1000 -x weston-terminal || true; grep -E 'Close requested|Window destroyed|Window mapped|Focus changed|focused' /tmp/seyrix-compositor.log | tail -n 30; printf 'WINDOW_CLOSE_DIAGNOSTICS_END\n'; fi}
+    set close_first_command {terminal_processes=$(pgrep -u 1000 -x weston-terminal | wc -l); before=$(cat /tmp/seyrix-close-first-destroyed-before); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_PROCESS_COUNT_AFTER_CLOSE=%s\nDESTROYED_BEFORE=%s\nDESTROYED_AFTER=%s\n' "$terminal_processes" "$before" "$destroyed"; if [[ "$terminal_processes" -eq 1 && "$destroyed" -eq $((before + 1)) ]]; then echo WINDOW_CLOSE_FIRST=passed; else echo WINDOW_CLOSE_FIRST=failed; printf 'WINDOW_CLOSE_DIAGNOSTICS_BEGIN\n'; pgrep -a -u 1000 -x weston-terminal || true; grep -E 'Close requested|Window destroyed|Window mapped|Focus changed|focused' /tmp/seyrix-compositor.log | tail -n 30; printf 'WINDOW_CLOSE_DIAGNOSTICS_END\n'; fi}
     send -- "$close_first_command\r"
     expect {
         -re {WINDOW_CLOSE_FIRST=passed} {}
@@ -1041,7 +1057,7 @@ qmp_key_chord $qmp {meta_l} q
 
     qmp_key_chord $qmp {meta_l} q
     after 1500
-    set close_all_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_COUNT_AFTER_CLOSE_ALL=%s\nDESTROYED_WINDOWS=%s\n' "$count" "$destroyed"; if [[ "$count" -eq 0 && "$destroyed" -ge 2 ]]; then echo WINDOW_CLOSE=passed; else echo WINDOW_CLOSE=failed; fi}
+    set close_all_command {terminal_processes=$(pgrep -u 1000 -x weston-terminal | wc -l); before=$(cat /tmp/seyrix-close-first-destroyed-before); destroyed=$(grep -c 'Window destroyed' /tmp/seyrix-compositor.log || true); printf 'TERMINAL_PROCESS_COUNT_AFTER_CLOSE_ALL=%s\nDESTROYED_BEFORE=%s\nDESTROYED_AFTER=%s\n' "$terminal_processes" "$before" "$destroyed"; if [[ "$terminal_processes" -eq 0 && "$destroyed" -eq $((before + 2)) ]]; then echo WINDOW_CLOSE=passed; else echo WINDOW_CLOSE=failed; fi}
     send -- "$close_all_command\r"
     expect {
         -re {WINDOW_CLOSE=passed} {}
@@ -1060,7 +1076,7 @@ qmp_key_chord $qmp {meta_l} q
     }
 
 	if {$phase2c} {
-		set shell_ready_check {for n in $(seq 1 30); do if pgrep -u 1000 -x seyrix-shell >/dev/null && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then break; fi; sleep 1; done; if pgrep -u 1000 -x seyrix-shell >/dev/null && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then echo PHASE2C_PANEL=passed; else echo PHASE2C_PANEL=failed; fi}
+		set shell_ready_check {for n in $(seq 1 30); do panel=$(pgrep -u 1000 -x seyrix-shell | head -n 1); if [[ -n "$panel" ]] && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then break; fi; sleep 1; done; if [[ -n "$panel" ]] && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then echo PHASE2C_PANEL=passed; else echo PHASE2C_PANEL=failed; printf 'PANEL_START_DIAGNOSTICS pid=%s map_count=%s\n' "${panel:-missing}" "$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log || true)"; grep -E 'Started isolated Seyrix layer-shell panel|Layer shell surface mapped|seyrix panel' /tmp/seyrix-compositor.log | tail -n 16; fi}
 		run_serial_check $shell_ready_check {PHASE2C_PANEL=passed} {PHASE2C_PANEL=failed} "isolated layer-shell panel startup"
 		qmp_hmp $qmp "screendump $run_dir/seyrix-panel-workspace-before.ppm"
 		qmp_mouse_move $qmp 4659 546
@@ -1088,13 +1104,13 @@ qmp_key_chord $qmp {meta_l} q
 			exit 1
 		}
 		qmp_key_chord $qmp {meta_l} 1
-		set workspace_one_active {for n in $(seq 1 20); do test "$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1)" = 'Switched to workspace 1' && break; sleep 1; done; if test "$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1)" = 'Switched to workspace 1'; then echo WORKSPACE_ONE_ACTIVE=passed; else echo WORKSPACE_ONE_ACTIVE=failed; fi}
+		set workspace_one_active {for n in $(seq 1 20); do active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ -z "$active" ]]; then active=1; fi; [[ "$active" == 1 ]] && break; sleep 1; done; if [[ "$active" == 1 ]]; then echo WORKSPACE_ONE_ACTIVE=passed; else echo WORKSPACE_ONE_ACTIVE=failed; grep -E 'Super number input|Direct workspace selection|Switched to workspace' /tmp/seyrix-compositor.log | tail -n 20; fi}
 		run_serial_check $workspace_one_active {WORKSPACE_ONE_ACTIVE=passed} {WORKSPACE_ONE_ACTIVE=failed} "workspace one activation before no-wrap check" 25
 		qmp_key_chord $qmp {meta_l} ret
 		set workspace_one_terminal_ready {for n in $(seq 1 60); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); pid=$(pgrep -u 1000 -x weston-terminal | tail -n 1); if [[ "$count" -ge 1 ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log; then break; fi; sleep 1; done; if [[ "$count" -ge 1 ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log; then echo WORKSPACE_ONE_TERMINAL_READY=passed; else echo WORKSPACE_ONE_TERMINAL_READY=failed; pgrep -a -u 1000 -x weston-terminal || true; fi}
 		run_serial_check $workspace_one_terminal_ready {WORKSPACE_ONE_TERMINAL_READY=passed} {WORKSPACE_ONE_TERMINAL_READY=failed} "workspace one first terminal process and map readiness" 70
 		qmp_type $qmp "mkdir -p /tmp/phase2c-ws1-first\ncd /tmp/phase2c-ws1-first\ntouch first-terminal-ready\n"
-		set workspace_one_terminal_marker {if test -f /tmp/phase2c-ws1-first/first-terminal-ready; then echo WORKSPACE_ONE_TERMINAL_MARKER=passed; else echo WORKSPACE_ONE_TERMINAL_MARKER=failed; fi}
+		set workspace_one_terminal_marker {for n in $(seq 1 10); do test -f /tmp/phase2c-ws1-first/first-terminal-ready && break; sleep 1; done; if test -f /tmp/phase2c-ws1-first/first-terminal-ready; then echo WORKSPACE_ONE_TERMINAL_MARKER=passed; else echo WORKSPACE_ONE_TERMINAL_MARKER=failed; fi}
 		run_serial_check $workspace_one_terminal_marker {WORKSPACE_ONE_TERMINAL_MARKER=passed} {WORKSPACE_ONE_TERMINAL_MARKER=failed} "workspace one first terminal command marker" 20
 		qmp_type $qmp "touch /tmp/phase2c-boundary-ws1-before\n"
 		set workspace_boundary_left_check {before=$(grep -c 'Moved focused window to workspace' /tmp/seyrix-compositor.log || true); switches=$(grep -c 'Switched to workspace' /tmp/seyrix-compositor.log || true); pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); if test -f /tmp/phase2c-boundary-ws1-before && [[ -n "$pid" ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log && grep -q 'Switched to workspace 1' /tmp/seyrix-compositor.log; then echo "$before" > /tmp/phase2c-boundary-move-before; echo "$switches" > /tmp/phase2c-boundary-switch-before; echo WORKSPACE_BOUNDARY_BASELINE=passed; else echo WORKSPACE_BOUNDARY_BASELINE=failed; fi}
@@ -1146,7 +1162,7 @@ qmp_key_chord $qmp {meta_l} q
 		after 400
 		qmp_key_chord $qmp {meta_l shift} m
 		after 500
-		set popup_minimize_check {if grep -q 'POPUP_DONE kind=popup' /tmp/phase2c-popup.log && grep -q 'Window minimized into compositor hidden state' /tmp/seyrix-compositor.log && grep -q 'Switched to workspace 2' /tmp/seyrix-compositor.log && pgrep -u 1000 -x seyrix-protocol-probe >/dev/null; then echo PHASE2C_POPUP_MINIMIZE=passed; else echo PHASE2C_POPUP_MINIMIZE=failed; fi}
+		set popup_minimize_check {if grep -q 'POPUP_DONE kind=popup' /tmp/phase2c-popup.log && grep -q 'Window minimized into compositor hidden state' /tmp/seyrix-compositor.log && grep -q 'Switched to workspace 2' /tmp/seyrix-compositor.log && bash /tmp/seyrix-qemu-guest-helper.sh popup-alive; then echo PHASE2C_POPUP_MINIMIZE=passed; else echo PHASE2C_POPUP_MINIMIZE=failed; fi}
 		run_serial_check $popup_minimize_check {PHASE2C_POPUP_MINIMIZE=passed} {PHASE2C_POPUP_MINIMIZE=failed} "minimize and workspace switch while an xdg popup grab is active"
 
 		qmp_mouse_move $qmp 16000 16500
@@ -1169,12 +1185,12 @@ qmp_key_chord $qmp {meta_l} q
 		set second_window_ready {for n in $(seq 1 60); do ready=1; pids=$(pgrep -u 1000 -x weston-terminal || true); count=$(printf '%s\n' "$pids" | sed '/^$/d' | wc -l); for pid in $pids; do grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log || ready=0; done; if [[ "$count" -ge 2 && "$ready" -eq 1 ]]; then break; fi; sleep 1; done; printf 'WORKSPACE_SECOND_TERMINAL_COUNT=%s\nWORKSPACE_SECOND_MAPPED_PIDS=%s\n' "$count" "$ready"; if [[ "$count" -ge 2 && "$ready" -eq 1 ]]; then echo WORKSPACE_SECOND_WINDOW_READY=passed; else echo WORKSPACE_SECOND_WINDOW_READY=failed; pgrep -a -u 1000 -x weston-terminal || true; grep 'GEOMETRY_EVIDENCE event=map' /tmp/seyrix-compositor.log | tail -n 10; fi}
 		run_serial_check $second_window_ready {WORKSPACE_SECOND_WINDOW_READY=passed} {WORKSPACE_SECOND_WINDOW_READY=failed} "second terminal process and same-PID toplevel map readiness" 70
 		qmp_type $qmp "mkdir -p /tmp/phase2c-ws1-second\ncd /tmp/phase2c-ws1-second\ntouch second-terminal-ready\n"
-		set workspace_one_second_marker {if test -f /tmp/phase2c-ws1-second/second-terminal-ready; then echo WORKSPACE_ONE_SECOND_TERMINAL_MARKER=passed; else echo WORKSPACE_ONE_SECOND_TERMINAL_MARKER=failed; fi}
+		set workspace_one_second_marker {for n in $(seq 1 10); do test -f /tmp/phase2c-ws1-second/second-terminal-ready && break; sleep 1; done; if test -f /tmp/phase2c-ws1-second/second-terminal-ready; then echo WORKSPACE_ONE_SECOND_TERMINAL_MARKER=passed; else echo WORKSPACE_ONE_SECOND_TERMINAL_MARKER=failed; fi}
 		run_serial_check $workspace_one_second_marker {WORKSPACE_ONE_SECOND_TERMINAL_MARKER=passed} {WORKSPACE_ONE_SECOND_TERMINAL_MARKER=failed} "workspace one second terminal command marker" 20
 		qmp_hmp $qmp "screendump $run_dir/seyrix-workspace-1.ppm"
 
 		set watch_start_result [run_serial_capture {bash /tmp/seyrix-qemu-guest-helper.sh watch-start} \
-			{WATCH_POINTER_TARGET_READY pid=([0-9]+) surface=([0-9]+) scene=(-?[0-9]+),(-?[0-9]+) size=([0-9]+)x([0-9]+) qmp=([0-9]+),([0-9]+)} \
+			{WATCH_POINTER_TARGET_READY pid=([0-9]+) surface=([0-9]+) scene=(-?[0-9]+),(-?[0-9]+) size=([0-9]+)x([0-9]+) qmp=([0-9]+),([0-9]+)\r} \
 			{WATCH_POINTER_TARGET_FAILED|QEMU_GUEST_HELPER=failed} \
 			"hidden-workspace pointer watcher map readiness" 55]
 		lassign $watch_start_result watch_status watch_pid watch_surface watch_scene_x watch_scene_y watch_width watch_height watch_x watch_y
@@ -1195,13 +1211,13 @@ qmp_key_chord $qmp {meta_l} q
 			puts "WORKSPACE_HIDDEN_POINTER=INCOMPLETE reason=watch-target-unavailable"
 		}
 		qmp_key_chord $qmp {meta_l} right
-		set second_workspace_active {for n in $(seq 1 20); do test "$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1)" = 'Switched to workspace 2' && break; sleep 1; done; if test "$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1)" = 'Switched to workspace 2'; then echo WORKSPACE_TWO_ACTIVE=passed; else echo WORKSPACE_TWO_ACTIVE=failed; fi}
+		set second_workspace_active {for n in $(seq 1 20); do active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ -z "$active" ]]; then active=1; fi; [[ "$active" == 2 ]] && break; sleep 1; done; if [[ "$active" == 2 ]]; then echo WORKSPACE_TWO_ACTIVE=passed; else echo WORKSPACE_TWO_ACTIVE=failed; grep -E 'Super number input|Direct workspace selection|Switched to workspace' /tmp/seyrix-compositor.log | tail -n 20; fi}
 		run_serial_check $second_workspace_active {WORKSPACE_TWO_ACTIVE=passed} {WORKSPACE_TWO_ACTIVE=failed} "workspace two activation before hidden-client input checks" 25
 		qmp_key_chord $qmp {meta_l} ret
 		set second_workspace_terminal_ready {for n in $(seq 1 60); do ready=1; pids=$(pgrep -u 1000 -x weston-terminal || true); count=$(printf '%s\n' "$pids" | sed '/^$/d' | wc -l); for pid in $pids; do grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log || ready=0; done; if [[ "$count" -ge 3 && "$ready" -eq 1 ]]; then break; fi; sleep 1; done; if [[ "$count" -ge 3 && "$ready" -eq 1 ]]; then echo WORKSPACE_TWO_TERMINAL_READY=passed; else echo WORKSPACE_TWO_TERMINAL_READY=failed; pgrep -a -u 1000 -x weston-terminal || true; fi}
 		run_serial_check $second_workspace_terminal_ready {WORKSPACE_TWO_TERMINAL_READY=passed} {WORKSPACE_TWO_TERMINAL_READY=failed} "active workspace terminal process and map readiness" 70
 		qmp_type $qmp "mkdir -p /tmp/phase2c-ws2\ncd /tmp/phase2c-ws2\ntouch active-terminal-ready\n"
-		set second_workspace_marker {if test -f /tmp/phase2c-ws2/active-terminal-ready; then echo WORKSPACE_TWO_TERMINAL_MARKER=passed; else echo WORKSPACE_TWO_TERMINAL_MARKER=failed; fi}
+		set second_workspace_marker {for n in $(seq 1 10); do test -f /tmp/phase2c-ws2/active-terminal-ready && break; sleep 1; done; if test -f /tmp/phase2c-ws2/active-terminal-ready; then echo WORKSPACE_TWO_TERMINAL_MARKER=passed; else echo WORKSPACE_TWO_TERMINAL_MARKER=failed; fi}
 		run_serial_check $second_workspace_marker {WORKSPACE_TWO_TERMINAL_MARKER=passed} {WORKSPACE_TWO_TERMINAL_MARKER=failed} "active workspace terminal command marker" 20
 		if {$watch_status eq "pass" && $watch_active_pointer_passed} {
 			set watch_hidden_baseline_command {bash /tmp/seyrix-qemu-guest-helper.sh watch-hidden-baseline}
@@ -1217,29 +1233,39 @@ qmp_key_chord $qmp {meta_l} q
 		set hidden_workspace_check {count=$(pgrep -u 1000 -x weston-terminal | wc -l); if test -f /tmp/phase2c-ws2/hidden-keyboard-probe && test ! -e /tmp/phase2c-ws1-first/hidden-keyboard-probe && test ! -e /tmp/phase2c-ws1-second/hidden-keyboard-probe && [[ "$count" -ge 3 ]]; then echo WORKSPACE_HIDDEN_INPUT=passed; else echo WORKSPACE_HIDDEN_INPUT=failed; fi}
 		run_serial_check $hidden_workspace_check {WORKSPACE_HIDDEN_INPUT=passed} {WORKSPACE_HIDDEN_INPUT=failed} "keyboard isolation with a visible client on the active workspace" 20
 		qmp_hmp $qmp "screendump $run_dir/seyrix-workspace-2-empty.ppm"
-qmp_key_chord $qmp {meta_l} left
+		set workspace_terminal_baseline {pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); if [[ -n "$pids" ]]; then printf '%s\n' "$pids" > /tmp/phase2c-workspace-terminal-baseline; printf 'WORKSPACE_TERMINAL_BASELINE=passed pids=%s\n' "$pids"; else echo WORKSPACE_TERMINAL_BASELINE=failed; fi}
+		run_serial_check $workspace_terminal_baseline {WORKSPACE_TERMINAL_BASELINE=passed} {WORKSPACE_TERMINAL_BASELINE=failed} "record workspace terminal process baseline" 20
+		set workspace_focus_markers_reset {rm -f /tmp/phase2c-ws1-first/focus-history-ws1 /tmp/phase2c-ws1-second/focus-history-ws1 /tmp/phase2c-ws2/focus-history-ws2-after-move; echo WORKSPACE_FOCUS_MARKERS_RESET=passed}
+		run_serial_check $workspace_focus_markers_reset {WORKSPACE_FOCUS_MARKERS_RESET=passed} {WORKSPACE_FOCUS_MARKERS_RESET=failed} "reset workspace focus marker files" 20
+		qmp_key_chord $qmp {meta_l} left
 		after 350
-		qmp_type $qmp "touch workspace-focus-restored\n"
+		qmp_type $qmp "touch focus-history-ws1\n"
 		after 300
-		set workspace_focus_check {if test -f /tmp/phase2c-ws1-second/workspace-focus-restored && test ! -e /tmp/phase2c-ws1-first/workspace-focus-restored; then echo WORKSPACE_FOCUS_RESTORE=passed; else echo WORKSPACE_FOCUS_RESTORE=failed; fi}
+		set workspace_focus_check {if test -f /tmp/phase2c-ws1-second/focus-history-ws1 && test ! -e /tmp/phase2c-ws1-first/focus-history-ws1; then echo WORKSPACE_FOCUS_RESTORE=passed; else echo WORKSPACE_FOCUS_RESTORE=failed; fi}
 		run_serial_check $workspace_focus_check {WORKSPACE_FOCUS_RESTORE=passed} {WORKSPACE_FOCUS_RESTORE=failed} "per-workspace focus history restoration"
 
+		set workspace_move_right_baseline {before=$(grep -c 'Moved focused window to workspace 2' /tmp/seyrix-compositor.log || true); pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); expected=$(cat /tmp/phase2c-workspace-terminal-baseline); if [[ "$pids" == "$expected" ]]; then printf '%s\n' "$before" > /tmp/phase2c-move-right-before; echo WORKSPACE_MOVE_RIGHT_BASELINE=passed; else echo WORKSPACE_MOVE_RIGHT_BASELINE=failed; fi}
+		run_serial_check $workspace_move_right_baseline {WORKSPACE_MOVE_RIGHT_BASELINE=passed} {WORKSPACE_MOVE_RIGHT_BASELINE=failed} "record move-right log baseline"
 		qmp_key_chord $qmp {meta_l shift} right
-		after 350
-		set workspace_move_right_check {count=$(pgrep -u 1000 -x weston-terminal | wc -l); moved=$(grep -c 'Moved focused window to workspace 2' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 3 && "$moved" -ge 1 ]]; then echo WORKSPACE_MOVE_RIGHT=passed; else echo WORKSPACE_MOVE_RIGHT=failed; fi}
+		set workspace_move_right_check {before=$(cat /tmp/phase2c-move-right-before); expected=$(cat /tmp/phase2c-workspace-terminal-baseline); moved=0; for n in $(seq 1 20); do moved=$(grep -c 'Moved focused window to workspace 2' /tmp/seyrix-compositor.log || true); [[ "$moved" -gt "$before" ]] && break; sleep 0.1; done; pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ "$moved" -gt "$before" && "$pids" == "$expected" && "$active" == 1 ]]; then echo WORKSPACE_MOVE_RIGHT=passed; else echo WORKSPACE_MOVE_RIGHT=failed; printf 'WORKSPACE_MOVE_RIGHT_DIAGNOSTICS before=%s moved=%s expected_pids=%s current_pids=%s active=%s\n' "$before" "$moved" "$expected" "$pids" "$active"; grep -E 'Workspace move shortcut|Moved focused window|Window move deferred|Window minimized|Switched to workspace|Focus changed' /tmp/seyrix-compositor.log | tail -n 24; fi}
 		run_serial_check $workspace_move_right_check {WORKSPACE_MOVE_RIGHT=passed} {WORKSPACE_MOVE_RIGHT=failed} "moving a focused window to the next workspace"
+		set workspace_two_focus_markers_reset {rm -f /tmp/phase2c-ws1-first/focus-history-ws2-after-move /tmp/phase2c-ws1-second/focus-history-ws2-after-move /tmp/phase2c-ws2/focus-history-ws2-after-move; echo WORKSPACE_TWO_FOCUS_MARKERS_RESET=passed}
+		run_serial_check $workspace_two_focus_markers_reset {WORKSPACE_TWO_FOCUS_MARKERS_RESET=passed} {WORKSPACE_TWO_FOCUS_MARKERS_RESET=failed} "reset workspace two focus marker files" 20
 		qmp_key_chord $qmp {meta_l} right
 		after 350
-		qmp_type $qmp "touch workspace-focus-restored\n"
+		qmp_type $qmp "touch focus-history-ws2-after-move\n"
 		after 300
-		set workspace_two_focus_check {if test -f /tmp/phase2c-ws2/workspace-focus-restored && test ! -e /tmp/phase2c-ws1-second/workspace-focus-restored; then echo WORKSPACE_TWO_FOCUS=passed; else echo WORKSPACE_TWO_FOCUS=failed; fi}
+		set workspace_two_focus_check {for n in $(seq 1 10); do test -f /tmp/phase2c-ws2/focus-history-ws2-after-move && break; test -e /tmp/phase2c-ws1-second/focus-history-ws2-after-move && break; sleep 0.2; done; if test -f /tmp/phase2c-ws2/focus-history-ws2-after-move && test ! -e /tmp/phase2c-ws1-first/focus-history-ws2-after-move && test ! -e /tmp/phase2c-ws1-second/focus-history-ws2-after-move; then echo WORKSPACE_TWO_FOCUS=passed; else echo WORKSPACE_TWO_FOCUS=failed; printf 'WORKSPACE_TWO_FOCUS_DIAGNOSTICS ws2=%s ws1_first=%s moved=%s\n' "$(test -e /tmp/phase2c-ws2/focus-history-ws2-after-move && echo present || echo absent)" "$(test -e /tmp/phase2c-ws1-first/focus-history-ws2-after-move && echo present || echo absent)" "$(test -e /tmp/phase2c-ws1-second/focus-history-ws2-after-move && echo present || echo absent)"; grep -E 'Workspace move shortcut|Moved focused window|Switched to workspace|Focus changed' /tmp/seyrix-compositor.log | tail -n 18; fi}
 		run_serial_check $workspace_two_focus_check {WORKSPACE_TWO_FOCUS=passed} {WORKSPACE_TWO_FOCUS=failed} "focus restoration on the second workspace"
+		set workspace_move_left_baseline {before=$(grep -c 'Moved focused window to workspace 1' /tmp/seyrix-compositor.log || true); pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); expected=$(cat /tmp/phase2c-workspace-terminal-baseline); if [[ "$pids" == "$expected" ]]; then printf '%s\n' "$before" > /tmp/phase2c-move-left-before; echo WORKSPACE_MOVE_LEFT_BASELINE=passed; else echo WORKSPACE_MOVE_LEFT_BASELINE=failed; fi}
+		run_serial_check $workspace_move_left_baseline {WORKSPACE_MOVE_LEFT_BASELINE=passed} {WORKSPACE_MOVE_LEFT_BASELINE=failed} "record move-left log baseline"
 		qmp_key_chord $qmp {meta_l shift} left
-		after 350
-		set workspace_move_left_check {moved=$(grep -c 'Moved focused window to workspace 1' /tmp/seyrix-compositor.log || true); if [[ "$moved" -ge 1 ]]; then echo WORKSPACE_MOVE_LEFT=passed; else echo WORKSPACE_MOVE_LEFT=failed; fi}
+		set workspace_move_left_check {before=$(cat /tmp/phase2c-move-left-before); expected=$(cat /tmp/phase2c-workspace-terminal-baseline); moved=0; for n in $(seq 1 20); do moved=$(grep -c 'Moved focused window to workspace 1' /tmp/seyrix-compositor.log || true); [[ "$moved" -gt "$before" ]] && break; sleep 0.1; done; pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ "$moved" -gt "$before" && "$pids" == "$expected" && "$active" == 2 ]]; then echo WORKSPACE_MOVE_LEFT=passed; else echo WORKSPACE_MOVE_LEFT=failed; printf 'WORKSPACE_MOVE_LEFT_DIAGNOSTICS before=%s moved=%s expected_pids=%s current_pids=%s active=%s\n' "$before" "$moved" "$expected" "$pids" "$active"; grep -E 'Workspace move shortcut|Moved focused window|Window move deferred|Window minimized|Switched to workspace|Focus changed' /tmp/seyrix-compositor.log | tail -n 24; fi}
 		run_serial_check $workspace_move_left_check {WORKSPACE_MOVE_LEFT=passed} {WORKSPACE_MOVE_LEFT=failed} "moving a focused window to the previous workspace"
-		qmp_key_chord $qmp {meta_l 3}
+		qmp_key_chord $qmp {meta_l} 3
 		after 350
+		set workspace_three_check {active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ -z "$active" ]]; then active=1; fi; if [[ "$active" == 3 ]]; then echo WORKSPACE_THREE=passed; else echo WORKSPACE_THREE=failed; fi}
+		run_serial_check $workspace_three_check {WORKSPACE_THREE=passed} {WORKSPACE_THREE=failed} "Super+3 selects workspace 3" 20
 		qmp_mouse_move $qmp 15000 15000
 		qmp_mouse_click $qmp
 		qmp_type $qmp "touch /tmp/phase2c-hidden-workspace-number-leak\n"
@@ -1249,13 +1275,13 @@ qmp_key_chord $qmp {meta_l} left
 		qmp_hmp $qmp "screendump $run_dir/seyrix-workspace-3-empty.ppm"
 		qmp_key_chord $qmp {meta_l} 4
 		qmp_hmp $qmp "screendump $run_dir/seyrix-workspace-4-panel-selection.ppm"
-		set workspace_four_check {if test "$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1)" = 'Switched to workspace 4'; then echo WORKSPACE_FOUR=passed; else echo WORKSPACE_FOUR=failed; fi}
+		set workspace_four_check {active=$(grep 'Switched to workspace' /tmp/seyrix-compositor.log | tail -n 1 | sed -E 's/^.*Switched to workspace ([0-9]+).*$/\1/' | tr -d '\r'); if [[ -z "$active" ]]; then active=1; fi; if [[ "$active" == 4 ]]; then echo WORKSPACE_FOUR=passed; else echo WORKSPACE_FOUR=failed; fi}
 		run_serial_check $workspace_four_check {WORKSPACE_FOUR=passed} {WORKSPACE_FOUR=failed} "Super+4 selects workspace 4" 20
 		qmp_key_chord $qmp {meta_l} ret
 		set workspace_four_window_ready {for n in $(seq 1 60); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); pid=$(pgrep -u 1000 -x weston-terminal | tail -n 1); if [[ "$count" -ge 4 ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log; then break; fi; sleep 1; done; if [[ "$count" -ge 4 ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log; then echo WORKSPACE_FOUR_WINDOW_READY=passed; else echo WORKSPACE_FOUR_WINDOW_READY=failed; pgrep -a -u 1000 -x weston-terminal || true; fi}
 		run_serial_check $workspace_four_window_ready {WORKSPACE_FOUR_WINDOW_READY=passed} {WORKSPACE_FOUR_WINDOW_READY=failed} "workspace four active terminal process and map readiness" 70
 		qmp_type $qmp "mkdir -p /tmp/phase2c-ws4\ncd /tmp/phase2c-ws4\ntouch active-terminal-ready\n"
-		set workspace_four_terminal_marker {if test -f /tmp/phase2c-ws4/active-terminal-ready; then echo WORKSPACE_FOUR_TERMINAL_MARKER=passed; else echo WORKSPACE_FOUR_TERMINAL_MARKER=failed; fi}
+		set workspace_four_terminal_marker {for n in $(seq 1 10); do test -f /tmp/phase2c-ws4/active-terminal-ready && break; sleep 1; done; if test -f /tmp/phase2c-ws4/active-terminal-ready; then echo WORKSPACE_FOUR_TERMINAL_MARKER=passed; else echo WORKSPACE_FOUR_TERMINAL_MARKER=failed; fi}
 		run_serial_check $workspace_four_terminal_marker {WORKSPACE_FOUR_TERMINAL_MARKER=passed} {WORKSPACE_FOUR_TERMINAL_MARKER=failed} "workspace four visible terminal command marker" 20
 		set workspace_boundary_right_baseline {before=$(grep -c 'Moved focused window to workspace' /tmp/seyrix-compositor.log || true); switches=$(grep -c 'Switched to workspace' /tmp/seyrix-compositor.log || true); pid=$(pgrep -u 1000 -x weston-terminal | tail -n 1); if test -f /tmp/phase2c-ws4/active-terminal-ready && [[ -n "$pid" ]] && grep -Fq "GEOMETRY_EVIDENCE event=map pid=$pid " /tmp/seyrix-compositor.log && grep -q 'Switched to workspace 4' /tmp/seyrix-compositor.log; then echo "$before" > /tmp/phase2c-boundary4-move-before; echo "$switches" > /tmp/phase2c-boundary4-switch-before; echo WORKSPACE_BOUNDARY_4_BASELINE=passed; else echo WORKSPACE_BOUNDARY_4_BASELINE=failed; fi}
 		run_serial_check $workspace_boundary_right_baseline {WORKSPACE_BOUNDARY_4_BASELINE=passed} {WORKSPACE_BOUNDARY_4_BASELINE=failed} "workspace four active visible-client boundary baseline" 20
@@ -1266,23 +1292,25 @@ qmp_key_chord $qmp {meta_l} left
 		run_serial_check $workspace_boundary_right_check {WORKSPACE_BOUNDARY_RIGHT=passed} {WORKSPACE_BOUNDARY_RIGHT=failed} "workspace four no-wrap with visible client still interactive" 20
 		qmp_key_chord $qmp {meta_l} q
 		after 500
-		qmp_key_chord $qmp {meta_l 1}
+		qmp_key_chord $qmp {meta_l} 1
 		after 350
 		qmp_type $qmp "touch /tmp/phase2c-workspace-app-persistent\n"
 		after 350
-		set workspace_persistence_check {count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 3 ]] && test -f /tmp/phase2c-workspace-app-persistent; then echo WORKSPACE_APP_PERSISTENCE=passed; else echo WORKSPACE_APP_PERSISTENCE=failed; fi}
+		set workspace_persistence_check {expected=$(cat /tmp/phase2c-workspace-terminal-baseline); pids=$(pgrep -u 1000 -x weston-terminal | sort -n | paste -sd, -); if [[ "$pids" == "$expected" ]] && test -f /tmp/phase2c-workspace-app-persistent; then echo WORKSPACE_APP_PERSISTENCE=passed; else echo WORKSPACE_APP_PERSISTENCE=failed; printf 'WORKSPACE_APP_PERSISTENCE_DIAGNOSTICS expected_pids=%s current_pids=%s marker=%s\n' "$expected" "$pids" "$(test -f /tmp/phase2c-workspace-app-persistent && echo present || echo absent)"; pgrep -a -u 1000 -x weston-terminal || true; fi}
 		run_serial_check $workspace_persistence_check {WORKSPACE_APP_PERSISTENCE=passed} {WORKSPACE_APP_PERSISTENCE=failed} "application persistence while windows migrate between workspaces"
-		qmp_key_chord $qmp {meta_l} q
-		after 700
-		qmp_key_chord $qmp {meta_l} q
-		after 700
-		qmp_key_chord $qmp {meta_l 2}
+		for {set i 0} {$i < 4} {incr i} {
+			qmp_key_chord $qmp {meta_l} q
+			after 500
+		}
+		qmp_key_chord $qmp {meta_l} 2
 		after 350
-		qmp_key_chord $qmp {meta_l} q
-		after 700
-		qmp_key_chord $qmp {meta_l 1}
+		for {set i 0} {$i < 4} {incr i} {
+			qmp_key_chord $qmp {meta_l} q
+			after 500
+		}
+		qmp_key_chord $qmp {meta_l} 1
 		after 350
-		set workspace_cleanup_check {count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then echo WORKSPACE_CLEANUP=passed; else echo WORKSPACE_CLEANUP=failed; fi}
+		set workspace_cleanup_check {count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then echo WORKSPACE_CLEANUP=passed; else echo WORKSPACE_CLEANUP=failed; printf 'WORKSPACE_CLEANUP_DIAGNOSTICS count=%s\n' "$count"; pgrep -a -u 1000 -x weston-terminal || true; fi}
 		run_serial_check $workspace_cleanup_check {WORKSPACE_CLEANUP=passed} {WORKSPACE_CLEANUP=failed} "closing windows on separate workspaces"
 		puts "PHASE2C_WORKSPACES=completed"
 

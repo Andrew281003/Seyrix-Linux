@@ -210,10 +210,12 @@ resize_start() {
     WAYLAND_DISPLAY="$wayland_display" seyrix-protocol-probe "${args[@]}" \
     >"$output" 2>&1 </dev/null &
 
-  local ready="" map_line="" pid="" surface="" x="" y="" width="" height=""
+  local ready="" decoration_mode="" map_line="" pid="" surface="" x="" y="" width="" height=""
   for _ in $(seq 1 45); do
     ready="$(grep 'RESIZE_READY=1 ' "$log" 2>/dev/null | tail -n 1 || true)"
-    if [[ -n "$ready" ]]; then
+    decoration_mode="$(grep -E 'DECORATION_MODE=(server_side|client_side)|DECORATION_REQUEST=unavailable' \
+      "$log" 2>/dev/null | tail -n 1 || true)"
+    if [[ -n "$ready" && -n "$decoration_mode" ]]; then
       pid="$(field "$ready" pid || true)"
       surface="$(field "$ready" surface || true)"
       map_line="$(map_for_identity "$pid" "$surface" || true)"
@@ -227,11 +229,11 @@ resize_start() {
     fi
     sleep 1
   done
-  if [[ ! "$pid" =~ ^[0-9]+$ || ! "$surface" =~ ^[0-9]+$ ||
+  if [[ -z "$decoration_mode" || ! "$pid" =~ ^[0-9]+$ || ! "$surface" =~ ^[0-9]+$ ||
         ! "$x" =~ ^-?[0-9]+$ || ! "$y" =~ ^-?[0-9]+$ ||
         ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
-    printf 'RESIZE_TARGET_FAILED edge=%s ready=%s map=%s\n' "$edge" \
-      "${ready:-missing}" "${map_line:-missing}"
+    printf 'RESIZE_TARGET_FAILED edge=%s ready=%s decoration=%s map=%s\n' "$edge" \
+      "${ready:-missing}" "${decoration_mode:-missing}" "${map_line:-missing}"
     printf 'RESIZE_PROBE_LOG_BEGIN edge=%s path=%s\n' "$edge" "$log"
     if [[ -r "$log" ]]; then
       tail -n 40 "$log"
@@ -290,6 +292,21 @@ resize_check() {
     if [[ "$completion" == *'RESIZE_COMPLETE=failed'* ]]; then
       printf 'RESIZE_ASSERTION_FAILED edge=%s probe=%s\n' "$edge" "$completion"
       tail -n 20 "$log" || true
+      pid="$(field "$ready" pid || true)"
+      surface="$(field "$ready" surface || true)"
+      if [[ "$pid" =~ ^[0-9]+$ && "$surface" =~ ^[0-9]+$ ]]; then
+        printf 'RESIZE_COMPOSITOR_DIAGNOSTICS_BEGIN edge=%s identity=%s,%s\n' \
+          "$edge" "$pid" "$surface"
+        grep -F "GEOMETRY_EVIDENCE event=grab-start pid=$pid surface=$surface " \
+          "$geometry_log" | tail -n 3 || true
+        grep -F "GEOMETRY_EVIDENCE event=grab-end pid=$pid surface=$surface " \
+          "$geometry_log" | tail -n 3 || true
+        grep -F "RESIZE_FRAME_START pid=$pid surface=$surface " \
+          "$geometry_log" | tail -n 3 || true
+        grep -E 'Window resize gesture started|Resize gesture ended|Resize frame update' \
+          "$geometry_log" | tail -n 12 || true
+        printf 'RESIZE_COMPOSITOR_DIAGNOSTICS_END edge=%s\n' "$edge"
+      fi
       resize_cleanup "$edge" "$direction"
       return 1
     fi
@@ -310,9 +327,11 @@ resize_check() {
   before="$(field "$geometry" before || true)"
   after="$(field "$geometry" after || true)"
   changed="$(field "$geometry" changed || true)"
-  local map_line grab_line commit_line actual_width actual_height actual_x actual_y
+  local map_line grab_start_line grab_end_line commit_line actual_width actual_height actual_x actual_y
   map_line="$(map_for_identity "$pid" "$surface" || true)"
-  grab_line="$(grep -F "GEOMETRY_EVIDENCE event=grab-end pid=$pid surface=$surface " \
+  grab_start_line="$(grep -F "GEOMETRY_EVIDENCE event=grab-start pid=$pid surface=$surface " \
+    "$geometry_log" | tail -n 1 || true)"
+  grab_end_line="$(grep -F "GEOMETRY_EVIDENCE event=grab-end pid=$pid surface=$surface " \
     "$geometry_log" | tail -n 1 || true)"
   commit_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$pid surface=$surface " \
     "$geometry_log" | tail -n 1 || true)"
@@ -350,8 +369,8 @@ resize_check() {
   [[ "$before_width" != "$after_width" ]] && width_changed=1
   [[ "$before_height" != "$after_height" ]] && height_changed=1
   local initial_x initial_y expected_x expected_y anchor_match=1
-  initial_x="$(field "$map_line" x || true)"
-  initial_y="$(field "$map_line" y || true)"
+  initial_x="$(field "$grab_start_line" x || true)"
+  initial_y="$(field "$grab_start_line" y || true)"
   if [[ ! "$initial_x" =~ ^-?[0-9]+$ || ! "$initial_y" =~ ^-?[0-9]+$ ||
         ! "$actual_x" =~ ^-?[0-9]+$ || ! "$actual_y" =~ ^-?[0-9]+$ ]]; then
     anchor_match=0
@@ -390,14 +409,15 @@ resize_check() {
         "$height_changed" -eq "$expected_height_change" &&
         "$actual_width" == "$after_width" && "$actual_height" == "$after_height" &&
         "$constraint_match" -eq 1 && "$anchor_match" -eq 1 &&
-        -n "$map_line" && -n "$grab_line" && -n "$commit_line" ]]; then
+        -n "$map_line" && -n "$grab_start_line" && -n "$grab_end_line" &&
+        -n "$commit_line" ]]; then
     printf 'RESIZE_ASSERTION=passed edge=%s before=%s after=%s scene=%s,%s\n' \
       "$edge" "$before" "$after" "$actual_x" "$actual_y"
     return 0
   fi
-  printf 'RESIZE_ASSERTION_FAILED edge=%s probe=%s actual=%sx%s changed=%s map=%s grab-end=%s\n' \
+  printf 'RESIZE_ASSERTION_FAILED edge=%s probe=%s actual=%sx%s changed=%s map=%s grab-start=%s grab-end=%s\n' \
     "$edge" "$completion" "${actual_width:-missing}" "${actual_height:-missing}" \
-    "$changed" "${map_line:-missing}" "${grab_line:-missing}"
+    "$changed" "${map_line:-missing}" "${grab_start_line:-missing}" "${grab_end_line:-missing}"
   printf 'RESIZE_ANCHOR_ASSERTION_FAILED edge=%s initial=%s,%s expected=%s,%s committed=%s,%s commit=%s\n' \
     "$edge" "${initial_x:-missing}" "${initial_y:-missing}" \
     "${expected_x:-missing}" "${expected_y:-missing}" \
@@ -539,6 +559,19 @@ watch_stop() {
   echo WATCH_POINTER_STOPPED=passed
 }
 
+popup_process_alive() {
+  local run_id app_id pid
+  run_id="$(test_run_id)"
+  app_id="seyrix.qemu.$run_id.popup"
+  pid="$(find_probe_pid "$app_id" || true)"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && probe_identity_matches "$pid" "$app_id"; then
+    printf 'POPUP_PROCESS_ALIVE=passed pid=%s app_id=%s\n' "$pid" "$app_id"
+    return 0
+  fi
+  printf 'POPUP_PROCESS_ALIVE=failed app_id=%s\n' "$app_id"
+  return 1
+}
+
 case "${1:-}" in
   resize-start) shift; resize_start "$@" ;;
   resize-check) shift; resize_check "$@" ;;
@@ -547,6 +580,7 @@ case "${1:-}" in
   watch-hidden-baseline) watch_baseline WATCH_POINTER_HIDDEN_BASELINE ;;
   watch-check-hidden) watch_check_hidden ;;
   watch-stop) watch_stop ;;
+  popup-alive) popup_process_alive ;;
   terminate-client) shift; kill_probe_client "$@" ;;
   crash-panel) kill_panel_child ;;
   kill-mapped-terminal) kill_current_mapped_terminal ;;

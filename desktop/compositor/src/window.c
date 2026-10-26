@@ -160,6 +160,9 @@ void seyrix_begin_interactive(struct seyrix_window *window,
 	struct wlr_box geometry = window->xdg_toplevel->base->geometry;
 	int titlebar = seyrix_decoration_titlebar_height(window);
 	server->grab_box = geometry;
+	server->grab_geometry_x = geometry.x;
+	server->grab_geometry_y = geometry.y;
+	server->grab_titlebar_height = titlebar;
 	server->grab_box.x += window->scene_tree->node.x;
 	server->grab_box.y += window->scene_tree->node.y + titlebar;
 	if (!seyrix_resize_grab_offsets(&server->grab_box, edges,
@@ -169,6 +172,17 @@ void seyrix_begin_interactive(struct seyrix_window *window,
 		server->grabbed_window = NULL;
 		return;
 	}
+	log_geometry_evidence("grab-start", window);
+	pid_t pid;
+	uint32_t surface_id;
+	window_identity(window, &pid, &surface_id);
+	wlr_log(WLR_INFO,
+		"RESIZE_FRAME_START pid=%ld surface=%u edges=%u scene=%d,%d geometry=%d,%d,%dx%d titlebar=%d box=%d,%d,%dx%d cursor=%.1f,%.1f grab=%.1f,%.1f",
+		(long)pid, surface_id, edges, window->scene_tree->node.x,
+		window->scene_tree->node.y, geometry.x, geometry.y,
+		geometry.width, geometry.height, titlebar, server->grab_box.x,
+		server->grab_box.y, server->grab_box.width, server->grab_box.height,
+		server->cursor->x, server->cursor->y, server->grab_x, server->grab_y);
 	wlr_log(WLR_INFO, "Window resize gesture started app_id=%s edges=%u",
 		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
 		edges);

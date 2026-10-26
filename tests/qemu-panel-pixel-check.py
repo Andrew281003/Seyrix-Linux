@@ -59,7 +59,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    before_path, after_path = map(Path, sys.argv[1:])
+    before_path, after_path = map(Path, sys.argv[1:3])
     before_workspace, after_workspace = (0, 2)
     if len(sys.argv) == 5:
         before_workspace, after_workspace = (int(value) - 1 for value in sys.argv[3:5])
