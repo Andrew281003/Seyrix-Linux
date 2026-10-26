@@ -12,7 +12,10 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
@@ -29,6 +32,7 @@ enum seyrix_cursor_mode {
 struct seyrix_window;
 struct seyrix_window_state;
 struct seyrix_decoration;
+struct seyrix_shell;
 
 #define SEYRIX_WORKSPACE_COUNT 4U
 
@@ -44,26 +48,40 @@ struct seyrix_server {
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
 	struct wlr_output_layout *output_layout;
+	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_tree *background_layer;
+	struct wlr_scene_tree *layer_background;
+	struct wlr_scene_tree *layer_bottom;
 	struct wlr_scene_tree *window_layer;
+	struct wlr_scene_tree *layer_top;
+	struct wlr_scene_tree *layer_overlay;
 	struct wlr_scene_output_layout *scene_layout;
 	struct wlr_xdg_shell *xdg_shell;
+	struct wlr_xdg_decoration_manager_v1 *decoration_manager;
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_manager;
 	struct wlr_seat *seat;
+	struct wlr_layer_shell_v1 *layer_shell;
+	struct seyrix_shell *shell;
 
 	struct wl_list outputs;
 	struct wl_list windows;
 	struct wl_list keyboards;
 	struct wl_list children;
+	struct wl_list layer_surfaces;
+	struct wl_list popups;
 	struct seyrix_workspace workspaces[SEYRIX_WORKSPACE_COUNT];
 
 	struct wl_listener new_output;
 	struct wl_listener output_layout_change;
+	struct wl_listener output_manager_apply;
+	struct wl_listener output_manager_test;
 	struct wl_listener new_input;
 	struct wl_listener new_toplevel;
 	struct wl_listener new_popup;
+	struct wl_listener new_decoration;
+	struct wl_listener new_layer_surface;
 	struct wl_listener cursor_motion;
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_button;
@@ -85,9 +103,10 @@ struct seyrix_server {
 	double grab_y;
 	struct wlr_box grab_box;
 	uint32_t resize_edges;
-	size_t next_window_offset;
+	uint32_t consumed_pointer_button;
 	uint64_t started_at_ms;
 	bool backend_started;
+	bool output_manager_applying;
 };
 
 struct seyrix_output {
@@ -102,6 +121,7 @@ struct seyrix_output {
 	struct wl_listener destroy;
 	int width;
 	int height;
+	struct wlr_box usable_area;
 };
 
 struct seyrix_window {
@@ -120,11 +140,10 @@ struct seyrix_window {
 	struct wl_listener destroy;
 	struct wl_listener request_move;
 	struct wl_listener request_resize;
-	struct wl_listener request_maximize;
-	struct wl_listener request_fullscreen;
 	int last_width;
 	int last_height;
 	bool mapped;
+	bool minimized;
 };
 
 struct seyrix_keyboard {
@@ -183,5 +202,49 @@ void seyrix_focus_next_window(struct seyrix_server *server,
 void seyrix_begin_interactive(struct seyrix_window *window,
 	enum seyrix_cursor_mode mode, uint32_t edges);
 void seyrix_reset_cursor_mode(struct seyrix_server *server);
+
+bool seyrix_popup_init(struct seyrix_server *server);
+void seyrix_popup_finish(struct seyrix_server *server);
+
+bool seyrix_window_state_attach(struct seyrix_window *window);
+void seyrix_window_state_destroy(struct seyrix_window *window);
+void seyrix_window_state_initial_commit(struct seyrix_window *window);
+void seyrix_window_state_commit(struct seyrix_window *window);
+void seyrix_window_state_reconfigure(struct seyrix_window *window);
+void seyrix_window_state_capture_normal(struct seyrix_window *window);
+void seyrix_window_state_set_maximized(struct seyrix_window *window, bool value);
+void seyrix_window_state_toggle_maximized(struct seyrix_window *window);
+void seyrix_window_state_set_fullscreen(struct seyrix_window *window, bool value);
+void seyrix_window_state_minimize(struct seyrix_window *window);
+bool seyrix_window_state_restore_minimized(struct seyrix_server *server);
+void seyrix_window_state_outputs_changed(struct seyrix_server *server);
+void seyrix_window_state_output_removed(struct seyrix_server *server,
+	struct wlr_output *output);
+struct wlr_output *seyrix_window_state_output(struct seyrix_window *window);
+
+int seyrix_decoration_titlebar_height(const struct seyrix_window *window);
+void seyrix_decoration_set_fullscreen(struct seyrix_window *window, bool value);
+void seyrix_decoration_window_destroy(struct seyrix_window *window);
+void seyrix_decoration_finish(struct seyrix_server *server);
+bool seyrix_decoration_pointer_button(struct seyrix_server *server,
+	double x, double y, uint32_t button, uint32_t state);
+
+bool seyrix_shell_init(struct seyrix_server *server);
+bool seyrix_shell_start(struct seyrix_server *server);
+void seyrix_shell_child_exited(struct seyrix_server *server, pid_t pid);
+void seyrix_shell_finish(struct seyrix_server *server);
+void seyrix_shell_outputs_changed(struct seyrix_server *server);
+void seyrix_shell_update_active_workspace(struct seyrix_server *server);
+
+bool seyrix_layer_shell_init(struct seyrix_server *server);
+void seyrix_layer_shell_finish(struct seyrix_server *server);
+void seyrix_layer_shell_outputs_changed(struct seyrix_server *server);
+void seyrix_layer_shell_output_removed(struct seyrix_server *server,
+	struct wlr_output *output);
+bool seyrix_layer_shell_surface_at(struct seyrix_server *server,
+	double x, double y, struct wlr_surface **surface,
+	double *surface_x, double *surface_y);
+void seyrix_layer_shell_focus_keyboard(struct seyrix_server *server,
+	struct wlr_surface *surface);
 
 #endif

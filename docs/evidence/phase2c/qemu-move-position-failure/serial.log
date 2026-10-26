@@ -1,0 +1,587 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001HBdsDxe: loading Boot0002 "UEFI QEMU DVD-ROM QM00005 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x2,0xFFFF,0x0)
+BdsDxe: starting Boot0002 "UEFI QEMU DVD-ROM QM00005 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x2,0xFFFF,0x0)
+[0m[30m[40m[2J[001;001H[0m[37m[40m[H[J[1;1H[?25l[m[H[J[1;1H[2;28HGNU GRUB  version 2:2.16-1
+
+[m[4;2H+----------------------------------------------------------------------------+[5;2H|[5;79H|[6;2H|[6;79H|[7;2H|[7;79H|[8;2H|[8;79H|[9;2H|[9;79H|[10;2H|[10;79H|[11;2H|[11;79H|[12;2H|[12;79H|[13;2H|[13;79H|[14;2H|[14;79H|[15;2H|[15;79H|[16;2H+----------------------------------------------------------------------------+[m[17;2H[18;2H[m     Use the ^ and v keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line. ESC to return             
+      previous menu.                                                      [5;80H [7m[5;3H*Seyrix Linux (x86_64, UEFI)                                                [m[5;78H[m[m[6;3H UEFI Firmware Settings                                                     [m[6;78H[m[m[7;3H System shutdown                                                            [m[7;78H[m[m[8;3H System restart                                                             [m[8;78H[m[m[9;3H                                                                            [m[9;78H[m[m[10;3H                                                                            [m[10;78H[m[m[11;3H                                                                            [m[11;78H[m[m[12;3H                                                                            [m[12;78H[m[m[13;3H                                                                            [m[13;78H[m[m[14;3H                                                                            [m[14;78H[m[m[15;3H                                                                            [m[15;78H[m[15;80H [5;78H[0m[30m[40m[2J[001;001H[0m[37m[40m[002;068HGNU GRUB  version 2:2.16-1
+
+[004;002H┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐[005;002H│[005;159H│[006;002H│[006;159H│[007;002H│[007;159H│[008;002H│[008;159H│[009;002H│[009;159H│[010;002H│[010;159H│[011;002H│[011;159H│[012;002H│[012;159H│[013;002H│[013;159H│[014;002H│[014;159H│[015;002H│[015;159H│[016;002H│[016;159H│[017;002H│[017;159H│[018;002H│[018;159H│[019;002H│[019;159H│[020;002H│[020;159H│[021;002H│[021;159H│[022;002H│[022;159H│[023;002H│[023;159H│[024;002H│[024;159H│[025;002H│[025;159H│[026;002H│[026;159H│[027;002H│[027;159H│[028;002H│[028;159H│[029;002H│[029;159H│[030;002H│[030;159H│[031;002H│[031;159H│[032;002H│[032;159H│[033;002H│[033;159H│[034;002H│[034;159H│[035;002H│[035;159H│[036;002H└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[037;002H[038;002H     Use the ▲ and ▼ keys to select which entry is highlighted.                                                                                          
+      Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line. ESC to return previous menu.                [005;160H [0m[30m[47m[005;003H*Seyrix Linux (x86_64, UEFI)                                                                                                                                [0m[37m[40m[005;158H[006;003H UEFI Firmware Settings                                                                                                                                     [006;158H[007;003H System shutdown                                                                                                                                            [007;158H[008;003H System restart                                                                                                                                             [008;158H[009;003H                                                                                                                                                            [009;158H[010;003H                                                                                                                                                            [010;158H[011;003H                                                                                                                                                            [011;158H[012;003H                                                                                                                                                            [012;158H[013;003H                                                                                                                                                            [013;158H[014;003H                                                                                                                                                            [014;158H[015;003H                                                                                                                                                            [015;158H[016;003H                                                                                                                                                            [016;158H[017;003H                                                                                                                                                            [017;158H[018;003H                                                                                                                                                            [018;158H[019;003H                                                                                                                                                            [019;158H[020;003H                                                                                                                                                            [020;158H[021;003H                                                                                                                                                            [021;158H[022;003H                                                                                                                                                            [022;158H[023;003H                                                                                                                                                            [023;158H[024;003H                                                                                                                                                            [024;158H[025;003H                                                                                                                                                            [025;158H[026;003H                                                                                                                                                            [026;158H[027;003H                                                                                                                                                            [027;158H[028;003H                                                                                                                                                            [028;158H[029;003H                                                                                                                                                            [029;158H[030;003H                                                                                                                                                            [030;158H[031;003H                                                                                                                                                            [031;158H[032;003H                                                                                                                                                            [032;158H[033;003H                                                                                                                                                            [033;158H[034;003H                                                                                                                                                            [034;158H[035;003H                                                                                                                                                            [035;158H[035;160H [005;158H[040;001H   The highlighted entry will be executed automatically in 3s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 3s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 2s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 2s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 1s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 1s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 0s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 0s.                 [5;78H[0m[30m[40m[2J[001;001H[0m[37m[40m[?25h[H[J[1;1H    Booting `Seyrix Linux (x86_64, UEFI)'Booting `Seyrix Linux (x86_64, UEFI)'
+
+
+
+[    1.085199] virt/tdx: TDX not supported by the host platform
+:: running early hook [udev]
+Starting systemd-udevd version 262.1-1-arch
+:: running hook [udev]
+:: Triggering uevents...
+:: running hook [archiso]
+:: Mounting '/dev/sr0' to '/run/archiso/bootmnt'
+:: Device '/dev/sr0' mounted successfully.
+:: Mounting /run/archiso/cowspace (tmpfs) filesystem, size=256M...
+:: Mounting '/dev/loop0' to '/run/archiso/airootfs'
+:: Device '/dev/loop0' mounted successfully.
+:: running cleanup hook [udev]
+P+q6E616D65\[18t7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J
+[0;1;39mWelcome to [0m[38;2;23;147;209mArch Linux[0m[0;1;39m![0m
+
+]3008;start=91d08bad8c6a47b6b787c3cb01ca67d6;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=1;pidfdid=1;comm=systemd;type=boot\[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/dirmngr[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/getty[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-browser[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-extra[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-ssh[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/keyboxd[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/modprobe[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/serial-getty[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mUser and Session Slice[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDispatch Password Requests to Console Directory Watch[0m.
+[[0;32m  OK  [0m] Started [0;1;39mForward Password Requests to Wall Directory Watch[0m.
+[[0;32m  OK  [0m] Set up automount [0;1;39mArbitrary Executa…ormats File System Automount Point[0m.
+         Expecting device [0;1;39m/dev/ttyS0[0m...
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal dm-clone Devices[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mImage Downloads[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Integrity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPath Units[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Encrypted Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Integrity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Verity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSlice Units[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSwaps[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Verity Protected Volumes[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDevice-mapper event daemon FIFOs[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mQuery the User Interactively for a Password[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mProcess Core Dump Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mCredential Encryption/Decryption[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Encryption Enrollment Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mFactory Reset Management[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mHostname Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Audit Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Socket (/dev/log)[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Sockets[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDDI File System Mounter Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mConsole Output Muting Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Metrics Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Netlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNamespace Resource Manager Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Repartitioning Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport System Basic Metrics Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mCGroup Report Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport Files Metrics Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport Signing Socket (Local Software Key)[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Report Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mResolve Monitor Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mResolve Service Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSimple Block Device Backed Storage Provider[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSimple File System Backed Storage Provider[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Install Tool[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Updates[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mudev Kernel Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mudev Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mUser Database Manager Socket[0m.
+         Mounting [0;1;39mHuge Pages File System[0m...
+         Mounting [0;1;39mPOSIX Message Queue File System[0m...
+         Mounting [0;1;39mKernel Debug File System[0m...
+         Mounting [0;1;39mKernel Trace File System[0m...
+         Mounting [0;1;39mTemporary Directory /tmp[0m...
+         Starting [0;1;39mCreate List of Static Device Nodes[0m...
+         Mounting [0;1;39mKernel Configuration File System[0m...
+         Mounting [0;1;39mFUSE Control File System[0m...
+         Starting [0;1;39mJournal Service[0m...
+         Starting [0;1;39mLoad Kernel Modules[0m...
+         Starting [0;1;39mGenerate Network Units from Kernel Command Line[0m...
+         Starting [0;1;39mRemount Root and Kernel File Systems[0m...
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Encrypted Volumes[0m.
+         Starting [0;1;39mLoad udev Rules from Credentials[0m...
+         Starting [0;1;39mColdplug All udev Devices[0m...
+[[0;32m  OK  [0m] Mounted [0;1;39mHuge Pages File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mPOSIX Message Queue File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Debug File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Trace File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mTemporary Directory /tmp[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mCreate List of Static Device Nodes[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Configuration File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mFUSE Control File System[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad Kernel Modules[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mGenerate Network Units from Kernel Command Line[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mRemount Root and Kernel File Systems[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad udev Rules from Credentials[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPreparation for Network[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Resolve Hook Socket[0m.
+         Starting [0;1;39mLoad/Save OS Random Seed[0m...
+         Starting [0;1;39mApply Kernel Variables[0m...
+         Starting [0;1;39mCreate Static Device Nodes in /dev gracefully[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mApply Kernel Variables[0m.
+         Starting [0;1;39mUser Database Manager[0m...
+[[0;32m  OK  [0m] Started [0;1;39mJournal Service[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad/Save OS Random Seed[0m.
+         Starting [0;1;39mFlush Journal to Persistent Storage[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mFlush Journal to Persistent Storage[0m.
+[[0;32m  OK  [0m] Started [0;1;39mUser Database Manager[0m.
+         Starting [0;1;39mLoad Kernel Module tun[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mLoad Kernel Module tun[0m.
+         Starting [0;1;39mNamespace Resource Manager[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mColdplug All udev Devices[0m.
+[[0m[0;31m*     [0m] (1 of 3) A start job is running for…e Resource Manager (3s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…e Resource Manager (3s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…e Resource Manager (4s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for…n /dev gracefully (10s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for…n /dev gracefully (10s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for…n /dev gracefully (11s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for /dev/ttyS0 (11s / 1min 30s)
+M[K[     [0;31m*[0m] (3 of 3) A start job is running for /dev/ttyS0 (12s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for /dev/ttyS0 (12s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…e Resource Manager (8s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…e Resource Manager (8s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…e Resource Manager (9s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for…n /dev gracefully (14s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for…n /dev gracefully (15s / no limit)
+M[K[[0m[0;31m*     [0m] (2 of 3) A start job is running for…n /dev gracefully (15s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for /dev/ttyS0 (16s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for /dev/ttyS0 (16s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for /dev/ttyS0 (17s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for… Resource Manager (12s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for… Resource Manager (13s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for… Resource Manager (13s / 1min 30s)
+M[K[     [0;31m*[0m] (2 of 3) A start job is running for…n /dev gracefully (19s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for…n /dev gracefully (19s / no limit)
+M[K[[0;32m  OK  [0m] Started [0;1;39mNamespace Resource Manager[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mCreate Static Device Nodes in /dev gracefully[0m.
+         Starting [0;1;39mCreate System Users[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mCreate System Users[0m.
+         Starting [0;1;39mJournal Metrics Report Socket[0m...
+         Starting [0;1;39mJournal Log Access Socket[0m...
+         Starting [0;1;39mNetwork Name Resolution[0m...
+         Starting [0;1;39mCreate Static Device Nodes in /dev[0m...
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Log Access Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Metrics Report Socket[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mCreate Static Device Nodes in /dev[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPreparation for Local File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mVirtual Machines and Containers[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mBoot Loader Control Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Image Download Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Extension Image Management[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mBoot Loader UKI Auto-Link on Completed System Update[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Extension and …Refresh on Completed System Update[0m.
+         Starting [0;1;39mAutomatic Boot Loader Update[0m...
+         Starting [0;1;39mCreate System Files and Directories[0m...
+         Starting [0;1;39mRule-based Manager for Device Events and Files[0m...
+         Starting [0;1;39mLoad JSON user/group Records from Credentials[0m...
+         Starting [0;1;39mListen Kernel Core Dump Socket[0m...
+[[0;32m  OK  [0m] Started [0;1;39mNetwork Name Resolution[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mAutomatic Boot Loader Update[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mHost and Network Name Lookups[0m.
+         Starting [0;1;39mNetwork Time Synchronization[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mLoad JSON user/group Records from Credentials[0m.
+[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 5) A start job is running for… Core Dump Socket (25s / 1min 55s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (4 of 5) A start job is running for…e Synchronization (26s / 1min 53s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (4 of 5) A start job is running for…e Synchronization (26s / 1min 53s)
+M[K[[0;32m  OK  [0m] Started [0;1;39mNetwork Time Synchronization[0m.
+[K[[0;32m  OK  [0m] Reached target [0;1;39mSystem Time Set[0m.
+[[0;32m  OK  [0m] Started [0;1;39mRule-based Manager for Device Events and Files[0m.
+         Starting [0;1;39mNetwork Management[0m...
+[[0;32m  OK  [0m] Started [0;1;39mListen Kernel Core Dump Socket[0m.
+         Starting [0;1;39mKernel Core Pattern Register[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mCreate System Files and Directories[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mKernel Core Pattern Register[0m.
+         Starting [0;1;39mRebuild Dynamic Linker Cache[0m...
+         Starting [0;1;39mInitial Setup[0m...
+         Starting [0;1;39mRebuild Journal Catalog[0m...
+         Starting [0;1;39mRecord System Boot/Shutdown in UTMP[0m...
+[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8]3008;start=bba9fd08466e40db8d5cdaa60c0970c5;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=442;pidfdid=245;comm=(temd-firstboot);servicename=systemd-firstboot.service;invocationid=ea16eee6ca204f6499ecf032d7d4faec;type=service\[[0;32m  OK  [0m] Finished [0;1;39mRecord System Boot/Shutdown in UTMP[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mInitial Setup[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mFirst Boot Complete[0m.
+         Starting [0;1;39mSave Transient machine-id to Disk[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mRebuild Journal Catalog[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mSave Transient machine-id to Disk[0m.
+[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…amic Linker Cache (37s / no limit)
+M[K[[0m[0;31m*     [0m] (1 of 3) A start job is running for…amic Linker Cache (37s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…amic Linker Cache (38s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (38s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (39s / 1min 30s)
+M[K[[0;32m  OK  [0m] Started [0;1;39mNetwork Management[0m.
+[K[[0;32m  OK  [0m] Reached target [0;1;39mNetwork[0m.
+         Starting [0;1;39mEnable Persistent Storage in systemd-networkd[0m...
+[[0;32m  OK  [0m] Found device [0;1;39m/dev/ttyS0[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mEnable Persistent Storage in systemd-networkd[0m.
+[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …amic Linker Cache (43s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …amic Linker Cache (43s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …amic Linker Cache (44s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild …amic Linker Cache (44s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …amic Linker Cache (45s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …amic Linker Cache (45s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …amic Linker Cache (46s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …amic Linker Cache (46s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …amic Linker Cache (47s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …amic Linker Cache (47s / no limit)
+M[K[[0m[0;31m*     [0m] A start job is running for Rebuild …amic Linker Cache (48s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …amic Linker Cache (48s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …amic Linker Cache (49s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …amic Linker Cache (49s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …amic Linker Cache (50s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …amic Linker Cache (50s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …amic Linker Cache (50s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild …amic Linker Cache (51s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …amic Linker Cache (52s / no limit)
+M[K[[0;32m  OK  [0m] Listening on [0;1;39mLoad/Save RF Kill Switch Status /dev/rfkill Watch[0m.
+[K         Starting [0;1;39mVirtual Console Setup[0m...
+[[0;32m  OK  [0m] Stopped [0;1;39mVirtual Console Setup[0m.
+         Starting [0;1;39mVirtual Console Setup[0m...
+[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 2) A start job is running for…amic Linker Cache (54s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 2) A start job is running for…amic Linker Cache (55s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 2) A start job is running for…amic Linker Cache (55s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 2) A start job is running for…tual Console Setup (3s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 2) A start job is running for…tual Console Setup (4s / no limit)
+M[K[[0;32m  OK  [0m] Finished [0;1;39mVirtual Console Setup[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mRebuild Dynamic Linker Cache[0m.
+         Starting [0;1;39mUpdate is Completed[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mUpdate is Completed[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSystem Initialization[0m.
+[[0;32m  OK  [0m] Started [0;1;39mRefresh existing PGP keys of archlinux-keyring regularly[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDaily verification of password and group files[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDaily Cleanup of Temporary Directories[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mTimer Units[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mD-Bus System Message Bus Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mAuthorization Manager Agent Helper[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mUser Login Management Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mVirtual Machine and C…tainer Registration Service Socket[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSocket Units[0m.
+         Starting [0;1;39mD-Bus System Message Bus[0m...
+[[0;32m  OK  [0m] Started [0;1;39mD-Bus System Message Bus[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mBasic System[0m.
+         Starting [0;1;39mHome Area Manager[0m...
+         Starting [0;1;39mUser Login Management[0m...
+[[0;32m  OK  [0m] Started [0;1;39mHome Area Manager[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mHome Area Activation[0m.
+         Starting [0;1;39mPermit User Sessions[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mPermit User Sessions[0m.
+[[0;32m  OK  [0m] Started [0;1;39mGetty on tty1[0m.
+[[0;32m  OK  [0m] Started [0;1;39mSerial Getty on ttyS0[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLogin Prompts[0m.
+[[0;32m  OK  [0m] Started [0;1;39mUser Login Management[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mMulti-User System[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mGraphical Interface[0m.
+[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8]3008;start=89a5f1b988ab459785fdfdb17610b499;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=501;pidfdid=4318;comm=(agetty);servicename=serial-getty@ttyS0.service;invocationid=7ec2fc066ca04bbebfdbeb906447eb86;type=service\P+q6E616D65\
+Seyrix Linux development image (x86_64, 7.2.11-arch1-1)
+Arch Linux base. Live changes are temporary.
+
+seyrix-dev login: root
+Seyrix Linux | Phase 1 development image
+Arch Linux, x86_64
+
+This live environment uses a temporary writable overlay. Changes are lost at shutdown.
+Log in as root without a password on the local console. SSH is not installed.
+]3008;start=31cf6c3eb1b8499b9a3901bc52177f13;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=501;pidfdid=4318;comm=login;targetuser=root;sessionid=3;type=session\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004h[root@seyrix-dev ~]# stty -echo; export PS1='SEYRIX-ROOT# '
+[?2004lf 'SEYRIX_GRAPHICS_CHECK_BEGIN\n'
+  printf 'LOGIN_USER='; id -un
+  printf 'KERNEL='; uname -r
+  printf 'ROOT_FS='; findmnt -n -o FSTYPE /
+  printf 'PID1='; ps -p 1 -o comm= | tr -d ' '
+  printf 'SYSTEMD='; systemctl is-system-ru]3008;start=0dda1ac4-ce71-45b7-8fa8-3bd487274382;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\nning
+  printf 'LOGIND='; systemctl is-active systemd-logind
+  printf 'NETWORKD='; systemctl is-active systemd-networkd
+  printf 'RESOLVED='; systemctl is-active systemd-resolved
+  printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo
+  printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo
+  printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l
+  printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l
+  printf 'GRAPHICS_USER_UID='; id -u seyrix
+  printf 'GRAPHICS_USER_GROUPS='; id -nG seyrix
+  printf 'GPU_MODULES='; lsmod | grep -E 'virtio_gpu|virtio_pci' || true
+  printf 'DRM_DEVICE='; ls -l /dev/dri/card* 2>&1
+  printf 'DRM_DRIVER_LINKS_BEGIN\n'
+  for sys_card in /sys/class/drm/card[0-9]*; do
+    if [[ -e "$sys_card/device/driver" ]]; then printf '%s=' "${sys_card##*/}"; readlink -f "$sys_card/device/driver"; fi
+  done
+  printf 'DRM_DRIVER_LINKS_END\n'
+  printf 'PCI_INVENTORY_BEGIN\n'; lspci -nn
+  printf 'PCI_INVENTORY_END\n'
+  printf 'PCI_GPU='; lspci -nn | grep -Ei 'VGA|Display|3D' | head -1
+  printf 'INPUT_DEVICE_HANDLERS_BEGIN\n'; grep -E '^N: Name=|^H: Handlers=' /proc/bus/input/devices
+  printf 'INPUT_DEVICE_HANDLERS_END\n'
+  printf 'INPUT_EVENT_COUNT='; find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | wc -l
+  if find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | grep -q .; then echo INPUT_DEVICE_CHECK=passed; else echo INPUT_DEVICE_CHECK=failed; fi
+  if compgen -G '/dev/dri/card[0-9]*' >/dev/null && lsmod | grep -q '^virtio_gpu '; then echo GRAPHICS_DEVICE_CHECK=passed; else echo GRAPHICS_DEVICE_CHECK=failed; fi
+  printf 'SEYRIX_GRAPHICS_CHECK_END\n'
+
+]3008;end=0dda1ac4-ce71-45b7-8fa8-3bd487274382;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;end=220002af-4cea-4538-b14c-f3b6313501a2;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=071e4df5-5d85-470e-9533-8e0ac22870e2;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\SEYRIX_GRAPHICS_CHECK_BEGIN
+]3008;end=071e4df5-5d85-470e-9533-8e0ac22870e2;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=4c682664-4c0f-4cdd-aab2-25ce5d9b6100;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\LOGIN_USER=root
+]3008;end=4c682664-4c0f-4cdd-aab2-25ce5d9b6100;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=1d2f3c79-95ea-4cd3-8597-2254890c17ad;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\KERNEL=7.2.11-arch1-1
+]3008;end=1d2f3c79-95ea-4cd3-8597-2254890c17ad;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=1ec9f3e3-9b0e-4100-a708-01b0c239cef0;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\ROOT_FS=overlay
+]3008;end=1ec9f3e3-9b0e-4100-a708-01b0c239cef0;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=96708418-d68d-42e9-9f70-d03c4b8a19ee;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\PID1=systemd
+]3008;end=96708418-d68d-42e9-9f70-d03c4b8a19ee;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=94afb811-0a20-44c1-a716-4054b9348a3c;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\SYSTEMD=running
+]3008;end=94afb811-0a20-44c1-a716-4054b9348a3c;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=137ba8e9-5d12-412a-b17c-3b8fb5ea67ca;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\LOGIND=active
+]3008;end=137ba8e9-5d12-412a-b17c-3b8fb5ea67ca;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=4539e9ea-727a-4fa7-b137-33cb732b2ed4;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\NETWORKD=active
+]3008;end=4539e9ea-727a-4fa7-b137-33cb732b2ed4;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=26ac5983-8503-46da-9a17-6ab243f5de2a;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\RESOLVED=active
+]3008;end=26ac5983-8503-46da-9a17-6ab243f5de2a;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=5b32e710-fd06-4969-949a-bf5b4e7c4023;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\MEM_TOTAL_KB=3994664
+]3008;end=5b32e710-fd06-4969-949a-bf5b4e7c4023;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=42f1476b-3d64-46af-b827-f9c274de1522;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\MEM_AVAILABLE_KB=3621476
+]3008;end=42f1476b-3d64-46af-b827-f9c274de1522;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=1ef95f22-b115-46b3-92d5-b8a1ab5fea04;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\RUNNING_SERVICES=15
+]3008;end=1ef95f22-b115-46b3-92d5-b8a1ab5fea04;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=b16135a6-df24-48ff-b536-12b9e29b935a;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\PACKAGE_COUNT=241
+]3008;end=b16135a6-df24-48ff-b536-12b9e29b935a;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=a7b53fcf-d82c-47e3-a48c-62e4144ab22b;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\GRAPHICS_USER_UID=1000
+]3008;end=a7b53fcf-d82c-47e3-a48c-62e4144ab22b;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=4a2482c0-0201-4047-afd9-77eaf32436ef;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\GRAPHICS_USER_GROUPS=seyrix
+]3008;end=4a2482c0-0201-4047-afd9-77eaf32436ef;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=fb8dd467-6349-4cc7-9dee-3e7d979603e3;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\GPU_MODULES=virtio_gpu            114688  0
+virtio_dma_buf         12288  1 virtio_gpu
+]3008;end=fb8dd467-6349-4cc7-9dee-3e7d979603e3;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=a6f78162-f415-4f2e-902a-75d551028794;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\DRM_DEVICE=crw-rw----+ 1 root video 226, 1 Oct 26 09:13 /dev/dri/card1
+]3008;end=a6f78162-f415-4f2e-902a-75d551028794;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=6d2ae56a-8156-4ec9-ac36-f5b0e8839c7a;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\DRM_DRIVER_LINKS_BEGIN
+]3008;end=6d2ae56a-8156-4ec9-ac36-f5b0e8839c7a;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+[?2004h> [?2004l
+[?2004h> [?2004l
+]3008;start=5c1f0fee-33d9-416e-9f23-27a77e4d83f1;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\card1=/sys/bus/pci/drivers/virtio-pci
+]3008;end=5c1f0fee-33d9-416e-9f23-27a77e4d83f1;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=f4000cc9-49c6-4a45-b393-94ecba693c0a;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\DRM_DRIVER_LINKS_END
+]3008;end=f4000cc9-49c6-4a45-b393-94ecba693c0a;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=6fdd305e-d87a-42a3-998a-2e79e7908178;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\PCI_INVENTORY_BEGIN
+00:00.0 Host bridge [0600]: Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller [8086:29c0]
+00:01.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio 1.0 GPU [1af4:1050] (rev 01)
+00:02.0 USB controller [0c03]: Red Hat, Inc. QEMU XHCI Host Controller [1b36:000d] (rev 01)
+00:03.0 Ethernet controller [0200]: Red Hat, Inc. Virtio network device [1af4:1000]
+00:1f.0 ISA bridge [0601]: Intel Corporation 82801IB (ICH9) LPC Interface Controller [8086:2918] (rev 02)
+00:1f.2 SATA controller [0106]: Intel Corporation 82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode] [8086:2922] (rev 02)
+00:1f.3 SMBus [0c05]: Intel Corporation 82801I (ICH9 Family) SMBus Controller [8086:2930] (rev 02)
+]3008;end=6fdd305e-d87a-42a3-998a-2e79e7908178;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=0b6aa8d5-a890-41ca-aa0b-f4f514b68c59;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\PCI_INVENTORY_END
+]3008;end=0b6aa8d5-a890-41ca-aa0b-f4f514b68c59;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=6f937a2c-0a5a-4176-8b35-0cc08d04ad3a;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\PCI_GPU=00:01.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio 1.0 GPU [1af4:1050] (rev 01)
+]3008;end=6f937a2c-0a5a-4176-8b35-0cc08d04ad3a;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=3c0ee31c-218c-49c7-9859-25756e04ab39;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\INPUT_DEVICE_HANDLERS_BEGIN
+N: Name="Power Button"
+H: Handlers=kbd event0 
+N: Name="AT Translated Set 2 keyboard"
+H: Handlers=sysrq kbd leds event1 
+N: Name="QEMU QEMU USB Keyboard"
+H: Handlers=sysrq kbd leds event2 
+N: Name="QEMU QEMU USB Tablet"
+H: Handlers=event3 mouse0 js0 
+N: Name="PC Speaker"
+H: Handlers=kbd event4 
+N: Name="ImExPS/2 Generic Explorer Mouse"
+H: Handlers=event5 mouse1 
+]3008;end=3c0ee31c-218c-49c7-9859-25756e04ab39;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=e6d4c95a-7373-482e-8f6f-aa62c2f0ed11;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\INPUT_DEVICE_HANDLERS_END
+]3008;end=e6d4c95a-7373-482e-8f6f-aa62c2f0ed11;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=46f409dd-8a15-4086-a303-749ac24576da;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\INPUT_EVENT_COUNT=6
+]3008;end=46f409dd-8a15-4086-a303-749ac24576da;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=edfbb41e-247d-43aa-8e07-ef198e02395f;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\INPUT_DEVICE_CHECK=passed
+]3008;end=edfbb41e-247d-43aa-8e07-ef198e02395f;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=44e7b341-d316-471c-97b6-92fb117e9f8c;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\GRAPHICS_DEVICE_CHECK=passed
+]3008;end=44e7b341-d316-471c-97b6-92fb117e9f8c;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=36fc3063-9c71-470f-a34f-145ff9c1d574;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\SEYRIX_GRAPHICS_CHECK_END
+]3008;end=36fc3063-9c71-470f-a34f-145ff9c1d574;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;end=b3bcdd17-f7b5-4408-b147-8512cc197690;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=2ca9773e-76df-423b-b43b-3418086b7c80;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\TTY1_MARKER=present
+TTY1_SESSION_INFO=tty=/dev/tty1
+XDG_VTNR=1
+TTY1_GETTY_ACTIVE=active
+TTY1_GETTY_EXEC=ExecStart={ path=/sbin/agetty ; argv[]=/sbin/agetty --autologin seyrix --noclear
+ tty1 $TERM ; ignore_errors=yes ; start_time=[Mon 2026-10-26 09:13:46 UTC] ; sto
+p_time=[n/a] ; pid=500 ; code=(null) ; status=0/0 }
+SEYRIX_PROCESSES=508 /usr/lib/systemd/systemd --user
+512 (sd-pam)
+524 -bash
+TTY1_GETTY_STATUS_BEGIN
+[0;1;32m●[0m getty@tty1.service - Getty on tty1
+     Loaded: loaded (]8;;file://seyrix-dev/usr/lib/systemd/system/getty@.service\/usr/lib/systemd/system/getty@.service]8;;\; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+    Drop-In: /etc/systemd/system/getty@tty1.service.d
+             └─]8;;file://seyrix-dev/etc/systemd/system/getty@tty1.service.d/20-seyrix-dev-autologin.conf\20-seyrix-dev-autologin.conf]8;;\
+     Active: [0;1;32mactive (running)[0m since Mon 2026-10-26 09:13:46 UTC; 11s ago
+ Invocation: e5de5e41072a492e836f63cbd327b71c
+       Docs: ]8;;man:agetty(8)\man:agetty(8)]8;;\
+             ]8;;man:systemd-getty-generator(8)\man:systemd-getty-generator(8)]8;;\
+             ]8;;https://0pointer.de/blog/projects/serial-console.html\https://0pointer.de/blog/projects/serial-console.html]8;;\
+   Main PID: 500 (login)
+      Tasks: 0[0;38:5:245m (limit: 4624)[0m
+     Memory: 3.1M (peak: 3.5M)
+        CPU: 659ms
+     CGroup: /system.slice/system-getty.slice/getty@tty1.service
+             ‣ 500 "login -- seyrix"
+
+Oct 26 09:13:46 seyrix-dev systemd[1]: Started Getty on tty1.
+Oct 26 09:13:48 seyrix-dev login[500]: pam_unix(login:session): session opened for user seyrix(uid=1000) by seyrix(uid=0)
+TTY1_GETTY_STATUS_END
+TTY1_JOURNAL_BEGIN
+Oct 26 09:13:46 seyrix-dev systemd[1]: Started Getty on tty1.
+Oct 26 09:13:48 seyrix-dev login[500]: pam_unix(login:session): session opened for user seyrix(uid=1000) by seyrix(uid=0)
+TTY1_JOURNAL_END
+LOGINCTL_SESSIONS_BEGIN
+1 1000 seyrix seat0 500 user          tty1  no [0;38:5:245m-[0m
+2 1000 seyrix [0;38:5:245m-    [0m 508 manager       [0;38:5:245m-    [0m no [0;
+38:5:245m-[0m
+3    0 root   [0;38:5:245m-    [0m 501 user-early    ttyS0 no [0;38:5:245m-[0m
+4    0 root   [0;38:5:245m-    [0m 519 manager-early [0;38:5:245m-    [0m no [0;
+38:5:245m-[0m
+LOGINCTL_SESSIONS_END
+TTY1_DEV_SESSION_READY=passed
+]3008;end=2ca9773e-76df-423b-b43b-3418086b7c80;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=9b4ecbb0-a906-465f-b23c-f577a6c81447;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[1] 703
+MOUSE_MONITOR_STARTED=passed
+]3008;end=9b4ecbb0-a906-465f-b23c-f577a6c81447;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=181dfa30-afaf-4993-acb7-51a869507c05;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\TTY_BEFORE_SWITCH=tty1
+TTY_ACTIVE_AFTER_SWITCH=tty1
+
+]3008;end=181dfa30-afaf-4993-acb7-51a869507c05;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=ad6ad76b-17a7-4383-9115-ddf852791d66;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\COMPOSITOR_READY=passed
+COMPOSITOR_LOG_BEGIN
+00:00:00.053 [INFO] [libseat] [libseat/libseat.c:62] Seat opened with backend 'logind'
+00:00:00.060 [INFO] [backend/session/session.c:117] Successfully loaded libseat session
+00:00:00.102 [INFO] [backend/backend.c:248] Found 1 GPUs
+00:00:00.104 [INFO] [backend/drm/backend.c:225] Initializing DRM backend for /dev/dri/card1 (virtio_gpu)
+00:00:00.105 [INFO] [backend/drm/drm.c:117] DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT supported
+00:00:00.105 [INFO] [backend/drm/drm.c:312] Found 1 DRM CRTCs
+00:00:00.108 [INFO] [backend/drm/drm.c:270] Found 2 DRM planes
+00:00:09.820 [INFO] [render/egl.c:205] Supported EGL client extensions: EGL_EXT_device_base EGL_EXT_device_enumeration EGL_EXT_device_query EGL_EXT_platform_base EGL_KHR_client_get_all_proc_addresses EGL_EXT_client_extensions EGL_KHR_debug EGL_EXT_platform_device EGL_EXT_explicit_device EGL_EXT_platform_wayland EGL_KHR_platform_wayland EGL_EXT_platform_x11 EGL_KHR_platform_x11 EGL_EXT_platform_xcb EGL_MESA_platform_gbm EGL_KHR_platform_gbm EGL_MESA_platform_surfaceless
+00:00:10.546 [INFO] [util/env.c:9] Loading WLR_RENDERER_ALLOW_SOFTWARE option: 1
+00:00:10.549 [INFO] [render/egl.c:332] Using software rendering
+00:00:10.549 [INFO] [render/egl.c:369] Using EGL 1.5
+00:00:10.549 [INFO] [render/egl.c:370] Supported EGL display extensions: EGL_ANDROID_blob_cache EGL_ANDROID_native_fence_sync EGL_EXT_buffer_age EGL_EXT_config_select_group EGL_EXT_create_context_robustness EGL_EXT_image_dma_buf_import EGL_EXT_image_dma_buf_import_modifiers EGL_EXT_query_reset_notification_strategy EGL_EXT_surface_compression EGL_KHR_cl_event2 EGL_KHR_config_attribs EGL_KHR_context_flush_control EGL_KHR_create_context EGL_KHR_create_context_no_error EGL_KHR_fence_sync EGL_KHR_get_all_proc_addresses EGL_KHR_gl_colorspace EGL_KHR_gl_renderbuffer_image EGL_KHR_gl_texture_2D_image EGL_KHR_gl_texture_3D_image EGL_KHR_gl_texture_cubemap_image EGL_KHR_image EGL_KHR_image_base EGL_KHR_image_pixmap EGL_KHR_no_config_context EGL_KHR_reusable_sync EGL_KHR_surfaceless_context EGL_EXT_pixel_format_float EGL_KHR_wait_sync EGL_MESA_configless_context EGL_MESA_gl_interop EGL_MESA_image_dma_buf_export EGL_MESA_query_driver EGL_MESA_x11_native_visual_id 
+00:00:10.555 [INFO] [render/egl.c:372] Supported EGL device extensions: EGL_MESA_device_software EGL_EXT_device_drm_render_node
+00:00:10.555 [INFO] [render/egl.c:374] EGL vendor: Mesa Project
+00:00:15.655 [INFO] [render/gles2/renderer.c:538] Creating GLES2 renderer
+00:00:15.655 [INFO] [render/gles2/renderer.c:539] Using OpenGL ES 3.2 Mesa 26.2.5-arch1.1
+00:00:15.655 [INFO] [render/gles2/renderer.c:540] GL vendor: Mesa
+00:00:15.655 [INFO] [render/gles2/renderer.c:541] GL renderer: llvmpipe (LLVM 23.1.3, 128 bits)
+00:00:15.655 [INFO] [render/gles2/renderer.c:542] Supported GLES2 extensions: GL_EXT_blend_minmax GL_EXT_multi_draw_arrays GL_EXT_texture_filter_anisotropic GL_EXT_texture_compression_s3tc GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_format_BGRA8888 GL_OES_compressed_ETC1_RGB8_texture GL_OES_depth24 GL_OES_element_index_uint GL_OES_fbo_render_mipmap GL_OES_mapbuffer GL_OES_rgb8_rgba8 GL_OES_standard_derivatives GL_OES_stencil8 GL_OES_texture_3D GL_OES_texture_float GL_OES_texture_float_linear GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_texture_npot GL_OES_vertex_half_float GL_EXT_draw_instanced GL_EXT_texture_sRGB_decode GL_OES_EGL_image GL_OES_depth_texture GL_OES_packed_depth_stencil GL_EXT_texture_type_2_10_10_10_REV GL_NV_conditional_render GL_OES_get_program_binary GL_APPLE_texture_max_level GL_EXT_discard_framebuffer GL_EXT_read_format_bgra GL_EXT_texture_storage GL_NV_pack_subimage GL_NV_texture_barrier GL_EXT_frag_depth GL_NV_fbo_color_attachments GL_OES_EGL_image_external GL_OES_EGL_sync GL_OES_vertex_array_object GL_OES_viewport_array GL_ANGLE_pack_reverse_row_order GL_ANGLE_texture_compression_dxt3 GL_ANGLE_texture_compression_dxt5 GL_EXT_occlusion_query_boolean GL_EXT_robustness GL_EXT_sRGB GL_EXT_texture_rg GL_EXT_unpack_subimage GL_NV_draw_buffers GL_NV_read_buffer GL_NV_read_depth GL_NV_read_depth_stencil GL_NV_read_stencil GL_APPLE_sync GL_EXT_draw_buffers GL_EXT_instanced_arrays GL_EXT_map_buffer_range GL_EXT_shadow_samplers GL_KHR_debug GL_KHR_robustness GL_KHR_texture_compression_astc_ldr GL_NV_generate_mipmap_sRGB GL_NV_pixel_buffer_object GL_OES_depth_texture_cube_map GL_OES_required_internalformat GL_OES_surfaceless_context GL_EXT_color_buffer_float GL_EXT_debug_label GL_EXT_sRGB_write_control GL_EXT_separate_shader_objects GL_EXT_shader_framebuffer_fetch GL_EXT_shader_group_vote GL_EXT_shader_implicit_conversions GL_EXT_shader_integer_mix GL_EXT_tessellation_point_size GL_EXT_tessellation_shader GL_ANDROID_extension_pack_es31a GL_ARM_shader_framebuffer_fetch_depth_stencil GL_EXT_base_instance GL_EXT_compressed_ETC1_RGB8_sub_texture GL_EXT_copy_image GL_EXT_draw_buffers_indexed GL_EXT_draw_elements_base_vertex GL_EXT_gpu_shader5 GL_EXT_multi_draw_indirect GL_EXT_polygon_offset_clamp GL_EXT_primitive_bounding_box GL_EXT_render_snorm GL_EXT_shader_io_blocks GL_EXT_texture_border_clamp GL_EXT_texture_buffer GL_EXT_texture_cube_map_array GL_EXT_texture_norm16 GL_EXT_texture_view GL_KHR_blend_equation_advanced GL_KHR_blend_equation_advanced_coherent GL_KHR_context_flush_control GL_KHR_robust_buffer_access_behavior GL_NV_image_formats GL_NV_shader_noperspective_interpolation GL_OES_copy_image GL_OES_draw_buffers_indexed GL_OES_draw_elements_base_vertex GL_OES_gpu_shader5 GL_OES_primitive_bounding_box GL_OES_sample_shading GL_OES_sample_variables GL_OES_shader_io_blocks GL_OES_shader_multisample_interpolation GL_OES_tessellation_point_size GL_OES_tessellation_shader GL_OES_texture_border_clamp GL_OES_texture_buffer GL_OES_texture_cube_map_array GL_OES_texture_stencil8 GL_OES_texture_storage_multisample_2d_array GL_OES_texture_view GL_EXT_blend_func_extended GL_EXT_buffer_storage GL_EXT_float_blend GL_EXT_geometry_point_size GL_EXT_geometry_shader GL_EXT_texture_filter_minmax GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_RG8 GL_KHR_no_error GL_KHR_texture_compression_astc_sliced_3d GL_NV_sample_locations GL_OES_EGL_image_external_essl3 GL_OES_geometry_point_size GL_OES_geometry_shader GL_OES_shader_image_atomic GL_EXT_clear_texture GL_EXT_clip_cull_distance GL_EXT_conservative_depth GL_EXT_disjoint_timer_query GL_EXT_texture_compression_s3tc_srgb GL_MESA_shader_integer_functions GL_EXT_clip_control GL_EXT_color_buffer_half_float GL_EXT_memory_object GL_EXT_memory_object_fd GL_EXT_texture_compression_bptc GL_EXT_texture_mirror_clamp_to_edge GL_KHR_parallel_shader_compile GL_NV_alpha_to_coverage_dither_control GL_EXT_EGL_image_storage GL_EXT_shader_framebuffer_fetch_non_coherent GL_EXT_texture_shadow_lod GL_MESA_framebuffer_flip_y GL_OVR_multiview GL_OVR_multiview2 GL_EXT_depth_clamp GL_EXT_texture_query_lod GL_MESA_sampler_objects GL_EXT_EGL_image_storage_compression GL_EXT_texture_storage_compression GL_MESA_bgra GL_EXT_mesh_shader GL_EXT_shader_clock 
+00:00:16.184 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/workspace.c:60] Initialized 4 workspaces
+00:00:16.654 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/input.c:222] Keyboard discovered: QEMU QEMU USB Keyboard
+00:00:16.654 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/input.c:235] Pointer discovered: QEMU QEMU USB Tablet
+00:00:16.685 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/input.c:222] Keyboard discovered: Power Button
+00:00:16.715 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/input.c:222] Keyboard discovered: AT Translated Set 2 keyboard
+00:00:16.715 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/input.c:235] Pointer discovered: ImExPS/2 Generic Explorer Mouse
+00:00:16.715 [INFO] [backend/drm/drm.c:1781] Scanning DRM connectors on /dev/dri/card1
+00:00:16.725 [INFO] [backend/drm/drm.c:1836] Found connector 'Virtual-1'
+00:00:16.725 [INFO] [backend/drm/drm.c:1861] 'Virtual-1' connected
+00:00:16.726 [INFO] [backend/drm/drm.c:1646] Detected modes:
+00:00:16.726 [INFO] [backend/drm/drm.c:1670]   640x480 @ 59.994 Hz (preferred)
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   5120x2160 @ 50.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   4096x2160 @ 50.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 59.940 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 50.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1920x1440 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   2560x1080 @ 50.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1856x1392 @ 59.995 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1792x1344 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   2048x1152 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1920x1200 @ 59.885 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1920x1080 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1920x1080 @ 50.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1600x1200 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1680x1050 @ 59.954 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1400x1050 @ 59.978 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1280x1024 @ 60.020 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1440x900 @ 59.887 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1280x960 @ 60.000 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1360x768 @ 60.015 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1280x768 @ 59.870 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   1024x768 @ 60.004 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   800x600 @ 60.317 Hz 
+00:00:16.728 [INFO] [backend/drm/drm.c:1670]   640x480 @ 60.000 Hz 
+00:00:16.729 [INFO] [backend/drm/drm.c:1670]   640x480 @ 59.940 Hz 
+00:00:16.730 [INFO] [backend/drm/drm.c:1707] Physical size: 160x120
+00:00:16.735 [INFO] [backend/drm/drm.c:1895] connector Virtual-1: Requesting modeset
+00:00:16.767 [INFO] [backend/drm/drm.c:980] connector Virtual-1: Modesetting with 640x480 @ 59.994 Hz
+00:00:18.956 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/output.c:238] Output Virtual-1 active at 640x480
+00:00:18.966 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/shell.c:162] Started isolated Seyrix layer-shell panel pid=770
+00:00:18.967 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/main.c:252] Renderer request: wlroots automatic selection
+00:00:18.967 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/main.c:254] Running Seyrix compositor on WAYLAND_DISPLAY=wayland-0
+00:00:18.967 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/main.c:255] Shortcuts: Super+Return opens terminal; Super+Q closes focused window; Super+Shift+Q exits; Super+Left/Right switches workspace; Super+Shift+Left/Right moves a window; Super+1..4 selects a workspace
+00:00:18.979 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/main.c:127] Started weston-terminal with pid 771
+00:00:18.979 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/main.c:260] SEYRIX_COMPOSITOR_READY=1 startup_ms=18980
+00:00:19.455 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/layer-shell.c:146] Layer shell surface mapped namespace=seyrix-panel
+could not load cursor 'dnd-move'
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-none'
+Unknown parameter: ?2004
+00:00:23.583 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window.c:161] Window initial position: app_id=org.freedesktop.weston.wayland-terminal x=-51 y=26
+00:00:23.586 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window.c:167] Window mapped: app_id=org.freedesktop.weston.wayland-terminal title=Wayland Terminal
+00:00:23.588 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window.c:211] Window geometry committed: 742x427
+00:00:23.591 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.593 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.594 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.731 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.735 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.739 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.883 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.884 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.884 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.892 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.892 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:23.894 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.021 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.023 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.029 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.167 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.168 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.169 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.175 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.176 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.177 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.313 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.314 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.321 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.896 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.904 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:24.913 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:25.466 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:25.490 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:25.511 [INFO] [../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/desktop/compositor/src/window-state.c:194] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+COMPOSITOR_LOG_END
+WLROOTS_PACKAGE=warning: database file for 'core' does not exist (use '-Sy' to download)
+[?25lwarning: database file for 'extra' does not exist (use '-Sy' to download)
+wlroots0.20 0.20.2-1
+[?25hCOMPOSITOR_PROCESSES=720 /usr/bin/seyrix-compositor
+COMPOSITOR_RSS_KB=117292
+TERMINAL_PROCESSES=771 weston-terminal
+]3008;end=ad6ad76b-17a7-4383-9115-ddf852791d66;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=6fff1fc4-4d13-49fb-86d8-6d15b408f533;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\KEYBOARD_INPUT=passed
+]3008;end=6fff1fc4-4d13-49fb-86d8-6d15b408f533;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=11c27fa3-afc4-4d98-8e75-f3c9da4f886e;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\]3008;start=da8e50ccb19d440b88489653b254104c;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=816;pidfdid=4443;comm=runuser;targetuser=seyrix;type=session\]3008;end=da8e50ccb19d440b88489653b254104c\]3008;start=bbf3e07e46444f45acc3b474d0fdbcd7;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=818;pidfdid=4444;comm=runuser;targetuser=seyrix;type=session\]3008;end=bbf3e07e46444f45acc3b474d0fdbcd7\]3008;start=ae69e50f1dae41b2a398caadb41f0168;user=root;hostname=seyrix-dev;machineid=989e3c4e670c4a668a1e22142e1ace89;bootid=02ac2713cf364514b67f8f9424af6fc2;pid=820;pidfdid=4446;comm=runuser;targetuser=seyrix;type=session\]3008;end=ae69e50f1dae41b2a398caadb41f0168\OUTPUT_CONFIGURATION=passed
+]3008;end=11c27fa3-afc4-4d98-8e75-f3c9da4f886e;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=54a50487-a204-466b-a2aa-8798b768c776;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\POINTER_INPUT=passed
+POINTER_EVENTS_BEGIN
+    Event code 272 (BTN_LEFT)
+    Event code 0 (ABS_X)
+    Event code 1 (ABS_Y)
+Event: time 1793006073.780475, type 3 (EV_ABS), code 0 (ABS_X), value 4200
+Event: time 1793006073.780475, type 3 (EV_ABS), code 1 (ABS_Y), value 5900
+Event: time 1793006073.813144, type 1 (EV_KEY), code 272 (BTN_LEFT), value 1
+Event: time 1793006073.913944, type 3 (EV_ABS), code 0 (ABS_X), value 12300
+Event: time 1793006074.164798, type 1 (EV_KEY), code 272 (BTN_LEFT), value 0
+Event: time 1793006074.769575, type 3 (EV_ABS), code 0 (ABS_X), value 14000
+Event: time 1793006074.769575, type 3 (EV_ABS), code 1 (ABS_Y), value 14000
+Event: time 1793006074.770874, type 1 (EV_KEY), code 272 (BTN_LEFT), value 1
+Event: time 1793006074.871215, type 1 (EV_KEY), code 272 (BTN_LEFT), value 0
+POINTER_EVENTS_END
+]3008;end=54a50487-a204-466b-a2aa-8798b768c776;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=acf066a4-4845-48c7-9845-0168bbacf144;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\WINDOW_MAPPED_COUNT=2
+TERMINAL_COUNT=2
+WINDOWS_COEXIST=passed
+]3008;end=acf066a4-4845-48c7-9845-0168bbacf144;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=d9f442af-a5eb-43a0-ad56-a81ac163fcaf;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\WINDOW_FOCUS_NEW=passed
+]3008;end=d9f442af-a5eb-43a0-ad56-a81ac163fcaf;exit=success\]3008;start=c8d7e2f6-88cf-4924-9b98-28ad86d45a68;type=shell;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\[?2004hSEYRIX-ROOT# [?2004l
+]3008;start=4fa2b82d-1ee3-4880-9498-6056d471cdcf;type=command;machineid=989e3c4e670c4a668a1e22142e1ace89;user=root;hostname=seyrix-dev;bootid=02ac2713-cf36-4514-b67f-8f9424af6fc2;pid=547;cwd=/root\WINDOW_INITIAL_POSITION=-51,26
+WINDOW_FINAL_POSITION=-51,26
+WINDOW_MOVE=failed

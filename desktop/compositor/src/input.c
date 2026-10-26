@@ -6,6 +6,10 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/util/log.h>
 
+#include "decoration.h"
+#include "shell.h"
+#include "window-state.h"
+
 static void remove_listener(struct wl_listener *listener) {
 	if (listener->link.prev != NULL && listener->link.next != NULL) {
 		wl_list_remove(&listener->link);
@@ -74,6 +78,15 @@ static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 			seyrix_workspace_window_is_visible(server->focused_window)) {
 		wlr_log(WLR_INFO, "Close requested for focused application window");
 		wlr_xdg_toplevel_send_close(server->focused_window->xdg_toplevel);
+	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
+			(modifiers & WLR_MODIFIER_SHIFT) != 0) {
+		seyrix_window_state_restore_minimized(server);
+	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
+			server->focused_window != NULL) {
+		seyrix_window_state_minimize(server->focused_window);
+	} else if ((sym == XKB_KEY_m || sym == XKB_KEY_M) &&
+			seyrix_window_state_restore_minimized(server)) {
+		/* Super+M restores the most recently listed minimized window if none is focused. */
 	} else if ((modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL)) == 0 &&
 			(sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
 		int direction = sym == XKB_KEY_Left ? -1 : 1;
@@ -331,7 +344,8 @@ static void process_cursor_resize(struct seyrix_server *server) {
 
 	struct wlr_box *geometry = &toplevel->base->geometry;
 	wlr_scene_node_set_position(&window->scene_tree->node,
-		left - geometry->x, top - geometry->y);
+		left - geometry->x,
+		top - geometry->y - seyrix_decoration_titlebar_height(window));
 	wlr_xdg_toplevel_set_size(toplevel, width, height);
 }
 
@@ -339,9 +353,13 @@ static void process_cursor_motion(struct seyrix_server *server,
 		uint32_t time_msec) {
 	if (server->cursor_mode == SEYRIX_CURSOR_MOVE) {
 		if (server->grabbed_window != NULL && server->grabbed_window->mapped) {
-			wlr_scene_node_set_position(&server->grabbed_window->scene_tree->node,
-				(int)(server->cursor->x - server->grab_x),
-				(int)(server->cursor->y - server->grab_y));
+			int x = (int)(server->cursor->x - server->grab_x);
+			int y = (int)(server->cursor->y - server->grab_y);
+			wlr_scene_node_set_position(
+				&server->grabbed_window->scene_tree->node, x, y);
+			wlr_log(WLR_INFO,
+				"Window move update: cursor=%.1f,%.1f position=%d,%d",
+				server->cursor->x, server->cursor->y, x, y);
 		}
 		return;
 	}
@@ -353,8 +371,12 @@ static void process_cursor_motion(struct seyrix_server *server,
 	struct wlr_surface *surface = NULL;
 	double sx = 0.0;
 	double sy = 0.0;
-	struct seyrix_window *window = window_at(server, server->cursor->x,
-		server->cursor->y, &surface, &sx, &sy);
+	struct seyrix_window *window = NULL;
+	if (!seyrix_layer_shell_surface_at(server, server->cursor->x,
+			server->cursor->y, &surface, &sx, &sy)) {
+		window = window_at(server, server->cursor->x,
+			server->cursor->y, &surface, &sx, &sy);
+	}
 	if (window == NULL) {
 		wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
 	}
@@ -392,10 +414,35 @@ static void handle_cursor_button(struct wl_listener *listener, void *data) {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	uint32_t modifiers = keyboard != NULL ?
 		wlr_keyboard_get_modifiers(keyboard) : 0;
+	if (event->state == WL_POINTER_BUTTON_STATE_PRESSED &&
+			(event->button == BTN_LEFT || event->button == BTN_RIGHT)) {
+		wlr_log(WLR_INFO, "Pointer button press button=%u modifiers=0x%x cursor=%.1f,%.1f",
+			event->button, modifiers, server->cursor->x, server->cursor->y);
+	}
+	if (event->button == BTN_RIGHT &&
+			event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		wlr_log(WLR_INFO, "Right pointer press modifiers=0x%x cursor=%.1f,%.1f",
+			modifiers, server->cursor->x, server->cursor->y);
+	}
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
 			server->cursor_mode != SEYRIX_CURSOR_PASSTHROUGH) {
 		seyrix_reset_cursor_mode(server);
+		if (server->consumed_pointer_button == event->button) {
+			server->consumed_pointer_button = 0;
+		}
+		return;
+	}
+	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
+			server->consumed_pointer_button == event->button) {
+		server->consumed_pointer_button = 0;
+		return;
+	}
+	if (seyrix_decoration_pointer_button(server, server->cursor->x,
+			server->cursor->y, event->button, event->state)) {
+		if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			server->consumed_pointer_button = event->button;
+		}
 		return;
 	}
 
@@ -407,6 +454,10 @@ static void handle_cursor_button(struct wl_listener *listener, void *data) {
 		double sy = 0.0;
 		struct seyrix_window *window = window_at(server, server->cursor->x,
 			server->cursor->y, &surface, &sx, &sy);
+		wlr_log(WLR_INFO, "Alt pointer gesture button=%u cursor=%.1f,%.1f target_app_id=%s",
+			event->button, server->cursor->x, server->cursor->y,
+			window != NULL && window->xdg_toplevel->app_id != NULL ?
+				window->xdg_toplevel->app_id : "none");
 		if (window != NULL) {
 			seyrix_focus_window(server, window);
 			if (event->button == BTN_LEFT) {
@@ -425,9 +476,14 @@ static void handle_cursor_button(struct wl_listener *listener, void *data) {
 		struct wlr_surface *surface = NULL;
 		double sx = 0.0;
 		double sy = 0.0;
-		struct seyrix_window *window = window_at(server, server->cursor->x,
-			server->cursor->y, &surface, &sx, &sy);
-		seyrix_focus_window(server, window);
+		if (seyrix_layer_shell_surface_at(server, server->cursor->x,
+				server->cursor->y, &surface, &sx, &sy)) {
+			seyrix_layer_shell_focus_keyboard(server, surface);
+		} else {
+			struct seyrix_window *window = window_at(server, server->cursor->x,
+				server->cursor->y, &surface, &sx, &sy);
+			seyrix_focus_window(server, window);
+		}
 	}
 }
 

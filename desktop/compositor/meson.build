@@ -12,6 +12,30 @@ project(
 wlroots = dependency('wlroots-0.20', version: ['>=0.20.0', '<0.21.0'])
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
+wlr_protocols = dependency('wlr-protocols')
+wayland_scanner = find_program('wayland-scanner')
+
+layer_shell_protocol = custom_target(
+  'layer-shell-protocol-header',
+  input: join_paths(
+    wlr_protocols.get_variable(pkgconfig: 'pkgdatadir'),
+    'unstable',
+    'wlr-layer-shell-unstable-v1.xml',
+  ),
+  output: 'wlr-layer-shell-unstable-v1-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+
+output_management_protocol = custom_target(
+  'output-management-protocol-header',
+  input: join_paths(
+    wlr_protocols.get_variable(pkgconfig: 'pkgdatadir'),
+    'unstable',
+    'wlr-output-management-unstable-v1.xml',
+  ),
+  output: 'wlr-output-management-unstable-v1-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
 
 executable(
   'seyrix-compositor',
@@ -20,7 +44,13 @@ executable(
     'src/output.c',
     'src/input.c',
     'src/window.c',
-  ),
+    'src/window-state.c',
+    'src/popup.c',
+    'src/decoration.c',
+    'src/layer-shell.c',
+    'src/shell.c',
+    'src/workspace.c',
+  ) + [layer_shell_protocol, output_management_protocol],
   c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
   dependencies: [wlroots, wayland_server, xkbcommon],
   install: true,

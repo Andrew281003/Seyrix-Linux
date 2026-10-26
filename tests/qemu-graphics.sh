@@ -25,7 +25,7 @@ workflow="${SEYRIX_QEMU_WORKFLOW:-phase2a}"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
 renderer_request="${SEYRIX_QEMU_RENDERER:-}"
-if [[ "$workflow" != phase2a && "$workflow" != phase2b ]]; then
+if [[ "$workflow" != phase2a && "$workflow" != phase2b && "$workflow" != phase2c ]]; then
   echo "Unsupported QEMU workflow: $workflow" >&2
   exit 2
 fi
@@ -136,7 +136,7 @@ if ! expect "$script_dir/qemu-graphics.exp" "$run_dir" "$monitor_port" "$qemu_bi
   exit 1
 fi
 
-grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|KEYBOARD_INPUT=|POINTER_INPUT=|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
+grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
   "$run_dir/test.log"
 sha256sum "$run_dir"/*.ppm > "$run_dir/screenshots.sha256"
 printf 'QEMU %s graphics test passed. Evidence: %s\n' "$workflow" "$run_dir"

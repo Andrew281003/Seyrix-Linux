@@ -2,6 +2,8 @@
 
 #include <wlr/util/log.h>
 
+#include "popup.h"
+
 static struct seyrix_workspace *active_workspace(struct seyrix_server *server) {
 	if (server->active_workspace_index >= SEYRIX_WORKSPACE_COUNT) {
 		return NULL;
@@ -168,12 +170,13 @@ struct seyrix_window *seyrix_workspace_focus_candidate(
 	}
 	if (workspace->focused_window != NULL &&
 			workspace->focused_window != exclude &&
-			workspace->focused_window->mapped) {
+			workspace->focused_window->mapped &&
+			!workspace->focused_window->minimized) {
 		return workspace->focused_window;
 	}
 	struct seyrix_window *window;
 	wl_list_for_each(window, &workspace->windows, workspace_link) {
-		if (window != exclude && window->mapped) {
+		if (window != exclude && window->mapped && !window->minimized) {
 			return window;
 		}
 	}
@@ -181,7 +184,8 @@ struct seyrix_window *seyrix_workspace_focus_candidate(
 }
 
 bool seyrix_workspace_window_is_visible(const struct seyrix_window *window) {
-	if (window == NULL || window->workspace == NULL || window->server == NULL) {
+	if (window == NULL || window->workspace == NULL || window->server == NULL ||
+			window->minimized) {
 		return false;
 	}
 	if (window->server->active_workspace_index >= SEYRIX_WORKSPACE_COUNT) {
@@ -196,8 +200,15 @@ void seyrix_workspace_switch(struct seyrix_server *server, size_t index) {
 			index == server->active_workspace_index) {
 		return;
 	}
+	struct seyrix_workspace *source = active_workspace(server);
+	if (source != NULL) {
+		struct seyrix_window *window;
+		wl_list_for_each(window, &source->windows, workspace_link) {
+			seyrix_popup_dismiss_window(window);
+		}
+	}
 	if (has_active_popup_grab(server)) {
-		wlr_log(WLR_INFO, "Workspace switch deferred while an xdg popup grab is active");
+		wlr_log(WLR_INFO, "Workspace switch deferred while an unrelated popup grab is active");
 		return;
 	}
 
@@ -208,6 +219,13 @@ void seyrix_workspace_switch(struct seyrix_server *server, size_t index) {
 	for (size_t i = 0; i < SEYRIX_WORKSPACE_COUNT; i++) {
 		struct seyrix_workspace *workspace = &server->workspaces[i];
 		if (workspace->scene_tree != NULL) {
+			struct seyrix_window *window;
+			wl_list_for_each(window, &workspace->windows, workspace_link) {
+				if (window->scene_tree != NULL) {
+					wlr_scene_node_set_enabled(&window->scene_tree->node,
+						!window->minimized);
+				}
+			}
 			wlr_scene_node_set_enabled(&workspace->scene_tree->node, i == index);
 		}
 	}
@@ -217,6 +235,7 @@ void seyrix_workspace_switch(struct seyrix_server *server, size_t index) {
 	}
 	struct seyrix_window *window = seyrix_workspace_focus_candidate(server, NULL);
 	seyrix_focus_window(server, window);
+	seyrix_shell_update_active_workspace(server);
 	wlr_log(WLR_INFO, "Switched to workspace %zu", index + 1);
 }
 
@@ -227,9 +246,15 @@ void seyrix_workspace_switch_relative(struct seyrix_server *server,
 	}
 	size_t index = server->active_workspace_index;
 	if (direction < 0) {
-		index = index == 0 ? SEYRIX_WORKSPACE_COUNT - 1 : index - 1;
+		if (index == 0) {
+			return;
+		}
+		index--;
 	} else {
-		index = (index + 1) % SEYRIX_WORKSPACE_COUNT;
+		if (index + 1 >= SEYRIX_WORKSPACE_COUNT) {
+			return;
+		}
+		index++;
 	}
 	seyrix_workspace_switch(server, index);
 }
@@ -241,17 +266,23 @@ void seyrix_workspace_move_focused(struct seyrix_server *server,
 			!seyrix_workspace_window_is_visible(window) || direction == 0) {
 		return;
 	}
+	struct seyrix_workspace *source = active_workspace(server);
+	seyrix_popup_dismiss_window(window);
 	if (has_active_popup_grab(server)) {
-		wlr_log(WLR_INFO, "Window move deferred while an xdg popup grab is active");
+		wlr_log(WLR_INFO, "Window move deferred while an unrelated popup grab is active");
 		return;
 	}
-	struct seyrix_workspace *source = active_workspace(server);
 	size_t destination_index = server->active_workspace_index;
 	if (direction < 0) {
-		destination_index = destination_index == 0 ?
-			SEYRIX_WORKSPACE_COUNT - 1 : destination_index - 1;
+		if (destination_index == 0) {
+			return;
+		}
+		destination_index--;
 	} else {
-		destination_index = (destination_index + 1) % SEYRIX_WORKSPACE_COUNT;
+		if (destination_index + 1 >= SEYRIX_WORKSPACE_COUNT) {
+			return;
+		}
+		destination_index++;
 	}
 	struct seyrix_workspace *destination = &server->workspaces[destination_index];
 	if (source == destination || destination->scene_tree == NULL ||

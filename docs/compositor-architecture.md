@@ -1,91 +1,136 @@
 # Seyrix compositor architecture
 
-The Phase 2B compositor is a small C17 Wayland compositor built with the
-Arch `wlroots0.20` package. The implementation targets the 0.20 API series;
-the verified build uses wlroots 0.20.2-1 and compiles against the headers
-installed by that package. It uses wlroots for DRM/KMS, the libinput backend,
-renderer and allocator setup, seat handling, xdg-shell, and the scene graph.
+The Phase 2C compositor is a native C17 Wayland compositor built against the
+wlroots 0.20 API series. wlroots owns backend, DRM/KMS, libinput, rendering,
+seat, and protocol primitives. Seyrix owns window state, workspace membership,
+focus policy, decorations, shell process lifecycle, and output policy.
 
 ```mermaid
 flowchart LR
-  QEMU[QEMU virtio-vga] --> DRM[virtio_gpu DRM/KMS]
-  LOGIND[systemd-logind] --> SEAT[libseat]
-  DRM --> BACKEND[wlroots backend]
-  SEAT --> BACKEND
-  INPUT[USB keyboard and tablet] --> EVDEV[Linux evdev]
-  EVDEV --> LIBINPUT[libinput backend]
-  LIBINPUT --> BACKEND
-  BACKEND --> RENDER[wlroots renderer and allocator]
-  RENDER --> SCENE[scene graph]
-  SCENE --> OUTPUT[Wayland output]
-  SCENE --> WINDOWS[xdg-shell toplevels]
-  WAYLAND[Wayland socket] --> WINDOWS
+  INPUT[libinput devices] --> SEAT[Wayland seat and input routing]
+  SEAT --> WORKSPACES[Workspace manager]
+  WAYLAND[Wayland clients] --> XDG[xdg-shell toplevels and popups]
+  XDG --> STATE[Window state manager]
+  XDG --> POPUPS[Popup manager]
+  STATE --> WS_SCENES[Four workspace scene roots]
+  POPUPS --> WS_SCENES
+  DECOR[xdg-decoration and server decorations] --> WS_SCENES
+  PANEL[seyrix-shell process] --> LAYER[layer-shell surface]
+  LAYER --> LAYERS[Scene layer ordering]
+  WORKSPACES --> WS_SCENES
+  WS_SCENES --> SCENE[wlroots scene graph]
+  LAYERS --> SCENE
+  OUTPUTS[wlroots outputs and layout] --> SCENE
+  OM[wlr-output-management-v1] --> OUTPUTS
+  SCENE --> RENDER[wlroots renderer and allocator]
+  RENDER --> OUTPUTS
+  PANEL -->|workspace selection socket| WORKSPACES
 ```
 
 ## Ownership and lifecycle
 
 `main.c` owns the Wayland display, backend, renderer, allocator, output layout,
-scene, seat, cursor, signal sources, and child terminal processes. It creates
-these resources before starting the backend so the backend's initial output
-and input discovery events can be handled immediately.
+scene, seat, cursor, signal sources, and child processes. It creates scene
+layers in background, bottom, window, top, and overlay order. The four
+workspace scene roots live inside the window layer. Shutdown destroys Wayland
+clients before window, popup, decoration, layer-shell, output, input, shell,
+workspace, scene, renderer, and backend state; child processes are reaped with
+bounded graceful and forced shutdown, preserving the Phase 2B.1 ordering fix.
 
-`output.c` owns one small record per output. It enables the preferred mode,
-connects the output to the scene and layout, draws the Seyrix background, and
-updates the background when the output size or position changes. Output
-destruction removes its scene background and record. The compositor stops if
-the final output disappears.
+`workspace.c` owns the four initial workspace records, window membership,
+per-workspace stacking order, focus history, switching, and migration. Each
+workspace has a disabled or enabled scene root. Switching changes scene-root
+visibility and focus; it does not unmap, destroy, or recreate client surfaces.
+The active-workspace index is compositor-wide in this phase. Membership and
+focus state are kept in a workspace manager so the model can later be extended
+to per-output workspace sets without coupling it to rendering.
 
-`input.c` owns keyboard and pointer event handling. Each discovered keyboard
-gets an XKB keymap and is attached to the single Wayland seat. The seat sends
-keyboard events to its focused surface. The cursor hit-tests scene surfaces,
-forwards pointer motion, buttons, axes, and frames, and raises a window when it
-receives focus. Device destruction removes the associated listeners and state.
+`window.c` owns xdg-shell toplevel lifetime, map/unmap, focus activation,
+stacking, move/resize grabs, and destruction. It attaches new transient
+toplevels to their parent's workspace and other toplevels to the active
+workspace. Focus changes reject hidden or minimized windows before changing
+seat focus. Pointer hit testing walks the enabled scene, so disabled workspace
+trees cannot receive pointer focus. Workspace switches clear pointer focus and
+restore the destination workspace's remembered eligible window.
 
-`window.c` owns mapped xdg-shell toplevel state. Map and unmap events update the
-window list and keyboard focus. Destroy events clear focus and interactive
-grabs before freeing compositor state. Client move and resize requests require
-a valid pointer-grab serial for the requesting surface. Unsupported maximize
-and fullscreen requests receive the required xdg-shell configure response.
+`window-state.c` owns maximize, unmaximize, fullscreen, restore geometry, and
+minimize state. It tracks the requested state separately from wlroots'
+committed xdg-toplevel state. The compositor sends size and state configure
+events through wlroots; it uses the committed state when saving normal
+geometry. Fullscreen takes precedence over maximize. Maximize uses the
+layer-shell work area, fullscreen uses the selected output box, and leaving
+either state restores the saved normal geometry after constraining it to a
+live output. Minimize is a compositor-owned hidden state: the surface remains
+mapped and the application keeps running. **Super+M** hides the focused
+window; **Super+Shift+M** restores a minimized window on the active workspace.
 
-The scene graph owns rendered surface nodes. Each toplevel record stores its
-scene tree and does not retain client-owned buffers. When clients disconnect,
-Wayland and wlroots destroy their surfaces; compositor listeners then remove
-window records. Shutdown destroys clients before the backend, scene, renderer,
-and display. Child terminal processes receive a bounded graceful shutdown and
-are reaped.
+`popup.c` creates real scene trees for xdg popups under their parent toplevel
+or layer surface. Nested popups follow the parent tree. Initial configure,
+reposition, unconstrain, dismissal, active grabs, and destruction are tracked
+without substituting toplevels for popups. Workspace switches and minimizing a
+parent dismiss its popup descendants before hiding them.
 
-## Supported behavior
+`decoration.c` negotiates `xdg-decoration` mode per toplevel. Server title bars
+are rendered only when server-side decoration was selected. Clients that
+request or negotiate client-side decoration retain their own chrome. Hit
+testing and title-bar geometry use the same decoration state as rendering.
 
-- Wayland display and wlroots DRM/KMS backend through the logind session.
-- wlroots renderer selected by wlroots; the launcher sets
-  `LIBGL_ALWAYS_SOFTWARE=1` and `WLR_RENDERER_ALLOW_SOFTWARE=1` for the QEMU
-  software-rendering path. The Phase 2B report records the renderer from guest
-  logs and does not claim hardware acceleration.
-- Solid dark Seyrix background and visible Xcursor pointer.
-- Output enablement, mode selection, resize handling, and hot removal.
-- xdg-shell version 3 toplevel windows, focus, stacking, movement, resizing,
-  close requests, and safe destruction.
-- Keyboard and pointer input through the libinput backend and a Wayland seat.
-- `weston-terminal` launches at startup and with **Super+Return**.
-- **Super+Q** sends an xdg-shell close request to the focused window.
-- **Super+Shift+Q** exits the compositor cleanly.
-- **Alt+left-drag** moves a window. **Alt+right-drag** resizes from its lower
-  right edge.
+`layer-shell.c` owns layer-shell surfaces and arranges them around each output's
+usable area. The native `seyrix-shell` client is a separate C process. It maps
+a small top-layer panel, handles pointer clicks for workspace selection, and
+communicates selection requests and active-workspace updates over a private
+local socket. A panel crash closes the channel but does not stop the
+compositor.
 
-Shortcuts use the Super modifier so they do not consume ordinary application
-input. Shortcut key releases are also consumed after their corresponding
-presses to avoid leaving a key in a client-side pressed state.
+`output.c` owns one record and scene output per connected output. It enables
+the preferred mode, maintains the output layout and scene, and exposes
+`wlr-output-management-v1` test/apply configuration. Configurations must
+include every known output and keep at least one enabled output; wlroots backend
+validation runs before application. Output changes update work areas and
+reconfigure maximized/fullscreen windows. If an output disappears, normal
+geometry is constrained to a surviving output and fullscreen output requests
+are cleared. Removing the final output terminates the compositor.
+
+## Protocol support
+
+- `xdg-shell` version 6: toplevels, state requests, minimize requests, popups,
+  popup grabs, and configure/acknowledge flow through wlroots.
+- `xdg-decoration` version 1: negotiated client-side or server-side mode.
+- `wlr-layer-shell-unstable-v1`: panels and layer-surface popups.
+- `wlr-output-management-unstable-v1`: tested and applied output
+  configuration, including position and scale.
+- `wl_seat` keyboard and pointer routing with scene hit testing and popup
+  grab handling.
+
+The compositor runs under the unprivileged `seyrix` login session using
+libseat/logind. QEMU uses software rendering; renderer identity comes from
+guest runtime logs rather than a hardware-acceleration assumption.
+
+## Workspace shortcuts
+
+- **Super+Left / Super+Right** switches to an adjacent existing workspace.
+  Phase 2C does not wrap at the first or last workspace.
+- **Super+Shift+Left / Super+Shift+Right** moves the focused visible toplevel
+  to the adjacent workspace while preserving its running client and scene
+  tree.
+- **Super+1 through Super+4** selects the initial workspaces. **Super+5
+  through Super+9** are consumed because those workspaces do not exist yet.
+- The panel also selects an existing workspace by pointer.
+
+Stacking order and focus history are independent per workspace. Minimized
+windows remain members of their workspace. Popups are dismissed when their
+parent workspace is hidden, preventing stale grabs from blocking later
+switches.
 
 ## Current limits
 
-The compositor supports xdg-shell toplevel surfaces, not popup surfaces. It
-has no title bars, decorations, panels, taskbar, desktop shell, maximize or
-fullscreen behavior, Xwayland, HiDPI configuration, or persistent output
-configuration. Maximize and fullscreen requests are acknowledged without
-changing the window state. These limits keep Phase 2B focused on rendering,
-input, window lifecycle, and clean shutdown. Aero and Chroma remain future work.
+Per-monitor workspaces, animated switching, persistent output profiles, full
+HiDPI policy, Xwayland, a launcher, and a taskbar are not implemented. QEMU
+verification used one virtio-vga output, so output hotplug, output removal with
+mapped windows, and physical multi-monitor support remain unverified. The
+1.25-scale output configuration path was exercised in QEMU, but this does not
+establish broad HiDPI compatibility.
 
-The renderer choice and driver name come from wlroots and Mesa runtime logs.
-`WLR_RENDERER` in the compositor log records a requested override, if one was
-set; it does not claim hardware acceleration. The Phase 2B report records the
-renderer observed in the verified QEMU guest.
+The Phase 2C report records functional evidence and incomplete checks. A
+successful compile or protocol registration alone is not evidence that an
+interaction works.

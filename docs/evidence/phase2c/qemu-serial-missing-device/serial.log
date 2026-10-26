@@ -1,0 +1,422 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001HBdsDxe: loading Boot0002 "UEFI QEMU DVD-ROM QM00005 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x2,0xFFFF,0x0)
+BdsDxe: starting Boot0002 "UEFI QEMU DVD-ROM QM00005 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x2,0xFFFF,0x0)
+[0m[30m[40m[2J[001;001H[0m[37m[40m[H[J[1;1H[?25l[m[H[J[1;1H[2;28HGNU GRUB  version 2:2.16-1
+
+[m[4;2H+----------------------------------------------------------------------------+[5;2H|[5;79H|[6;2H|[6;79H|[7;2H|[7;79H|[8;2H|[8;79H|[9;2H|[9;79H|[10;2H|[10;79H|[11;2H|[11;79H|[12;2H|[12;79H|[13;2H|[13;79H|[14;2H|[14;79H|[15;2H|[15;79H|[16;2H+----------------------------------------------------------------------------+[m[17;2H[18;2H[m     Use the ^ and v keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line. ESC to return             
+      previous menu.                                                      [5;80H [7m[5;3H*Seyrix Linux (x86_64, UEFI)                                                [m[5;78H[m[m[6;3H UEFI Firmware Settings                                                     [m[6;78H[m[m[7;3H System shutdown                                                            [m[7;78H[m[m[8;3H System restart                                                             [m[8;78H[m[m[9;3H                                                                            [m[9;78H[m[m[10;3H                                                                            [m[10;78H[m[m[11;3H                                                                            [m[11;78H[m[m[12;3H                                                                            [m[12;78H[m[m[13;3H                                                                            [m[13;78H[m[m[14;3H                                                                            [m[14;78H[m[m[15;3H                                                                            [m[15;78H[m[15;80H [5;78H[0m[30m[40m[2J[001;001H[0m[37m[40m[002;068HGNU GRUB  version 2:2.16-1
+
+[004;002H┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐[005;002H│[005;159H│[006;002H│[006;159H│[007;002H│[007;159H│[008;002H│[008;159H│[009;002H│[009;159H│[010;002H│[010;159H│[011;002H│[011;159H│[012;002H│[012;159H│[013;002H│[013;159H│[014;002H│[014;159H│[015;002H│[015;159H│[016;002H│[016;159H│[017;002H│[017;159H│[018;002H│[018;159H│[019;002H│[019;159H│[020;002H│[020;159H│[021;002H│[021;159H│[022;002H│[022;159H│[023;002H│[023;159H│[024;002H│[024;159H│[025;002H│[025;159H│[026;002H│[026;159H│[027;002H│[027;159H│[028;002H│[028;159H│[029;002H│[029;159H│[030;002H│[030;159H│[031;002H│[031;159H│[032;002H│[032;159H│[033;002H│[033;159H│[034;002H│[034;159H│[035;002H│[035;159H│[036;002H└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[037;002H[038;002H     Use the ▲ and ▼ keys to select which entry is highlighted.                                                                                          
+      Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line. ESC to return previous menu.                [005;160H [0m[30m[47m[005;003H*Seyrix Linux (x86_64, UEFI)                                                                                                                                [0m[37m[40m[005;158H[006;003H UEFI Firmware Settings                                                                                                                                     [006;158H[007;003H System shutdown                                                                                                                                            [007;158H[008;003H System restart                                                                                                                                             [008;158H[009;003H                                                                                                                                                            [009;158H[010;003H                                                                                                                                                            [010;158H[011;003H                                                                                                                                                            [011;158H[012;003H                                                                                                                                                            [012;158H[013;003H                                                                                                                                                            [013;158H[014;003H                                                                                                                                                            [014;158H[015;003H                                                                                                                                                            [015;158H[016;003H                                                                                                                                                            [016;158H[017;003H                                                                                                                                                            [017;158H[018;003H                                                                                                                                                            [018;158H[019;003H                                                                                                                                                            [019;158H[020;003H                                                                                                                                                            [020;158H[021;003H                                                                                                                                                            [021;158H[022;003H                                                                                                                                                            [022;158H[023;003H                                                                                                                                                            [023;158H[024;003H                                                                                                                                                            [024;158H[025;003H                                                                                                                                                            [025;158H[026;003H                                                                                                                                                            [026;158H[027;003H                                                                                                                                                            [027;158H[028;003H                                                                                                                                                            [028;158H[029;003H                                                                                                                                                            [029;158H[030;003H                                                                                                                                                            [030;158H[031;003H                                                                                                                                                            [031;158H[032;003H                                                                                                                                                            [032;158H[033;003H                                                                                                                                                            [033;158H[034;003H                                                                                                                                                            [034;158H[035;003H                                                                                                                                                            [035;158H[035;160H [005;158H[040;001H   The highlighted entry will be executed automatically in 3s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 3s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 2s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 2s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 1s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 1s.                 [5;78H[040;001H   The highlighted entry will be executed automatically in 0s.                                                                                                 [005;158H[22;1H   The highlighted entry will be executed automatically in 0s.                 [5;78H[0m[30m[40m[2J[001;001H[0m[37m[40m[?25h[H[J[1;1H    Booting `Seyrix Linux (x86_64, UEFI)'Booting `Seyrix Linux (x86_64, UEFI)'
+
+
+
+[    2.006333] virt/tdx: TDX not supported by the host platform
+:: running early hook [udev]
+Starting systemd-udevd version 262.1-1-arch
+:: running hook [udev]
+:: Triggering uevents...
+:: running hook [archiso]
+:: Mounting '/dev/sr0' to '/run/archiso/bootmnt'
+:: Device '/dev/sr0' mounted successfully.
+:: Mounting /run/archiso/cowspace (tmpfs) filesystem, size=256M...
+:: Mounting '/dev/loop0' to '/run/archiso/airootfs'
+:: Device '/dev/loop0' mounted successfully.
+:: running cleanup hook [udev]
+P+q6E616D65\[18t7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J
+[0;1;39mWelcome to [0m[38;2;23;147;209mArch Linux[0m[0;1;39m![0m
+
+]3008;start=67e75a65c86b48cc99a2fcb28ff3951a;user=root;hostname=seyrix-dev;machineid=5c0e8875bcb14e1cb1f2b940864531f7;bootid=8987ea78a95b4f369111ed0aa3fb0ea4;pid=1;pidfdid=1;comm=systemd;type=boot\[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/dirmngr[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/getty[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-browser[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-extra[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/gpg-agent-ssh[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/keyboxd[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/modprobe[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mSlice /system/serial-getty[0m.
+[[0;32m  OK  [0m] Created slice [0;1;39mUser and Session Slice[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDispatch Password Requests to Console Directory Watch[0m.
+[[0;32m  OK  [0m] Started [0;1;39mForward Password Requests to Wall Directory Watch[0m.
+[[0;32m  OK  [0m] Set up automount [0;1;39mArbitrary Executa…ormats File System Automount Point[0m.
+         Expecting device [0;1;39m/dev/ttyS0[0m...
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal dm-clone Devices[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mImage Downloads[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Integrity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPath Units[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Encrypted Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Integrity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mRemote Verity Protected Volumes[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSlice Units[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSwaps[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Verity Protected Volumes[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDevice-mapper event daemon FIFOs[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mQuery the User Interactively for a Password[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mProcess Core Dump Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mCredential Encryption/Decryption[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Encryption Enrollment Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mFactory Reset Management[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mHostname Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Audit Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Socket (/dev/log)[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Sockets[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDDI File System Mounter Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mConsole Output Muting Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Metrics Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Netlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNamespace Resource Manager Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Repartitioning Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport System Basic Metrics Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mCGroup Report Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport Files Metrics Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mReport Signing Socket (Local Software Key)[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Report Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mResolve Monitor Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mResolve Service Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSimple Block Device Backed Storage Provider[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSimple File System Backed Storage Provider[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Install Tool[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Updates[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mudev Kernel Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mudev Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mUser Database Manager Socket[0m.
+         Mounting [0;1;39mHuge Pages File System[0m...
+         Mounting [0;1;39mPOSIX Message Queue File System[0m...
+         Mounting [0;1;39mKernel Debug File System[0m...
+         Mounting [0;1;39mKernel Trace File System[0m...
+         Mounting [0;1;39mTemporary Directory /tmp[0m...
+         Starting [0;1;39mCreate List of Static Device Nodes[0m...
+         Mounting [0;1;39mKernel Configuration File System[0m...
+         Mounting [0;1;39mFUSE Control File System[0m...
+         Starting [0;1;39mJournal Service[0m...
+         Starting [0;1;39mLoad Kernel Modules[0m...
+         Starting [0;1;39mGenerate Network Units from Kernel Command Line[0m...
+         Starting [0;1;39mRemount Root and Kernel File Systems[0m...
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal Encrypted Volumes[0m.
+         Starting [0;1;39mLoad udev Rules from Credentials[0m...
+         Starting [0;1;39mColdplug All udev Devices[0m...
+[[0;32m  OK  [0m] Mounted [0;1;39mHuge Pages File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mPOSIX Message Queue File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Debug File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Trace File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mTemporary Directory /tmp[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mCreate List of Static Device Nodes[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mKernel Configuration File System[0m.
+[[0;32m  OK  [0m] Mounted [0;1;39mFUSE Control File System[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad Kernel Modules[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mGenerate Network Units from Kernel Command Line[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mRemount Root and Kernel File Systems[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad udev Rules from Credentials[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPreparation for Network[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mNetwork Management Resolve Hook Socket[0m.
+         Starting [0;1;39mLoad/Save OS Random Seed[0m...
+         Starting [0;1;39mApply Kernel Variables[0m...
+         Starting [0;1;39mCreate Static Device Nodes in /dev gracefully[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mLoad/Save OS Random Seed[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mApply Kernel Variables[0m.
+         Starting [0;1;39mUser Database Manager[0m...
+[[0;32m  OK  [0m] Started [0;1;39mJournal Service[0m.
+         Starting [0;1;39mFlush Journal to Persistent Storage[0m...
+[[0m[0;31m*     [0m] (1 of 5) A start job is running for… All udev Devices (12s / no limit)
+M[K[[0;32m  OK  [0m] Started [0;1;39mUser Database Manager[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mFlush Journal to Persistent Storage[0m.
+         Starting [0;1;39mLoad Kernel Module tun[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mLoad Kernel Module tun[0m.
+         Starting [0;1;39mNamespace Resource Manager[0m...
+[[0;1;31m*[0m[0;31m*    [0m] (1 of 4) A start job is running for… All udev Devices (16s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 4) A start job is running for… All udev Devices (17s / no limit)
+M[K[[0;32m  OK  [0m] Finished [0;1;39mColdplug All udev Devices[0m.
+[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (19s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for /dev/ttyS0 (20s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (20s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for…e Resource Manager (7s / 1min 30s)
+M[K[     [0;31m*[0m] (3 of 3) A start job is running for…e Resource Manager (7s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for…e Resource Manager (8s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (22s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…n /dev gracefully (23s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…n /dev gracefully (23s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (24s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (24s / 1min 30s)
+M[K[[0m[0;31m*     [0m] (2 of 3) A start job is running for /dev/ttyS0 (25s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for… Resource Manager (11s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for… Resource Manager (12s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for… Resource Manager (12s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…n /dev gracefully (27s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (27s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (28s / no limit)
+M[K[     [0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (28s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (29s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (29s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for… Resource Manager (16s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for… Resource Manager (16s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for… Resource Manager (17s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…n /dev gracefully (31s / no limit)
+M[K[[0m[0;31m*     [0m] (1 of 3) A start job is running for…n /dev gracefully (32s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…n /dev gracefully (32s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (33s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (33s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for /dev/ttyS0 (34s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (20s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for… Resource Manager (21s / 1min 30s)
+M[K[     [0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (21s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (36s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (36s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…n /dev gracefully (37s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (37s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (38s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (38s / 1min 30s)
+M[K[[0m[0;31m*     [0m] (3 of 3) A start job is running for… Resource Manager (25s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for… Resource Manager (25s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for… Resource Manager (26s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…n /dev gracefully (40s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…n /dev gracefully (41s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (41s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (42s / 1min 30s)
+M[K[     [0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (42s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (43s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (29s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for… Resource Manager (30s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for… Resource Manager (30s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…n /dev gracefully (45s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…n /dev gracefully (45s / no limit)
+M[K[[0m[0;31m*     [0m] (1 of 3) A start job is running for…n /dev gracefully (46s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (46s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (47s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (47s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for… Resource Manager (34s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (34s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for… Resource Manager (35s / 1min 30s)
+M[K[     [0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (49s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (50s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…n /dev gracefully (50s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for /dev/ttyS0 (51s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (51s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (52s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for… Resource Manager (38s / 1min 30s)
+M[K[[0m[0;31m*     [0m] (3 of 3) A start job is running for… Resource Manager (39s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for… Resource Manager (39s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…n /dev gracefully (54s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…n /dev gracefully (54s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…n /dev gracefully (55s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (55s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (56s / 1min 30s)
+M[K[     [0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (56s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for… Resource Manager (43s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (43s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for… Resource Manager (44s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…n /dev gracefully (58s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…n /dev gracefully (59s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…n /dev gracefully (59s / no limit)
+M[K[[0m[0;31m*     [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 1s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for… Resource Manager (47s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for… Resource Manager (48s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (48s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…ev gracefully (1min 3s / no limit)
+M[K[     [0;31m*[0m] (1 of 3) A start job is running for…ev gracefully (1min 3s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…ev gracefully (1min 4s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 4s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 5s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 5s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for… Resource Manager (52s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 3) A start job is running for… Resource Manager (52s / 1min 30s)
+M[K[[0m[0;31m*     [0m] (3 of 3) A start job is running for… Resource Manager (53s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 3) A start job is running for…ev gracefully (1min 7s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…ev gracefully (1min 8s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…ev gracefully (1min 8s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 9s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 9s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 10s / 1min 30s)
+M[K[     [0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (56s / 1min 30s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for… Resource Manager (57s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (3 of 3) A start job is running for… Resource Manager (57s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for…v gracefully (1min 12s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for…v gracefully (1min 12s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 3) A start job is running for…v gracefully (1min 13s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 13s / 1min 30s)
+M[K[[0m[0;31m*     [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 14s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 3) A start job is running for /dev/ttyS0 (1min 14s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 3) A start job is running for…ource Manager (1min 1s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (3 of 3) A start job is running for…ource Manager (1min 1s / 1min 30s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (3 of 3) A start job is running for…ource Manager (1min 2s / 1min 30s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for…v gracefully (1min 16s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 3) A start job is running for…v gracefully (1min 17s / no limit)
+M[K[[0;32m  OK  [0m] Started [0;1;39mNamespace Resource Manager[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mCreate Static Device Nodes in /dev gracefully[0m.
+         Starting [0;1;39mCreate System Users[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mCreate System Users[0m.
+         Starting [0;1;39mJournal Metrics Report Socket[0m...
+         Starting [0;1;39mJournal Log Access Socket[0m...
+         Starting [0;1;39mNetwork Name Resolution[0m...
+         Starting [0;1;39mCreate Static Device Nodes in /dev[0m...
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Metrics Report Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mJournal Log Access Socket[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mCreate Static Device Nodes in /dev[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mPreparation for Local File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLocal File Systems[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mVirtual Machines and Containers[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mBoot Loader Control Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mDisk Image Download Service Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Extension Image Management[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mBoot Loader UKI Auto-Link on Completed System Update[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mSystem Extension and …Refresh on Completed System Update[0m.
+         Starting [0;1;39mAutomatic Boot Loader Update[0m...
+         Starting [0;1;39mCreate System Files and Directories[0m...
+         Starting [0;1;39mRule-based Manager for Device Events and Files[0m...
+         Starting [0;1;39mLoad JSON user/group Records from Credentials[0m...
+         Starting [0;1;39mListen Kernel Core Dump Socket[0m...
+[[0;32m  OK  [0m] Started [0;1;39mNetwork Name Resolution[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mAutomatic Boot Loader Update[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mLoad JSON user/group Records from Credentials[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mHost and Network Name Lookups[0m.
+         Starting [0;1;39mNetwork Time Synchronization[0m...
+[     [0;31m*[0m] (5 of 5) A start job is running for…ts and Files (1min 26s / 2min 52s)
+M[K[    [0;31m*[0;1;31m*[0m] (1 of 5) A start job is running for… Directories (1min 27s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 5) A start job is running for… Directories (1min 27s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 5) A start job is running for… Directories (1min 28s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 5) A start job is running for…chronization (1min 28s / 2min 54s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 5) A start job is running for…chronization (1min 28s / 2min 54s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 5) A start job is running for…chronization (1min 29s / 2min 54s)
+M[K[[0m[0;31m*     [0m] (3 of 5) A start job is running for… Dump Socket (1min 29s / 2min 52s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (3 of 5) A start job is running for… Dump Socket (1min 29s / 2min 59s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (3 of 5) A start job is running for… Dump Socket (1min 30s / 2min 59s)
+M[K[[0;1;31m TIME [0m] Timed out waiting for device [0;1;39m/dev/ttyS0[0m.
+[K[[0;1;38:5:185mDEPEND[0m] Dependency failed for [0;1;39mSerial Getty on ttyS0[0m.
+[[0;32m  OK  [0m] Started [0;1;39mNetwork Time Synchronization[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSystem Time Set[0m.
+[[0;32m  OK  [0m] Started [0;1;39mRule-based Manager for Device Events and Files[0m.
+         Starting [0;1;39mNetwork Management[0m...
+[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 3) A start job is running for… Dump Socket (1min 33s / 2min 59s)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (2 of 3) A start job is running for… Dump Socket (1min 34s / 2min 59s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (2 of 3) A start job is running for… Dump Socket (1min 34s / 2min 59s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for…rk Management (1min 34s / 3min 1s)
+M[K[     [0;31m*[0m] (3 of 3) A start job is running for…rk Management (1min 35s / 3min 1s)
+M[K[    [0;31m*[0;1;31m*[0m] (3 of 3) A start job is running for…rk Management (1min 35s / 3min 1s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 3) A start job is running for… Directories (1min 36s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 3) A start job is running for… Directories (1min 36s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (1 of 3) A start job is running for… Directories (1min 36s / no limit)
+M[K[[0;32m  OK  [0m] Started [0;1;39mListen Kernel Core Dump Socket[0m.
+[K         Starting [0;1;39mKernel Core Pattern Register[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mCreate System Files and Directories[0m.
+         Starting [0;1;39mRebuild Dynamic Linker Cache[0m...
+         Starting [0;1;39mInitial Setup[0m...
+         Starting [0;1;39mRebuild Journal Catalog[0m...
+         Starting [0;1;39mRecord System Boot/Shutdown in UTMP[0m...
+[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8]3008;start=d771965e1ae24092a0aa0a6564986e14;user=root;hostname=seyrix-dev;machineid=5c0e8875bcb14e1cb1f2b940864531f7;bootid=8987ea78a95b4f369111ed0aa3fb0ea4;pid=434;pidfdid=224;comm=(temd-firstboot);servicename=systemd-firstboot.service;invocationid=62faf25aff5c4a919bdbdcce89dad406;type=service\[[0;32m  OK  [0m] Finished [0;1;39mInitial Setup[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mFirst Boot Complete[0m.
+         Starting [0;1;39mSave Transient machine-id to Disk[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mKernel Core Pattern Register[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mRecord System Boot/Shutdown in UTMP[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mSave Transient machine-id to Disk[0m.
+[[0;32m  OK  [0m] Finished [0;1;39mRebuild Journal Catalog[0m.
+[[0;1;31m*[0m[0;31m*    [0m] (2 of 2) A start job is running for…Linker Cache (1min 48s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 2) A start job is running for…Linker Cache (1min 49s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 2) A start job is running for…Linker Cache (1min 49s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 2) A start job is running for…rk Management (1min 50s / 3min 1s)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 2) A start job is running for…rk Management (1min 50s / 3min 1s)
+M[K[[0;32m  OK  [0m] Started [0;1;39mNetwork Management[0m.
+[K[[0;32m  OK  [0m] Reached target [0;1;39mNetwork[0m.
+         Starting [0;1;39mEnable Persistent Storage in systemd-networkd[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mEnable Persistent Storage in systemd-networkd[0m.
+[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (1min 55s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild …Linker Cache (1min 55s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (1min 55s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …Linker Cache (1min 56s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …Linker Cache (1min 56s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …Linker Cache (1min 57s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …Linker Cache (1min 58s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (1min 58s / no limit)
+M[K[[0m[0;31m*     [0m] A start job is running for Rebuild …Linker Cache (1min 59s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (1min 59s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …mic Linker Cache (2min / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild … Linker Cache (2min 1s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild … Linker Cache (2min 1s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 2s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 2s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 2s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 3s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 4s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild … Linker Cache (2min 4s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild … Linker Cache (2min 4s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild … Linker Cache (2min 5s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild … Linker Cache (2min 5s / no limit)
+M[K[[0m[0;31m*     [0m] A start job is running for Rebuild … Linker Cache (2min 6s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild … Linker Cache (2min 6s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild … Linker Cache (2min 7s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild … Linker Cache (2min 7s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild … Linker Cache (2min 8s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 8s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 9s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild … Linker Cache (2min 9s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 10s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 10s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …Linker Cache (2min 11s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …Linker Cache (2min 11s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …Linker Cache (2min 12s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (2min 12s / no limit)
+M[K[[0m[0;31m*     [0m] A start job is running for Rebuild …Linker Cache (2min 13s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (2min 13s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …Linker Cache (2min 14s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …Linker Cache (2min 14s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …Linker Cache (2min 15s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 15s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 16s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 16s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 17s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 17s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …Linker Cache (2min 18s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …Linker Cache (2min 18s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …Linker Cache (2min 19s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (2min 19s / no limit)
+M[K[[0m[0;31m*     [0m] A start job is running for Rebuild …Linker Cache (2min 20s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] A start job is running for Rebuild …Linker Cache (2min 20s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] A start job is running for Rebuild …Linker Cache (2min 21s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] A start job is running for Rebuild …Linker Cache (2min 21s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] A start job is running for Rebuild …Linker Cache (2min 22s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 22s / no limit)
+M[K[    [0;31m*[0;1;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 23s / no limit)
+M[K[     [0;31m*[0m] A start job is running for Rebuild …Linker Cache (2min 24s / no limit)
+M[K[[0;32m  OK  [0m] Listening on [0;1;39mLoad/Save RF Kill Switch Status /dev/rfkill Watch[0m.
+[K         Starting [0;1;39mVirtual Console Setup[0m...
+[    [0;31m*[0;1;31m*[0m] (1 of 2) A start job is running for…tual Console Setup (2s / no limit)
+M[K[   [0;31m*[0;1;31m*[0m[0;31m*[0m] (1 of 2) A start job is running for…tual Console Setup (2s / no limit)
+M[K[  [0;31m*[0;1;31m*[0m[0;31m* [0m] (1 of 2) A start job is running for…tual Console Setup (3s / no limit)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 2) A start job is running for…Linker Cache (2min 28s / no limit)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (2 of 2) A start job is running for…Linker Cache (2min 28s / no limit)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (2 of 2) A start job is running for…Linker Cache (2min 29s / no limit)
+M[K[[0;32m  OK  [0m] Finished [0;1;39mVirtual Console Setup[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mRebuild Dynamic Linker Cache[0m.
+         Starting [0;1;39mUpdate is Completed[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mUpdate is Completed[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSystem Initialization[0m.
+[[0;32m  OK  [0m] Started [0;1;39mRefresh existing PGP keys of archlinux-keyring regularly[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDaily verification of password and group files[0m.
+[[0;32m  OK  [0m] Started [0;1;39mDaily Cleanup of Temporary Directories[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mTimer Units[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mD-Bus System Message Bus Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mAuthorization Manager Agent Helper[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mUser Login Management Varlink Socket[0m.
+[[0;32m  OK  [0m] Listening on [0;1;39mVirtual Machine and C…tainer Registration Service Socket[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mSocket Units[0m.
+         Starting [0;1;39mD-Bus System Message Bus[0m...
+[[0;32m  OK  [0m] Started [0;1;39mD-Bus System Message Bus[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mBasic System[0m.
+         Starting [0;1;39mHome Area Manager[0m...
+         Starting [0;1;39mUser Login Management[0m...
+[[0m[0;31m*     [0m] (1 of 2) A start job is running for… Area Manager (2min 36s / 4min 3s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] (1 of 2) A start job is running for… Area Manager (2min 36s / 4min 3s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] (1 of 2) A start job is running for… Area Manager (2min 37s / 4min 3s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] (2 of 2) A start job is running for…in Management (2min 37s / 4min 3s)
+M[K[[0;32m  OK  [0m] Started [0;1;39mHome Area Manager[0m.
+[K[[0;32m  OK  [0m] Finished [0;1;39mHome Area Activation[0m.
+         Starting [0;1;39mPermit User Sessions[0m...
+[[0;32m  OK  [0m] Finished [0;1;39mPermit User Sessions[0m.
+[[0;32m  OK  [0m] Started [0;1;39mGetty on tty1[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mLogin Prompts[0m.
+[[0;32m  OK  [0m] Started [0;1;39mUser Login Management[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mMulti-User System[0m.
+[[0;32m  OK  [0m] Reached target [0;1;39mGraphical Interface[0m.

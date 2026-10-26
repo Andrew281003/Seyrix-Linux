@@ -1,0 +1,18 @@
+Build started UTC: 2026-10-26T09:11:04+00:00
+SOURCE_DATE_EPOCH: 1793005810
+Build host kernel: 6.18.54.1-microsoft-standard-WSL2
+Build host virtualization: wsl
+Base profile source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/config/archiso
+Graphics overlay source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/config/graphics-overlay
+Compositor overlay source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/config/compositor-overlay
+wlroots pkg-config version: 0.20.2
+wlr-protocols pkg-config version: 1.0
+Compositor build directory: /root/.cache/seyrix-linux/phase2c-final5-20261026/compositor-build
+Protocol probe build directory: /root/.cache/seyrix-linux/phase2c-final5-20261026/protocol-probe-build
+Build root: /root/.cache/seyrix-linux/phase2c-final5-20261026
+ISO output directory: /root/.cache/seyrix-linux/phase2c-final5-20261026/out
+Package signature policy: PackageRequired
+PackageTrustedOnly
+DatabaseOptional
+DatabaseTrustedOnly
+Image package count: 241

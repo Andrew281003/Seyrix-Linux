@@ -16,6 +16,10 @@
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/util/log.h>
 
+#include "layer-shell.h"
+#include "popup.h"
+#include "shell.h"
+
 static uint64_t monotonic_ms(void) {
 	struct timespec now;
 	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
@@ -56,6 +60,7 @@ static void reap_children(struct seyrix_server *server) {
 		struct seyrix_child *child, *temporary;
 		wl_list_for_each_safe(child, temporary, &server->children, link) {
 			if (child->pid == pid) {
+				seyrix_shell_child_exited(server, pid);
 				wl_list_remove(&child->link);
 				free(child);
 				break;
@@ -169,8 +174,14 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		return false;
 	}
 	server->background_layer = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_background = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_bottom = wlr_scene_tree_create(&server->scene->tree);
 	server->window_layer = wlr_scene_tree_create(&server->scene->tree);
-	if (server->background_layer == NULL || server->window_layer == NULL) {
+	server->layer_top = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_overlay = wlr_scene_tree_create(&server->scene->tree);
+	if (server->background_layer == NULL || server->layer_background == NULL ||
+			server->layer_bottom == NULL || server->window_layer == NULL ||
+			server->layer_top == NULL || server->layer_overlay == NULL) {
 		wlr_log(WLR_ERROR, "Cannot create scene layers");
 		return false;
 	}
@@ -178,6 +189,9 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		server->output_layout);
 	if (server->scene_layout == NULL) {
 		wlr_log(WLR_ERROR, "Cannot attach scene to output layout");
+		return false;
+	}
+	if (!seyrix_workspaces_init(server)) {
 		return false;
 	}
 
@@ -189,8 +203,12 @@ bool seyrix_server_init(struct seyrix_server *server) {
 	}
 
 	if (!seyrix_output_init(server) || !seyrix_window_init(server) ||
+			!seyrix_popup_init(server) || !seyrix_layer_shell_init(server) ||
 			!seyrix_input_init(server)) {
 		return false;
+	}
+	if (!seyrix_shell_init(server)) {
+		wlr_log(WLR_ERROR, "Seyrix panel unavailable; compositor will continue without it");
 	}
 
 	server->sigint_source = wl_event_loop_add_signal(event_loop, SIGINT,
@@ -226,12 +244,16 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		wlr_log(WLR_ERROR, "No active outputs found; compositor needs a display");
 		return false;
 	}
+	if (!seyrix_shell_start(server)) {
+		wlr_log(WLR_ERROR, "Seyrix panel could not start; compositor will continue without it");
+	}
 
 	const char *renderer_request = getenv("WLR_RENDERER");
 	wlr_log(WLR_INFO, "Renderer request: %s",
 		renderer_request != NULL ? renderer_request : "wlroots automatic selection");
 	wlr_log(WLR_INFO, "Running Seyrix compositor on WAYLAND_DISPLAY=%s", socket);
-	wlr_log(WLR_INFO, "Shortcuts: Super+Return opens terminal; Super+Q closes focused window; Super+Shift+Q exits");
+	wlr_log(WLR_INFO,
+		"Shortcuts: Super+Return opens terminal; Super+Q closes focused window; Super+Shift+Q exits; Super+Left/Right switches workspace; Super+Shift+Left/Right moves a window; Super+1..4 selects a workspace");
 	if (!seyrix_spawn_terminal(server)) {
 		wlr_log(WLR_ERROR, "Startup terminal failed; use Super+Return to retry");
 	}
@@ -249,8 +271,13 @@ void seyrix_server_finish(struct seyrix_server *server) {
 		wl_display_destroy_clients(server->display);
 	}
 	seyrix_window_finish(server);
+	seyrix_popup_finish(server);
+	seyrix_decoration_finish(server);
+	seyrix_layer_shell_finish(server);
 	seyrix_output_finish(server);
 	seyrix_input_finish(server);
+	seyrix_shell_finish(server);
+	seyrix_workspaces_finish(server);
 
 	if (server->sigint_source != NULL) {
 		wl_event_source_remove(server->sigint_source);

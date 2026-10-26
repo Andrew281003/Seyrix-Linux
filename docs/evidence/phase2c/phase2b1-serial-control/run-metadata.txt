@@ -1,0 +1,8 @@
+Run started UTC: 2026-10-26T08:24:18+00:00
+ISO: /root/.cache/seyrix-linux/phase2b1-final-20261025T2225Z/out/seyrix-phase2b-2026.10.25-x86_64.iso
+ISO SHA-256: 1ed4a50f8ff24fc1e5008f56f2beb48c8fe4ad1dc977e67e797039ceb3b8416b
+ISO bytes: 1039171584
+Host kernel: 6.18.54.1-microsoft-standard-WSL2
+QEMU package: qemu-system-x86 11.1.2-1
+OVMF package: edk2-ovmf 202608-1
+Expected output: /root/.cache/seyrix-linux/phase2c-final-20261026/qemu-baseline-serial/serial.log

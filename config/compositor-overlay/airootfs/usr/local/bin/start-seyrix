@@ -22,8 +22,9 @@ if [[ ! -d "$XDG_RUNTIME_DIR" || ! -O "$XDG_RUNTIME_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -x /usr/bin/seyrix-compositor || ! -x /usr/bin/weston-terminal ]]; then
-  echo "Seyrix compositor or weston-terminal is missing from this image." >&2
+if [[ ! -x /usr/bin/seyrix-compositor || ! -x /usr/bin/weston-terminal ||
+		! -x /usr/bin/seyrix-shell ]]; then
+  echo "Seyrix compositor, panel, or weston-terminal is missing from this image." >&2
   exit 1
 fi
 

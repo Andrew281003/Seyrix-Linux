@@ -1,0 +1,1 @@
+option('wayland_protocols_dir', type: 'string', value: '/usr/share/wayland-protocols', description: 'Path to the installed wayland-protocols XML files')
