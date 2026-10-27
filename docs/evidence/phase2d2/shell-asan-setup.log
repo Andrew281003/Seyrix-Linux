@@ -1,0 +1,34 @@
+The Meson build system
+Version: 1.0.1
+Source dir: /src/desktop/shell
+Build dir: /out/shell-asan-build
+Build type: native build
+Project name: seyrix-shell
+Project version: 0.1.0
+C compiler for the host machine: cc (gcc 12.2.0 "cc (Debian 12.2.0-14+deb12u1) 12.2.0")
+C linker for the host machine: cc ld.bfd 2.40
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: /usr/bin/pkg-config (1.8.1)
+Run-time dependency wayland-client found: YES 1.21.0
+Run-time dependency wayland-protocols found: YES 1.31
+Run-time dependency wlr-protocols found: YES 1
+Run-time dependency gio-unix-2.0 found: YES 2.74.6
+Run-time dependency cairo found: YES 1.16.0
+Run-time dependency pango found: YES 1.50.12
+Run-time dependency pangocairo found: YES 1.50.12
+Run-time dependency gdk-pixbuf-2.0 found: YES 2.42.10
+Run-time dependency xkbcommon found: YES 1.5.0
+Library m found: YES
+Program wayland-scanner found: YES (/usr/bin/wayland-scanner)
+Build targets in project: 8
+
+seyrix-shell 0.1.0
+
+  User defined options
+    buildtype : debugoptimized
+    prefix    : /usr
+    wrap_mode : nofallback
+    b_sanitize: address,undefined
+
+Found ninja-1.11.1 at /usr/bin/ninja
