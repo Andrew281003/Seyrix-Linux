@@ -9,5 +9,6 @@ void seyrix_shell_child_exited(struct seyrix_server *server, pid_t pid);
 void seyrix_shell_finish(struct seyrix_server *server);
 void seyrix_shell_outputs_changed(struct seyrix_server *server);
 void seyrix_shell_update_active_workspace(struct seyrix_server *server);
+void seyrix_shell_commit_switcher(struct seyrix_server *server);
 
 #endif

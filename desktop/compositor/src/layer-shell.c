@@ -13,6 +13,7 @@ struct seyrix_layer_surface {
 	struct wlr_layer_surface_v1 *surface;
 	struct wlr_scene_layer_surface_v1 *scene_surface;
 	struct wlr_output *output;
+	pid_t owner_pid;
 	enum zwlr_layer_shell_v1_layer layer;
 	struct wl_listener commit;
 	struct wl_listener map;
@@ -181,6 +182,11 @@ static void handle_layer_map(struct wl_listener *listener, void *data) {
 	arrange_output(record->server, record->output);
 	seyrix_window_state_outputs_changed(record->server);
 	seyrix_wm_outputs_changed(record->server);
+	if (seyrix_shell_overlay_matches(record->server, record->owner_pid,
+			record->surface->namespace)) {
+		seyrix_layer_shell_focus_keyboard(record->server,
+			record->surface->surface);
+	}
 	wlr_log(WLR_INFO, "Layer shell surface mapped namespace=%s",
 		record->surface->namespace != NULL ? record->surface->namespace : "");
 }
@@ -188,6 +194,10 @@ static void handle_layer_map(struct wl_listener *listener, void *data) {
 static void handle_layer_unmap(struct wl_listener *listener, void *data) {
 	(void)data;
 	struct seyrix_layer_surface *record = wl_container_of(listener, record, unmap);
+	if (seyrix_shell_overlay_matches(record->server, record->owner_pid,
+			record->surface->namespace)) {
+		seyrix_shell_overlay_destroyed(record->server);
+	}
 	arrange_output(record->server, record->output);
 	seyrix_window_state_outputs_changed(record->server);
 	seyrix_wm_outputs_changed(record->server);
@@ -204,6 +214,10 @@ static void handle_layer_destroy(struct wl_listener *listener, void *data) {
 	struct seyrix_layer_surface *record =
 		wl_container_of(listener, record, destroy);
 	struct seyrix_server *server = record->server;
+	if (seyrix_shell_overlay_matches(server, record->owner_pid,
+			record->surface->namespace)) {
+		seyrix_shell_overlay_destroyed(server);
+	}
 	seyrix_popup_dismiss_layer_surface(record->surface);
 	remove_listener(&record->commit);
 	remove_listener(&record->map);
@@ -240,6 +254,10 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 	record->server = server;
 	record->surface = surface;
 	record->output = surface->output;
+	if (surface->resource != NULL) {
+		wl_client_get_credentials(wl_resource_get_client(surface->resource),
+			&record->owner_pid, NULL, NULL);
+	}
 	record->layer = surface->current.layer;
 	record->scene_surface = wlr_scene_layer_surface_v1_create(
 		scene_layer(server, record->layer), surface);

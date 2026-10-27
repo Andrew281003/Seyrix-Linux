@@ -1,0 +1,43 @@
+SEYRIX-LINUX OPTIONAL SOFTWARE
+==============================
+
+These commands use Arch Linux pacman and the official repositories in the
+current Seyrix development image. They install software only when you choose
+to run a command.
+
+Package installation requires administrator access. The current development
+image does not include sudo. From a local text console, sign in as root; this
+development profile permits a local root login with an empty password. Do not
+enter package-management commands in the graphical launcher.
+
+Refresh the package database and apply available updates before installing:
+
+    pacman -Syu
+
+Optional applications in the official Arch repositories:
+
+    pacman -S firefox
+    pacman -S chromium
+    pacman -S vlc
+
+Steam is in Arch's multilib repository. Multilib is disabled in the current
+Seyrix profile. As root, enable its repository block with:
+
+    sed -i '/^#\[multilib\]$/,/^#Include = \/etc\/pacman.d\/mirrorlist$/s/^#//' /etc/pacman.conf
+
+Confirm that both lines are enabled before updating:
+
+    grep -n -A1 '^\[multilib\]' /etc/pacman.conf
+
+Then refresh packages and install Steam:
+
+    pacman -Syu
+    pacman -S steam
+
+Google Chrome is not available directly from the official Arch repositories.
+The google-chrome package is maintained in the Arch User Repository (AUR) and
+requires a separate user review/build workflow. Seyrix does not install an AUR
+helper or run AUR build commands for you.
+
+Use pacman only from an authorized administrator shell. Review package prompts
+and repository changes before accepting them.

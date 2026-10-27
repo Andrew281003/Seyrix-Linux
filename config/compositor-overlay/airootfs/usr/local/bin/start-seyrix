@@ -22,6 +22,11 @@ if [[ ! -d "$XDG_RUNTIME_DIR" || ! -O "$XDG_RUNTIME_DIR" ]]; then
   exit 1
 fi
 
+if ! command -v flock >/dev/null 2>&1; then
+  echo "flock is unavailable; refusing to start an unguarded Seyrix session." >&2
+  exit 1
+fi
+
 if [[ ! -x /usr/bin/seyrix-compositor || ! -x /usr/bin/weston-terminal ||
 		! -x /usr/bin/seyrix-shell ]]; then
   echo "Seyrix compositor, panel, or weston-terminal is missing from this image." >&2
@@ -35,4 +40,14 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Seyrix
 
-exec /usr/bin/seyrix-compositor 2>&1 | tee /tmp/seyrix-compositor.log
+exec > >(tee /tmp/seyrix-compositor.log) 2>&1
+if flock --nonblock --conflict-exit-code 75 --close \
+		"$XDG_RUNTIME_DIR/seyrix-session.lock" /usr/bin/seyrix-compositor; then
+	exit 0
+else
+	status=$?
+	if (( status == 75 )); then
+		echo "A Seyrix session already owns this user runtime directory." >&2
+	fi
+	exit "$status"
+fi
