@@ -1,0 +1,12 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/shell'
+ninja: no work to do.
+1/5 seyrix-shell:shell state model              OK              0.02s
+2/5 seyrix-shell:shell configuration            OK              0.02s
+3/5 seyrix-shell:shell application catalog      OK              0.03s
+4/5 seyrix-shell:shell user interface rendering OK              0.05s
+5/5 seyrix-shell:session lock lifecycle         OK              0.06s
+
+Ok:                5   
+Fail:              0   
+
+Full log written to /root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/shell/meson-logs/testlog.txt

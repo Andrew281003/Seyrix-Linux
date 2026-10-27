@@ -1,0 +1,186 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-analyzer-stage1-20261027T211028Z/compositor'
+[1/23] Generating layer-shell-protocol-header with a custom command
+[2/23] Generating output-management-protocol-header with a custom command
+[3/23] Compiling C object seyrix-compositor.p/src_workspace.c.o
+FAILED: [code=1] seyrix-compositor.p/src_workspace.c.o 
+cc -Iseyrix-compositor.p -I. -I../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor -I/usr/include/wlroots-0.20 -I/usr/include/pixman-1 -I/usr/include/libdrm -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -Werror -std=c17 -O2 -g -fanalyzer -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -MD -MQ seyrix-compositor.p/src_workspace.c.o -MF seyrix-compositor.p/src_workspace.c.o.d -o seyrix-compositor.p/src_workspace.c.o -c ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/workspace.c
+../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/workspace.c: In function ‘seyrix_workspace_move_focused’:
+../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/workspace.c:311:19: error: dereference of NULL ‘0’ [CWE-476] [-Werror=analyzer-null-dereference]
+  311 |         if (source->focused_window == window) {
+      |             ~~~~~~^~~~~~~~~~~~~~~~
+  ‘seyrix_workspace_move_focused’: events 1-2
+    │
+    │  277 | void seyrix_workspace_move_focused(struct seyrix_server *server,
+    │      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │      |      |
+    │      |      (1) entry to ‘seyrix_workspace_move_focused’
+    │......
+    │  280 |         if (window == NULL || !window->mapped ||
+    │      |            ~
+    │      |            |
+    │      |            (2) following ‘false’ branch (when ‘window’ is non-NULL)... ─>─┐
+    │      |                                                                           │
+    │
+  ‘seyrix_workspace_move_focused’: event 3
+    │
+    │      |                                                                           │
+    │      |┌──────────────────────────────────────────────────────────────────────────┘
+    │  280 |│        if (window == NULL || !window->mapped ||
+    │      |│                               ~~~~~~^~~~~~~~
+    │      |│                                     |
+    │      |└────────────────────────────────────>(3) ...to here
+    │
+  ‘seyrix_workspace_move_focused’: events 4-6
+    │
+    │  280 |         if (window == NULL || !window->mapped ||
+    │      |             ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+    │      |                            |
+    │      |                            (4) following ‘true’ branch... ─>─┐
+    │      |                                                              │
+    │      |                                                              │
+    │      |┌─────────────────────────────────────────────────────────────┘
+    │  281 |│                        !seyrix_workspace_window_is_visible(window) || direction == 0) {
+    │      |│                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │      |│                         |
+    │      |└────────────────────────>(5) ...to here
+    │      |                          (6) calling ‘seyrix_workspace_window_is_visible’ from ‘seyrix_workspace_move_focused’
+    │
+    └──> ‘seyrix_workspace_window_is_visible’: events 7-8
+           │
+           │  201 | bool seyrix_workspace_window_is_visible(const struct seyrix_window *window) {
+           │      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+           │      |      |
+           │      |      (7) entry to ‘seyrix_workspace_window_is_visible’
+           │  202 |         if (window == NULL || window->workspace == NULL || window->server == NULL ||
+           │      |            ~
+           │      |            |
+           │      |            (8) following ‘false’ branch (when ‘window’ is non-NULL)... ─>─┐
+           │      |                                                                           │
+           │
+         ‘seyrix_workspace_window_is_visible’: event 9
+           │
+           │      |                                                                           │
+           │      |┌──────────────────────────────────────────────────────────────────────────┘
+           │  202 |│        if (window == NULL || window->workspace == NULL || window->server == NULL ||
+           │      |│                              ~~~~~~^~~~~~~~~~~
+           │      |│                                    |
+           │      |└───────────────────────────────────>(9) ...to here
+           │
+    <──────┘
+    │
+  ‘seyrix_workspace_move_focused’: events 10-11
+    │
+    │  280 |         if (window == NULL || !window->mapped ||
+    │      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │      |                                               |
+    │      |                                               (11) following ‘true’ branch... ─>─┐
+    │      |                                                                                  │
+    │      |                                                                                  │
+    │      |┌─────────────────────────────────────────────────────────────────────────────────┘
+    │  281 |│                        !seyrix_workspace_window_is_visible(window) || direction == 0) {
+    │      |│                        ~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │      |│                         |
+    │      |│                         (10) returning to ‘seyrix_workspace_move_focused’ from ‘seyrix_workspace_window_is_visible’
+    │
+  ‘seyrix_workspace_move_focused’: events 12-15
+    │
+    │  280 |         if (window == NULL || !window->mapped ||
+    │      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                     
+    │  281 |                         !seyrix_workspace_window_is_visible(window) || direction == 0) {
+    │      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+    │      |                                                                     |
+    │      |└───────────────────────────────────────────────────────────────────>(12) ...to here
+    │      |                                                                     (13) following ‘false’ branch (when ‘direction != 0’)... ─>─┐
+    │      |                                                                                                                                 │
+    │......
+    │      |                                                                                                                                 │
+    │      |┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+    │  284 |│        struct seyrix_workspace *source = active_workspace(server);
+    │      |│        ~~~~~~                            ~                          
+    │      |│        |                                 |
+    │      |└───────>(14) ...to here                   (15) inlined call to ‘active_workspace’ from ‘seyrix_workspace_move_focused’
+    │
+    └──> ‘active_workspace’: event 16
+           │
+           │    8 |         if (server->active_workspace_index >= SEYRIX_WORKSPACE_COUNT) {
+           │      |            ^
+           │      |            |
+           │      |            (16) following ‘true’ branch... ─>─┐
+           │      |                                               │
+           │
+    <──────┘
+    │
+  ‘seyrix_workspace_move_focused’: events 17-20
+    │
+    │      |                                               │
+    │      |┌──────────────────────────────────────────────┘
+    │  284 |│        struct seyrix_workspace *source = active_workspace(server);
+    │      |│                                          ^~~~~~~~~~~~~~~~~~~~~~~~
+    │      |│                                          |
+    │      |└─────────────────────────────────────────>(17) ...to here
+    │  285 |         seyrix_popup_dismiss_window(window);
+    │  286 |         if (has_active_popup_grab(server)) {
+    │      |            ~                               
+    │      |            |
+    │      |            (18) following ‘false’ branch... ─>─┐
+    │      |                                                │
+    │......
+    │      |                                                │
+    │      |┌───────────────────────────────────────────────┘
+    │  290 |│        size_t destination_index = server->active_workspace_index;
+    │      |│        ~~~~~~                             
+    │      |│        |
+    │      |└───────>(19) ...to here
+    │......
+    │  297 |                 if (destination_index + 1 >= SEYRIX_WORKSPACE_COUNT) {
+    │      |                    ~                       
+    │      |                    |
+    │      |                    (20) following ‘false’ branch... ─>─┐
+    │      |                                                        │
+    │
+  ‘seyrix_workspace_move_focused’: events 21-24
+    │
+    │      |                                                        │
+    │      |┌───────────────────────────────────────────────────────┘
+    │  297 |│                if (destination_index + 1 >= SEYRIX_WORKSPACE_COUNT) {
+    │      |│                   ^
+    │      |│                   |
+    │      |└──────────────────>(21) ...to here
+    │......
+    │  303 |         if (source == destination || destination->scene_tree == NULL ||
+    │      |            ~        
+    │      |            |
+    │      |            (22) following ‘false’ branch... ─>─┐
+    │      |                                                │
+    │......
+    │      |                                                │
+    │      |┌───────────────────────────────────────────────┘
+    │  307 |│        if (server->grabbed_window == window) {
+    │      |│        ~~          
+    │      |│        |
+    │      |└───────>(23) ...to here
+    │......
+    │  311 |         if (source->focused_window == window) {
+    │      |             ~~~~~~~~~~~~~~~~~~~~~~
+    │      |                   |
+    │      |                   (24) ⚠️  dereference of NULL ‘<unknown>’
+    │
+cc1: all warnings being treated as errors
+[4/23] Compiling C object compositor-geometry-test.p/.._.._tests_compositor-geometry-test.c.o
+[5/23] Compiling C object seyrix-compositor.p/src_popup.c.o
+[6/23] Compiling C object seyrix-compositor.p/src_layer-shell.c.o
+[7/23] Compiling C object seyrix-compositor.p/src_output.c.o
+[8/23] Compiling C object seyrix-compositor.p/src_decoration.c.o
+[9/23] Compiling C object seyrix-compositor.p/src_main.c.o
+[10/23] Compiling C object seyrix-compositor.p/src_window.c.o
+[11/23] Compiling C object seyrix-compositor.p/src_input.c.o
+[12/23] Compiling C object seyrix-compositor.p/src_window-state.c.o
+[13/23] Compiling C object seyrix-compositor.p/src_shell.c.o
+[14/23] Compiling C object seyrix-compositor.p/src_window-management.c.o
+[15/23] Compiling C object compositor-window-management-test.p/src_wm-config.c.o
+[16/23] Compiling C object seyrix-compositor.p/src_wm-config.c.o
+[17/23] Compiling C object compositor-window-management-test.p/.._.._tests_compositor-window-management-test.c.o
+[18/23] Compiling C object seyrix-compositor.p/src_layout-engine.c.o
+[19/23] Compiling C object compositor-window-management-test.p/src_layout-engine.c.o
+[20/23] Compiling C object seyrix-compositor.p/.._shell_src_shell-config.c.o
+ninja: build stopped: subcommand failed.

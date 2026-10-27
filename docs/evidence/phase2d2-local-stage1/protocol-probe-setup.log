@@ -1,0 +1,25 @@
+The Meson build system
+Version: 1.12.1
+Source dir: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/protocol-probe
+Build dir: /root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/protocol-probe
+Build type: native build
+Project name: seyrix-protocol-probe
+Project version: 0.1.0
+C compiler for the host machine: cc (gcc 16.2.1 "cc (GCC) 16.2.1 20260810")
+C linker for the host machine: cc ld.bfd 2.47
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: YES (/usr/sbin/pkg-config) 3.0.10
+Run-time dependency wayland-client found: YES 1.26.0
+Program wayland-scanner found: YES (/usr/sbin/wayland-scanner)
+Build targets in project: 5
+
+seyrix-protocol-probe 0.1.0
+
+  User defined options
+    buildtype: release
+    prefix   : /usr
+    wrap_mode: nofallback
+
+Found ninja-1.13.2 at /usr/sbin/ninja
+Generating targets:   0%|          | 0/5 eta ?                                              Writing build.ninja:   0%|          | 0/34 eta ?                                                

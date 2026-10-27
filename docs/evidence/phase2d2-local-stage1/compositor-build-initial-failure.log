@@ -1,0 +1,29 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/compositor'
+[1/23] Generating output-management-protocol-header with a custom command
+[2/23] Generating layer-shell-protocol-header with a custom command
+[3/23] Compiling C object compositor-geometry-test.p/.._.._tests_compositor-geometry-test.c.o
+[4/23] Compiling C object compositor-window-management-test.p/.._.._tests_compositor-window-management-test.c.o
+[5/23] Compiling C object seyrix-compositor.p/src_workspace.c.o
+[6/23] Compiling C object seyrix-compositor.p/src_layer-shell.c.o
+[7/23] Compiling C object seyrix-compositor.p/src_output.c.o
+[8/23] Compiling C object seyrix-compositor.p/src_popup.c.o
+[9/23] Compiling C object seyrix-compositor.p/src_decoration.c.o
+[10/23] Compiling C object seyrix-compositor.p/src_window.c.o
+[11/23] Compiling C object seyrix-compositor.p/src_window-state.c.o
+[12/23] Compiling C object seyrix-compositor.p/src_main.c.o
+[13/23] Compiling C object seyrix-compositor.p/src_input.c.o
+[14/23] Compiling C object seyrix-compositor.p/src_wm-config.c.o
+[15/23] Compiling C object compositor-window-management-test.p/src_wm-config.c.o
+[16/23] Compiling C object seyrix-compositor.p/src_window-management.c.o
+[17/23] Compiling C object seyrix-compositor.p/src_shell.c.o
+FAILED: [code=1] seyrix-compositor.p/src_shell.c.o 
+cc -Iseyrix-compositor.p -I. -I../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor -I/usr/include/wlroots-0.20 -I/usr/include/pixman-1 -I/usr/include/libdrm -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -Werror -std=c17 -O3 -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -MD -MQ seyrix-compositor.p/src_shell.c.o -MF seyrix-compositor.p/src_shell.c.o.d -o seyrix-compositor.p/src_shell.c.o -c ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/shell.c
+../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/shell.c:166:13: error: ‘send_id’ defined but not used [-Werror=unused-function]
+  166 | static bool send_id(struct seyrix_server *server, uint8_t action, uint32_t id) {
+      |             ^~~~~~~
+cc1: all warnings being treated as errors
+[18/23] Compiling C object seyrix-compositor.p/.._shell_src_shell-config.c.o
+[19/23] Linking target compositor-geometry-test
+[20/23] Compiling C object compositor-window-management-test.p/src_layout-engine.c.o
+[21/23] Compiling C object seyrix-compositor.p/src_layout-engine.c.o
+ninja: build stopped: subcommand failed.

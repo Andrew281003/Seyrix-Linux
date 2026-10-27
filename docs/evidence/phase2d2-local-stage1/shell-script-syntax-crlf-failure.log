@@ -1,0 +1,3 @@
+/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/compositor-overlay/airootfs/usr/local/bin/start-seyrix: line 30: unexpected token `newline', conditional binary operator expected
+/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/compositor-overlay/airootfs/usr/local/bin/start-seyrix: line 30: syntax error near `|'
+/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/compositor-overlay/airootfs/usr/local/bin/start-seyrix: line 30: `if [[ ! -x /usr/bin/seyrix-compositor || ! -x /usr/bin/weston-terminal ||'

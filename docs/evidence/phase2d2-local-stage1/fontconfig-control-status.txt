@@ -1,0 +1,2 @@
+pango_control_exit=1
+fc_fini_control_exit=1

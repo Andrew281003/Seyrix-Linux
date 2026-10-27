@@ -1,0 +1,38 @@
+PROBE_START mode=state-cycle
+GLOBALS=ready decoration=1 seat=1
+DECORATION_REQUEST=server_side
+TOPLEVEL_CREATED=1
+SEAT_CAPABILITIES mask=0x0 pointer=0
+WM_CAPABILITY=2
+WM_CAPABILITY=3
+WM_CAPABILITY=4
+CONFIGURE_TOPLEVEL width=0 height=0 maximized=0 fullscreen=0 resizing=0
+DECORATION_MODE=server_side
+ACK_CONFIGURE surface=toplevel serial=21
+COMMIT surface=toplevel width=440 height=320
+TOPLEVEL_ACK_COMMIT=passed serial=21 maximized=0 fullscreen=0 width=440 height=320
+REQUEST_MAXIMIZE=1
+CONFIGURE_TOPLEVEL width=1280 height=636 maximized=1 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=23
+COMMIT surface=toplevel width=1280 height=636
+TOPLEVEL_ACK_COMMIT=passed serial=23 maximized=1 fullscreen=0 width=1280 height=636
+REQUEST_MAXIMIZE=0
+CONFIGURE_TOPLEVEL width=440 height=320 maximized=0 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=24
+COMMIT surface=toplevel width=440 height=320
+TOPLEVEL_ACK_COMMIT=passed serial=24 maximized=0 fullscreen=0 width=440 height=320
+RESTORE_GEOMETRY=passed width=440 height=320
+REQUEST_FULLSCREEN=1
+CONFIGURE_TOPLEVEL width=1280 height=720 maximized=0 fullscreen=1 resizing=0
+ACK_CONFIGURE surface=toplevel serial=26
+COMMIT surface=toplevel width=1280 height=720
+TOPLEVEL_ACK_COMMIT=passed serial=26 maximized=0 fullscreen=1 width=1280 height=720
+REQUEST_FULLSCREEN=0
+CONFIGURE_TOPLEVEL width=440 height=320 maximized=0 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=28
+COMMIT surface=toplevel width=440 height=320
+TOPLEVEL_ACK_COMMIT=passed serial=28 maximized=0 fullscreen=0 width=440 height=320
+RESTORE_AFTER_FULLSCREEN=passed width=440 height=320
+DECORATION_ASSERTION=passed mode=server_side
+STATE_CYCLE=passed
+PROBE_EXIT result=passed

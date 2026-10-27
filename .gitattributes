@@ -3,3 +3,4 @@
 config/archiso/** text eol=lf
 config/compositor-overlay/airootfs/usr/local/bin/start-seyrix text eol=lf
 config/graphics-overlay/airootfs/usr/local/bin/start-wayland text eol=lf
+docs/evidence/phase2d2-local-stage1/** -text

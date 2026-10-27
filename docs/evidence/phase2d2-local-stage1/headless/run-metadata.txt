@@ -1,0 +1,8 @@
+Run started UTC: 2026-10-27T21:07:47+00:00
+Source branch: phase2d2-desktop-shell
+Source commit: d73e7385d1d2a17b1ca4e5129a644f8e389ec6bf
+Build root: /root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/build
+Backend: headless with two outputs
+Renderer: pixman
+Sanitizers: none
+Compositor PID: 322714

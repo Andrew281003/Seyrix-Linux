@@ -1,0 +1,16 @@
+PROBE_START mode=destroy-during-transition
+GLOBALS=ready decoration=1 seat=1
+DECORATION_REQUEST=server_side
+TOPLEVEL_CREATED=1
+SEAT_CAPABILITIES mask=0x0 pointer=0
+WM_CAPABILITY=2
+WM_CAPABILITY=3
+WM_CAPABILITY=4
+CONFIGURE_TOPLEVEL width=0 height=0 maximized=0 fullscreen=0 resizing=0
+DECORATION_MODE=server_side
+ACK_CONFIGURE surface=toplevel serial=43
+COMMIT surface=toplevel width=440 height=320
+TOPLEVEL_ACK_COMMIT=passed serial=43 maximized=0 fullscreen=0 width=440 height=320
+DESTROY_DURING_TRANSITION=begin
+DESTROY_DURING_TRANSITION=sent
+PROBE_EXIT result=passed

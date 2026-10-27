@@ -1,0 +1,18 @@
+compositor_ready	PASS	observed after 0s
+initial_terminal_mapped	PASS	observed after 1s
+panel_mapped	PASS	observed after 0s
+state_cycle	PASS	client and protocol assertions passed; log=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/state_cycle.log
+rapid_state	PASS	client and protocol assertions passed; log=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/rapid_state.log
+client_decoration	PASS	client and protocol assertions passed; log=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/client_decoration.log
+destroy_transition	PASS	client and protocol assertions passed; log=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/destroy_transition.log
+pointer_watch_startup	NOT_RUN	headless backend exposed no pointer capability; log=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/pointer_watch_startup.log
+pointer_watch_cleanup	NOT_RUN	probe exited before pointer readiness; no watcher required cleanup
+workspace_output_assignment	PASS	four workspace assignments span 2 enabled headless outputs
+output_scale_test_apply	PASS	HEADLESS-1 scale 1.25 then 1.0
+output_disable_restore	PASS	HEADLESS-1 disabled and restored with HEADLESS-2 remaining
+panel_output_reassignment	PASS	panel moved to the surviving enabled output
+output_reject_disable_all	PASS	zero-enabled-head request rejected and both outputs remained enabled
+compositor_shutdown	PASS	compositor exited cleanly after client and output interactions
+sanitizer_scan	NOT_RUN	compositor was built without sanitizer instrumentation
+EVIDENCE_DIR=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z
+RESULTS=/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/results.tsv

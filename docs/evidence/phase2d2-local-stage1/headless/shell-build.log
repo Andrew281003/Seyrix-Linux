@@ -1,0 +1,61 @@
+The Meson build system
+Version: 1.12.1
+Source dir: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell
+Build dir: /root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/build/shell
+Build type: native build
+Project name: seyrix-shell
+Project version: 0.1.0
+C compiler for the host machine: cc (gcc 16.2.1 "cc (GCC) 16.2.1 20260810")
+C linker for the host machine: cc ld.bfd 2.47
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: YES (/usr/sbin/pkg-config) 3.0.10
+Run-time dependency wayland-client found: YES 1.26.0
+Run-time dependency wayland-protocols found: YES 1.49
+Run-time dependency wlr-protocols found: YES 1.0
+Run-time dependency gio-unix-2.0 found: YES 2.90.1
+Run-time dependency cairo found: YES 1.18.6
+Run-time dependency pango found: YES 1.58.2
+Run-time dependency pangocairo found: YES 1.58.2
+Run-time dependency gdk-pixbuf-2.0 found: YES 2.44.8
+Run-time dependency xkbcommon found: YES 1.13.2
+Library m found: YES
+Program wayland-scanner found: YES (/usr/sbin/wayland-scanner)
+Program ../../tests/session-lock-test.sh found: YES (/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/../../tests/session-lock-test.sh)
+Build targets in project: 8
+
+seyrix-shell 0.1.0
+
+  User defined options
+    buildtype: release
+    prefix   : /usr
+    wrap_mode: nofallback
+
+Found ninja-1.13.2 at /usr/sbin/ninja
+Generating targets:   0%|          | 0/8 eta ?                                              Writing build.ninja:   0%|          | 0/52 eta ?                                                ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-headless-stage1-20261027T210747Z/build/shell'
+[1/26] Generating layer-shell-client-header with a custom command
+[2/26] Generating layer-shell-client-code with a custom command
+[3/26] Generating xdg-shell-client-code with a custom command
+[4/26] Compiling C object seyrix-shell.p/meson-generated_.._wlr-layer-shell-unstable-v1-protocol.c.o
+[5/26] Compiling C object seyrix-shell.p/meson-generated_.._xdg-shell-protocol.c.o
+[6/26] Compiling C object seyrix-shell-state-test.p/.._.._tests_shell-state-test.c.o
+[7/26] Compiling C object seyrix-shell-config-test.p/.._.._tests_shell-config-test.c.o
+[8/26] Compiling C object seyrix-shell.p/src_app-catalog.c.o
+[9/26] Compiling C object seyrix-shell-app-catalog-test.p/src_app-catalog.c.o
+[10/26] Compiling C object seyrix-shell-ui-test.p/.._.._tests_shell-ui-test.c.o
+[11/26] Compiling C object seyrix-shell-ui-test.p/src_app-catalog.c.o
+[12/26] Compiling C object seyrix-shell-state-test.p/src_shell-state.c.o
+[13/26] Compiling C object seyrix-shell-ui-test.p/src_shell-state.c.o
+[14/26] Compiling C object seyrix-shell.p/src_shell-state.c.o
+[15/26] Compiling C object seyrix-shell-app-catalog-test.p/.._.._tests_shell-app-catalog-test.c.o
+[16/26] Compiling C object seyrix-shell.p/src_shell-config.c.o
+[17/26] Compiling C object seyrix-shell-config-test.p/src_shell-config.c.o
+[18/26] Compiling C object seyrix-shell-ui-test.p/src_shell-config.c.o
+[19/26] Linking target seyrix-shell-state-test
+[20/26] Linking target seyrix-shell-app-catalog-test
+[21/26] Linking target seyrix-shell-config-test
+[22/26] Compiling C object seyrix-shell.p/src_main.c.o
+[23/26] Compiling C object seyrix-shell.p/src_shell-ui.c.o
+[24/26] Compiling C object seyrix-shell-ui-test.p/src_shell-ui.c.o
+[25/26] Linking target seyrix-shell
+[26/26] Linking target seyrix-shell-ui-test

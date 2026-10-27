@@ -1,0 +1,16 @@
+Linux DESKTOP-EQCS9VJ 6.18.54.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Tue Oct  6 19:13:07 UTC 2026 x86_64 GNU/Linux
+gcc (GCC) 16.2.1 20260810
+1.12.1
+1.13.2
+wlroots-0.20 0.20.2
+wayland-server 1.26.0
+wayland-client 1.26.0
+wayland-protocols 1.49
+wlr-protocols 1.0
+xkbcommon 1.13.2
+gio-unix-2.0 2.90.1
+cairo 1.18.6
+pango 1.58.2
+pangocairo 1.58.2
+gdk-pixbuf-2.0 2.44.8
+fontconfig 2.18.3

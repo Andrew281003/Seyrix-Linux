@@ -1,0 +1,5 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-analyzer-stage1-20261027T211028Z/compositor'
+[1/4] Linking target compositor-window-management-test
+[2/4] Linking target compositor-geometry-test
+[3/4] Compiling C object seyrix-compositor.p/src_workspace.c.o
+[4/4] Linking target seyrix-compositor

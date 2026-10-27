@@ -1,0 +1,11 @@
+TAP version 14
+# random seed: R02S1637cdfb5fdd978c6c13aa98b88419d6
+1..3
+# Start of shell tests
+# Start of app-catalog tests
+ok 1 /shell/app-catalog/discovery-validation
+ok 2 /shell/app-catalog/case-insensitive-search
+# GLib-GIO-DEBUG: _g_io_module_get_default: Found default implementation local (GLocalVfs) for ‘gio-vfs’
+ok 3 /shell/app-catalog/exec-argument-safety
+# End of app-catalog tests
+# End of shell tests

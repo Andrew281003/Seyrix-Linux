@@ -1,0 +1,27 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-analyzer-stage1-20261027T211028Z/shell'
+[1/26] Generating layer-shell-client-header with a custom command
+[2/26] Generating layer-shell-client-code with a custom command
+[3/26] Generating xdg-shell-client-code with a custom command
+[4/26] Compiling C object seyrix-shell.p/meson-generated_.._wlr-layer-shell-unstable-v1-protocol.c.o
+[5/26] Compiling C object seyrix-shell.p/meson-generated_.._xdg-shell-protocol.c.o
+[6/26] Compiling C object seyrix-shell-state-test.p/.._.._tests_shell-state-test.c.o
+[7/26] Compiling C object seyrix-shell.p/src_app-catalog.c.o
+[8/26] Compiling C object seyrix-shell-ui-test.p/.._.._tests_shell-ui-test.c.o
+[9/26] Compiling C object seyrix-shell-app-catalog-test.p/src_app-catalog.c.o
+[10/26] Compiling C object seyrix-shell-ui-test.p/src_app-catalog.c.o
+[11/26] Compiling C object seyrix-shell-config-test.p/.._.._tests_shell-config-test.c.o
+[12/26] Compiling C object seyrix-shell-app-catalog-test.p/.._.._tests_shell-app-catalog-test.c.o
+[13/26] Compiling C object seyrix-shell.p/src_shell-state.c.o
+[14/26] Compiling C object seyrix-shell-ui-test.p/src_shell-state.c.o
+[15/26] Compiling C object seyrix-shell-state-test.p/src_shell-state.c.o
+[16/26] Linking target seyrix-shell-app-catalog-test
+[17/26] Linking target seyrix-shell-state-test
+[18/26] Compiling C object seyrix-shell-config-test.p/src_shell-config.c.o
+[19/26] Compiling C object seyrix-shell-ui-test.p/src_shell-config.c.o
+[20/26] Compiling C object seyrix-shell.p/src_shell-config.c.o
+[21/26] Linking target seyrix-shell-config-test
+[22/26] Compiling C object seyrix-shell.p/src_shell-ui.c.o
+[23/26] Compiling C object seyrix-shell-ui-test.p/src_shell-ui.c.o
+[24/26] Linking target seyrix-shell-ui-test
+[25/26] Compiling C object seyrix-shell.p/src_main.c.o
+[26/26] Linking target seyrix-shell

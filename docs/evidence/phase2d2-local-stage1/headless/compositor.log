@@ -1,0 +1,137 @@
+00:00:00.000 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:146] Started Seyrix session process-group anchor pid=322717
+00:00:00.000 [INFO] [backend/backend.c:342] Loading user-specified backends due to WLR_BACKENDS: headless
+00:00:00.000 [INFO] [backend/headless/backend.c:60] Creating headless backend
+00:00:00.000 [INFO] [util/env.c:25] Loading WLR_RENDERER option: pixman
+00:00:00.000 [INFO] [render/pixman/renderer.c:328] Creating pixman renderer
+00:00:00.000 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:343] Window-management default mode: hybrid
+00:00:00.000 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/workspace.c:69] Initialized 4 workspaces
+00:00:00.076 [INFO] [backend/headless/backend.c:17] Starting headless backend
+00:00:00.079 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:242] Output HEADLESS-2 active at 1280x720
+00:00:00.079 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output HEADLESS-2
+00:00:00.079 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 2 assigned output HEADLESS-2
+00:00:00.079 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output HEADLESS-2
+00:00:00.079 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 4 assigned output HEADLESS-2
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:242] Output HEADLESS-1 active at 1280x720
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output HEADLESS-1
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output HEADLESS-1
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/shell.c:475] Started isolated Seyrix desktop shell pid=322718
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:384] Renderer request: pixman
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:386] Running Seyrix compositor on WAYLAND_DISPLAY=wayland-0
+00:00:00.082 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:387] Shortcuts: Super+Return terminal; Super+Q close; Super+Shift+Q exit; Super+Left/Right workspace; Super+Shift+Left/Right migrate window; Super+1..4 workspace; Super+Shift+F/T/H set Floating/Tiling/Hybrid; Super+F toggle focused classification; Super+J/K focus tiled neighbor; Super+Shift+J/K reorder tiled window; Super+Ctrl+arrows adjust split ratio; Super+O changes split orientation; Super+Ctrl+R reload config
+00:00:00.083 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:250] Started weston-terminal with pid 322719
+00:00:00.083 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:392] SEYRIX_COMPOSITOR_READY=1 startup_ms=84
+00:00:00.120 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:190] Layer shell surface mapped namespace=seyrix-desktop
+00:00:00.120 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:190] Layer shell surface mapped namespace=seyrix-panel
+00:00:00.120 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:190] Layer shell surface mapped namespace=seyrix-desktop
+00:00:00.120 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:190] Layer shell surface mapped namespace=seyrix-panel
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-none'
+00:00:00.152 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:228] Window initial position: app_id=org.freedesktop.weston.wayland-terminal x=1292 y=12
+00:00:00.152 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=map pid=322719 surface=14 x=1292 y=12 width=742 height=475
+00:00:00.152 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:235] Window mapped: app_id=org.freedesktop.weston.wayland-terminal title=Wayland Terminal
+00:00:00.152 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 742x475
+00:00:00.152 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=1292 y=12 width=742 height=475
+Unknown parameter: ?2004
+00:00:00.162 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1255x637
+00:00:00.162 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=1292 y=12 width=1255 height=637
+00:00:00.242 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/decoration.c:316] Negotiating xdg-decoration mode requested=0
+00:00:00.243 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:228] Window initial position: app_id=seyrix.phase2c-probe x=1060 y=187
+00:00:00.243 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=map pid=322739 surface=9 x=1060 y=187 width=440 height=320
+00:00:00.243 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:235] Window mapped: app_id=seyrix.phase2c-probe title=Seyrix Phase 2C Protocol Probe
+00:00:00.243 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 440x320
+00:00:00.243 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322739 surface=9 x=1060 y=187 width=440 height=320
+00:00:00.251 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.phase2c-probe maximized=1 fullscreen=0 minimized=0
+00:00:00.263 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1280x636
+00:00:00.263 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322739 surface=9 x=0 y=0 width=1280 height=636
+00:00:00.271 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.phase2c-probe maximized=0 fullscreen=0 minimized=0
+00:00:00.280 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 440x320
+00:00:00.280 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322739 surface=9 x=0 y=0 width=440 height=320
+00:00:00.288 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.phase2c-probe maximized=0 fullscreen=1 minimized=0
+00:00:00.295 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1280x720
+00:00:00.295 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322739 surface=9 x=0 y=0 width=1280 height=720
+00:00:00.295 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.phase2c-probe maximized=0 fullscreen=0 minimized=0
+00:00:00.304 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:262] Window unmapped
+00:00:00.304 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:348] Window destroyed
+00:00:00.340 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/decoration.c:316] Negotiating xdg-decoration mode requested=0
+00:00:00.341 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:228] Window initial position: app_id=seyrix.rapid-state-probe x=1926 y=12
+00:00:00.341 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=map pid=322755 surface=9 x=1926 y=12 width=440 height=320
+00:00:00.341 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:235] Window mapped: app_id=seyrix.rapid-state-probe title=Seyrix Phase 2C Protocol Probe
+00:00:00.341 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 440x320
+00:00:00.341 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322755 surface=9 x=1926 y=12 width=440 height=320
+00:00:00.349 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.rapid-state-probe maximized=1 fullscreen=0 minimized=0
+00:00:00.362 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1280x636
+00:00:00.362 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322755 surface=9 x=1280 y=0 width=1280 height=636
+00:00:00.370 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.rapid-state-probe maximized=0 fullscreen=0 minimized=0
+00:00:00.381 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 622x612
+00:00:00.381 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322755 surface=9 x=1926 y=12 width=622 height=612
+00:00:00.389 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.rapid-state-probe maximized=0 fullscreen=1 minimized=0
+00:00:00.391 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 625x637
+00:00:00.391 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=1292 y=12 width=625 height=637
+00:00:00.396 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1280x720
+00:00:00.396 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322755 surface=9 x=1280 y=0 width=1280 height=720
+00:00:00.397 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=seyrix.rapid-state-probe maximized=0 fullscreen=0 minimized=0
+00:00:00.407 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:262] Window unmapped
+00:00:00.408 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:348] Window destroyed
+00:00:00.427 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1255x637
+00:00:00.427 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=1292 y=12 width=1255 height=637
+00:00:00.432 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/decoration.c:316] Negotiating xdg-decoration mode requested=0
+00:00:00.433 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:348] Window destroyed
+00:00:00.451 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/decoration.c:316] Negotiating xdg-decoration mode requested=0
+00:00:00.452 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:348] Window destroyed
+00:00:00.503 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.509 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:242] Output HEADLESS-1 active at 1024x576
+00:00:00.509 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.509 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.509 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.509 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.510 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.510 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:143] Applied output configuration with 2 heads
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:242] Output HEADLESS-1 active at 1280x720
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.511 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:143] Applied output configuration with 2 heads
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:124] Layer surface seyrix-panel moved to output HEADLESS-2
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/layer-shell.c:124] Layer surface seyrix-desktop moved to output HEADLESS-2
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output HEADLESS-2
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output HEADLESS-2
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.516 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:143] Applied output configuration with 2 heads
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output HEADLESS-1
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output HEADLESS-1
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.520 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:143] Applied output configuration with 2 heads
+00:00:00.526 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1003x493
+00:00:00.526 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=12 y=12 width=1003 height=493
+00:00:00.532 [ERROR] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:106] Rejecting incomplete or invalid output configuration
+00:00:00.543 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:280] Window geometry committed: 1255x691
+00:00:00.543 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:38] GEOMETRY_EVIDENCE event=commit pid=322719 surface=14 x=12 y=12 width=1255 height=691
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.547 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-state.c:238] Window state requested: app_id=org.freedesktop.weston.wayland-terminal maximized=0 fullscreen=0 minimized=0
+00:00:00.548 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:262] Window unmapped
+00:00:00.548 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window.c:348] Window destroyed
+Error sending request for wl_region.add: Broken pipe
+00:00:01.113 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output HEADLESS-1
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 2 assigned output HEADLESS-1
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output HEADLESS-1
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 4 assigned output HEADLESS-1
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:276] Output HEADLESS-2 removed
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 1 assigned output none
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 2 assigned output none
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 3 assigned output none
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/window-management.c:477] Workspace 4 assigned output none
+00:00:01.114 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/output.c:276] Output HEADLESS-1 removed
+00:00:01.115 [INFO] [../../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/compositor/src/main.c:465] Seyrix compositor stopped cleanly

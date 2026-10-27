@@ -1,0 +1,121 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell'
+ninja: no work to do.
+1/5 seyrix-shell:shell state model              OK              0.02s
+2/5 seyrix-shell:shell configuration            OK              0.03s
+3/5 seyrix-shell:shell application catalog      OK              0.05s
+4/5 seyrix-shell:session lock lifecycle         OK              0.06s
+5/5 seyrix-shell:shell user interface rendering FAIL            1.21s   exit status 1
+>>> MALLOC_PERTURB_=247 MESON_TEST_ITERATION=1 MSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_summary=1:print_stacktrace=1 /root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/seyrix-shell-ui-test
+――――――――――――――――――――――――――――――――――――― ✀  ―――――――――――――――――――――――――――――――――――――
+Listing only the last 100 lines from a long log.
+    #3 0x737356e789ce  (/usr/lib/libpangoft2-1.0.so.0+0x109ce) (BuildId: 87392d444159d1499dbac60f402d36cf322b5e0a)
+    #4 0x737358ded84a  (/usr/lib/libpango-1.0.so.0+0x2a84a) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #5 0x737358df8b1c  (/usr/lib/libpango-1.0.so.0+0x35b1c) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #6 0x737358dfc9e6  (/usr/lib/libpango-1.0.so.0+0x399e6) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #7 0x737358dfd52e in pango_layout_get_pixel_size (/usr/lib/libpango-1.0.so.0+0x3a52e) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #8 0x56ba53bf6d06 in centered_text ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:63
+    #9 0x56ba53bf75e7 in draw_icon ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:283
+    #10 0x56ba53bf8c07 in draw_switcher ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:539
+    #11 0x56ba53bfdc09 in seyrix_shell_ui_draw ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:674
+    #12 0x56ba53c113b1 in test_output_resize_and_switcher_scroll_window ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:67
+    #13 0x73735834b7fe  (/usr/lib/libglib-2.0.so.0+0x937fe) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #14 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #15 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #16 0x73735834bd89 in g_test_run_suite (/usr/lib/libglib-2.0.so.0+0x93d89) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #17 0x73735834bdf1 in g_test_run (/usr/lib/libglib-2.0.so.0+0x93df1) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #18 0x56ba53bf4a11 in main ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:130
+    #19 0x737357627780  (/usr/lib/libc.so.6+0x27780) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #20 0x7373576278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #21 0x56ba53bf4af4 in _start (/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/seyrix-shell-ui-test+0x27af4) (BuildId: ad988a0577847a22f7724a3aaaca425d6a7798bd)
+
+Indirect leak of 2 byte(s) in 1 object(s) allocated from:
+    #0 0x737358724fce in strdup (/usr/lib/libasan.so.8+0x124fce) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x73735786f5c0 in FcValueSave (/usr/lib/libfontconfig.so.1+0x375c0) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #2 0x737357870696  (/usr/lib/libfontconfig.so.1+0x38696) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #3 0x737356e789ce  (/usr/lib/libpangoft2-1.0.so.0+0x109ce) (BuildId: 87392d444159d1499dbac60f402d36cf322b5e0a)
+    #4 0x737358ded84a  (/usr/lib/libpango-1.0.so.0+0x2a84a) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #5 0x737358df8b1c  (/usr/lib/libpango-1.0.so.0+0x35b1c) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #6 0x737358dfd730  (/usr/lib/libpango-1.0.so.0+0x3a730) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #7 0x737358e089ed in pango_renderer_draw_layout (/usr/lib/libpango-1.0.so.0+0x459ed) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #8 0x737358dbad6c  (/usr/lib/libpangocairo-1.0.so.0+0xbd6c) (BuildId: 6014170092df97befef6beb55c9868f852db0906)
+    #9 0x56ba53bf6b68 in text ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:48
+    #10 0x56ba53bf83a2 in text ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:36
+    #11 0x56ba53bf83a2 in draw_switcher ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:520
+    #12 0x56ba53bfdc09 in seyrix_shell_ui_draw ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:674
+    #13 0x56ba53c113b1 in test_output_resize_and_switcher_scroll_window ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:67
+    #14 0x73735834b7fe  (/usr/lib/libglib-2.0.so.0+0x937fe) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #15 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #16 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #17 0x73735834bd89 in g_test_run_suite (/usr/lib/libglib-2.0.so.0+0x93d89) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #18 0x73735834bdf1 in g_test_run (/usr/lib/libglib-2.0.so.0+0x93df1) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #19 0x56ba53bf4a11 in main ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:130
+    #20 0x737357627780  (/usr/lib/libc.so.6+0x27780) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #21 0x7373576278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #22 0x56ba53bf4af4 in _start (/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/seyrix-shell-ui-test+0x27af4) (BuildId: ad988a0577847a22f7724a3aaaca425d6a7798bd)
+
+Indirect leak of 2 byte(s) in 1 object(s) allocated from:
+    #0 0x737358724fce in strdup (/usr/lib/libasan.so.8+0x124fce) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x73735786f5c0 in FcValueSave (/usr/lib/libfontconfig.so.1+0x375c0) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #2 0x737357870696  (/usr/lib/libfontconfig.so.1+0x38696) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #3 0x737356e789ce  (/usr/lib/libpangoft2-1.0.so.0+0x109ce) (BuildId: 87392d444159d1499dbac60f402d36cf322b5e0a)
+    #4 0x737358ded84a  (/usr/lib/libpango-1.0.so.0+0x2a84a) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #5 0x737358df8b1c  (/usr/lib/libpango-1.0.so.0+0x35b1c) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #6 0x737358dfc9e6  (/usr/lib/libpango-1.0.so.0+0x399e6) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #7 0x737358db6e71  (/usr/lib/libpangocairo-1.0.so.0+0x7e71) (BuildId: 6014170092df97befef6beb55c9868f852db0906)
+    #8 0x737358df766d  (/usr/lib/libpango-1.0.so.0+0x3466d) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #9 0x737358df8285  (/usr/lib/libpango-1.0.so.0+0x35285) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #10 0x737358df84db  (/usr/lib/libpango-1.0.so.0+0x354db) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #11 0x737358dfcc28  (/usr/lib/libpango-1.0.so.0+0x39c28) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #12 0x737358dfcf0d in pango_layout_get_size (/usr/lib/libpango-1.0.so.0+0x39f0d) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #13 0x737358dfb316  (/usr/lib/libpango-1.0.so.0+0x38316) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #14 0x737358dfc9e6  (/usr/lib/libpango-1.0.so.0+0x399e6) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #15 0x737358dfd52e in pango_layout_get_pixel_size (/usr/lib/libpango-1.0.so.0+0x3a52e) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #16 0x56ba53bf6d06 in centered_text ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:63
+    #17 0x56ba53bfde5b in draw_desktop ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:308
+    #18 0x56ba53bfde5b in seyrix_shell_ui_draw ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:659
+    #19 0x56ba53c12eb6 in test_desktop_manual_item_and_wallpaper_fallback ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:29
+    #20 0x73735834b7fe  (/usr/lib/libglib-2.0.so.0+0x937fe) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #21 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #22 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #23 0x73735834bd89 in g_test_run_suite (/usr/lib/libglib-2.0.so.0+0x93d89) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #24 0x73735834bdf1 in g_test_run (/usr/lib/libglib-2.0.so.0+0x93df1) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #25 0x56ba53bf4a11 in main ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:130
+    #26 0x737357627780  (/usr/lib/libc.so.6+0x27780) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #27 0x7373576278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #28 0x56ba53bf4af4 in _start (/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/seyrix-shell-ui-test+0x27af4) (BuildId: ad988a0577847a22f7724a3aaaca425d6a7798bd)
+
+Indirect leak of 2 byte(s) in 1 object(s) allocated from:
+    #0 0x737358724fce in strdup (/usr/lib/libasan.so.8+0x124fce) (BuildId: b8a4241051a1621937fdc46e867ba7ecb56d96ea)
+    #1 0x73735786f5c0 in FcValueSave (/usr/lib/libfontconfig.so.1+0x375c0) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #2 0x737357870696  (/usr/lib/libfontconfig.so.1+0x38696) (BuildId: dd61456454324e2277971d6e0562ac65662afe56)
+    #3 0x737356e789ce  (/usr/lib/libpangoft2-1.0.so.0+0x109ce) (BuildId: 87392d444159d1499dbac60f402d36cf322b5e0a)
+    #4 0x737358ded84a  (/usr/lib/libpango-1.0.so.0+0x2a84a) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #5 0x737358df8b1c  (/usr/lib/libpango-1.0.so.0+0x35b1c) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #6 0x737358dfc9e6  (/usr/lib/libpango-1.0.so.0+0x399e6) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #7 0x737358dfd52e in pango_layout_get_pixel_size (/usr/lib/libpango-1.0.so.0+0x3a52e) (BuildId: daf0462092b8965739adf024e3683b1651237689)
+    #8 0x56ba53bf6d06 in centered_text ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:63
+    #9 0x56ba53bfde5b in draw_desktop ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:308
+    #10 0x56ba53bfde5b in seyrix_shell_ui_draw ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/desktop/shell/src/shell-ui.c:659
+    #11 0x56ba53c12eb6 in test_desktop_manual_item_and_wallpaper_fallback ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:29
+    #12 0x73735834b7fe  (/usr/lib/libglib-2.0.so.0+0x937fe) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #13 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #14 0x73735834b74a  (/usr/lib/libglib-2.0.so.0+0x9374a) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #15 0x73735834bd89 in g_test_run_suite (/usr/lib/libglib-2.0.so.0+0x93d89) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #16 0x73735834bdf1 in g_test_run (/usr/lib/libglib-2.0.so.0+0x93df1) (BuildId: 31e51c7a8e9e82dfb1b0c9af3611a3ccd675a194)
+    #17 0x56ba53bf4a11 in main ../../../../../mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/shell-ui-test.c:130
+    #18 0x737357627780  (/usr/lib/libc.so.6+0x27780) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #19 0x7373576278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #20 0x56ba53bf4af4 in _start (/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/seyrix-shell-ui-test+0x27af4) (BuildId: ad988a0577847a22f7724a3aaaca425d6a7798bd)
+
+SUMMARY: AddressSanitizer: 141472 byte(s) leaked in 4817 allocation(s).
+――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+
+Summary of Failures:
+
+5/5 seyrix-shell:shell user interface rendering FAIL            1.21s   exit status 1
+
+Ok:                4   
+Fail:              1   
+
+Full log written to /root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/shell/meson-logs/testlog.txt

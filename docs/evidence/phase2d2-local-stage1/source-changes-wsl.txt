@@ -1,0 +1,4 @@
+.gitattributes
+desktop/compositor/meson.build
+desktop/compositor/src/shell.c
+desktop/compositor/src/workspace.c

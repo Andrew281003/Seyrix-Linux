@@ -1,0 +1,9 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/protocol-probe'
+[1/8] Generating xdg-shell-client-header with a custom command
+[2/8] Generating xdg-decoration-protocol-code with a custom command
+[3/8] Generating xdg-decoration-client-header with a custom command
+[4/8] Generating xdg-shell-protocol-code with a custom command
+[5/8] Compiling C object seyrix-protocol-probe.p/meson-generated_.._xdg-decoration-protocol.c.o
+[6/8] Compiling C object seyrix-protocol-probe.p/meson-generated_.._xdg-shell-protocol.c.o
+[7/8] Compiling C object seyrix-protocol-probe.p/src_probe.c.o
+[8/8] Linking target seyrix-protocol-probe

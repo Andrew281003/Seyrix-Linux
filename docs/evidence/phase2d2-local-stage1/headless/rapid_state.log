@@ -1,0 +1,40 @@
+PROBE_START mode=rapid-state
+GLOBALS=ready decoration=1 seat=1
+DECORATION_REQUEST=server_side
+TOPLEVEL_CREATED=1
+SEAT_CAPABILITIES mask=0x0 pointer=0
+WM_CAPABILITY=2
+WM_CAPABILITY=3
+WM_CAPABILITY=4
+CONFIGURE_TOPLEVEL width=0 height=0 maximized=0 fullscreen=0 resizing=0
+DECORATION_MODE=server_side
+ACK_CONFIGURE surface=toplevel serial=31
+COMMIT surface=toplevel width=440 height=320
+TOPLEVEL_ACK_COMMIT=passed serial=31 maximized=0 fullscreen=0 width=440 height=320
+RAPID_STATE_REQUESTS=begin
+RAPID_REQUEST_MAXIMIZE=1
+CONFIGURE_TOPLEVEL width=1280 height=636 maximized=1 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=33
+COMMIT surface=toplevel width=1280 height=636
+TOPLEVEL_ACK_COMMIT=passed serial=33 maximized=1 fullscreen=0 width=1280 height=636
+RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=1 maximized=1 fullscreen=0 width=1280 height=636
+RAPID_REQUEST_MAXIMIZE=0
+CONFIGURE_TOPLEVEL width=622 height=612 maximized=0 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=34
+COMMIT surface=toplevel width=622 height=612
+TOPLEVEL_ACK_COMMIT=passed serial=34 maximized=0 fullscreen=0 width=622 height=612
+RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=2 maximized=0 fullscreen=0 width=622 height=612
+RAPID_REQUEST_FULLSCREEN=1
+CONFIGURE_TOPLEVEL width=1280 height=720 maximized=0 fullscreen=1 resizing=0
+ACK_CONFIGURE surface=toplevel serial=36
+COMMIT surface=toplevel width=1280 height=720
+TOPLEVEL_ACK_COMMIT=passed serial=36 maximized=0 fullscreen=1 width=1280 height=720
+RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=3 maximized=0 fullscreen=1 width=1280 height=720
+RAPID_REQUEST_FULLSCREEN=0
+CONFIGURE_TOPLEVEL width=622 height=612 maximized=0 fullscreen=0 resizing=0
+ACK_CONFIGURE surface=toplevel serial=38
+COMMIT surface=toplevel width=622 height=612
+TOPLEVEL_ACK_COMMIT=passed serial=38 maximized=0 fullscreen=0 width=622 height=612
+RAPID_STATE_CONFIGURE_ACK_COMMIT=passed step=4 maximized=0 fullscreen=0 width=622 height=612
+RAPID_STATE_CYCLE=passed
+PROBE_EXIT result=passed

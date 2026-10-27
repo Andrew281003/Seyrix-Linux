@@ -1,0 +1,9 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/compositor'
+ninja: no work to do.
+1/2 seyrix-compositor:compositor geometry          OK              0.01s
+2/2 seyrix-compositor:compositor window management OK              0.03s
+
+Ok:                2   
+Fail:              0   
+
+Full log written to /root/.cache/seyrix-linux/phase2d2-local-stage1-20261027T210612Z/compositor/meson-logs/testlog.txt

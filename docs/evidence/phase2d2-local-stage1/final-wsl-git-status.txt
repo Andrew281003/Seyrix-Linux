@@ -1,0 +1,6 @@
+## phase2d2-desktop-shell...origin/phase2d2-desktop-shell
+ M .gitattributes
+ M desktop/compositor/meson.build
+ M desktop/compositor/src/shell.c
+ M desktop/compositor/src/workspace.c
+?? docs/evidence/phase2d2-local-stage1/

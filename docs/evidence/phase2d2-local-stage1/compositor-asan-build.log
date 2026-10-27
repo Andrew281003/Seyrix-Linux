@@ -1,0 +1,24 @@
+ninja: Entering directory `/root/.cache/seyrix-linux/phase2d2-sanitizers-stage1-20261027T210909Z/compositor'
+[1/23] Generating layer-shell-protocol-header with a custom command
+[2/23] Generating output-management-protocol-header with a custom command
+[3/23] Compiling C object compositor-geometry-test.p/.._.._tests_compositor-geometry-test.c.o
+[4/23] Compiling C object seyrix-compositor.p/src_popup.c.o
+[5/23] Compiling C object seyrix-compositor.p/src_workspace.c.o
+[6/23] Compiling C object seyrix-compositor.p/src_decoration.c.o
+[7/23] Linking target compositor-geometry-test
+[8/23] Compiling C object seyrix-compositor.p/src_output.c.o
+[9/23] Compiling C object seyrix-compositor.p/src_layer-shell.c.o
+[10/23] Compiling C object compositor-window-management-test.p/.._.._tests_compositor-window-management-test.c.o
+[11/23] Compiling C object seyrix-compositor.p/src_main.c.o
+[12/23] Compiling C object compositor-window-management-test.p/src_wm-config.c.o
+[13/23] Compiling C object seyrix-compositor.p/src_wm-config.c.o
+[14/23] Compiling C object seyrix-compositor.p/src_shell.c.o
+[15/23] Compiling C object seyrix-compositor.p/src_layout-engine.c.o
+[16/23] Compiling C object seyrix-compositor.p/src_window.c.o
+[17/23] Compiling C object seyrix-compositor.p/src_window-state.c.o
+[18/23] Compiling C object seyrix-compositor.p/.._shell_src_shell-config.c.o
+[19/23] Compiling C object compositor-window-management-test.p/src_layout-engine.c.o
+[20/23] Compiling C object seyrix-compositor.p/src_input.c.o
+[21/23] Compiling C object seyrix-compositor.p/src_window-management.c.o
+[22/23] Linking target compositor-window-management-test
+[23/23] Linking target seyrix-compositor

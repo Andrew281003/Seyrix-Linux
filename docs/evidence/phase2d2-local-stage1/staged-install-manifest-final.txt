@@ -1,0 +1,4 @@
+usr/bin/seyrix-compositor 187240 bytes
+usr/bin/seyrix-protocol-probe 54944 bytes
+usr/bin/seyrix-shell 121312 bytes
+usr/share/seyrix/Manual.txt 1605 bytes

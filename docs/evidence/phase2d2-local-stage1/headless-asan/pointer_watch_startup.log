@@ -1,0 +1,4 @@
+PROBE_START mode=watch-pointer
+SEAT_CAPABILITIES mask=0x0 pointer=0
+GLOBALS=failed reason=pointer-capability-unavailable compositor=1 shm=1 wm_base=1 seat=1 pointer=0
+PROBE_EXIT result=failed
