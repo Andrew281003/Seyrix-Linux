@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -54,20 +55,97 @@ static int handle_signal(int signal_number, void *data) {
 	return 0;
 }
 
+static bool process_group_alive(pid_t process_group) {
+	if (process_group <= 0) return false;
+	if (kill(-process_group, 0) == 0) return true;
+	return errno != ESRCH;
+}
+
 static void reap_children(struct seyrix_server *server) {
-	int status;
-	pid_t pid;
-	while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-		struct seyrix_child *child, *temporary;
-		wl_list_for_each_safe(child, temporary, &server->children, link) {
-			if (child->pid == pid) {
-				seyrix_shell_child_exited(server, pid);
-				wl_list_remove(&child->link);
-				free(child);
-				break;
-			}
+	struct seyrix_child *child, *temporary;
+	wl_list_for_each_safe(child, temporary, &server->children, link) {
+		/* Keep the anchor PID reserved until session shutdown. It is also the
+		 * PGID, so reaping it early could let the kernel reuse that number. */
+		if (child->pid <= 0 || child->pid == server->session_process_group) {
+			continue;
+		}
+		int status;
+		pid_t pid = waitpid(child->pid, &status, WNOHANG);
+		if (pid <= 0) {
+			continue;
+		}
+		seyrix_shell_child_exited(server, pid);
+		child->pid = 0;
+		if (child->process_group <= 0 ||
+				!process_group_alive(child->process_group)) {
+			wl_list_remove(&child->link);
+			free(child);
 		}
 	}
+}
+
+static void terminate_session_group(int signal_number) {
+	(void)kill(0, SIGTERM);
+	_exit(128 + signal_number);
+}
+
+static bool start_session_process_group(struct seyrix_server *server) {
+	struct seyrix_child *anchor = calloc(1, sizeof(*anchor));
+	if (anchor == NULL) return false;
+	int ready_pipe[2];
+	if (pipe(ready_pipe) != 0) {
+		free(anchor);
+		return false;
+	}
+	pid_t pid = fork();
+	if (pid < 0) {
+		close(ready_pipe[0]);
+		close(ready_pipe[1]);
+		free(anchor);
+		return false;
+	}
+	if (pid == 0) {
+		close(ready_pipe[0]);
+		pid_t parent_pid = getppid();
+		if (setpgid(0, 0) != 0) _exit(126);
+		struct sigaction action = {.sa_handler = terminate_session_group};
+		sigemptyset(&action.sa_mask);
+		if (sigaction(SIGTERM, &action, NULL) != 0 ||
+				prctl(PR_SET_PDEATHSIG, SIGTERM) != 0 ||
+				getppid() != parent_pid) {
+			_exit(126);
+		}
+		char ready = '1';
+		ssize_t written;
+		do {
+			written = write(ready_pipe[1], &ready, sizeof(ready));
+		} while (written < 0 && errno == EINTR);
+		close(ready_pipe[1]);
+		if (written != (ssize_t)sizeof(ready)) _exit(126);
+		for (;;) pause();
+	}
+	close(ready_pipe[1]);
+	(void)setpgid(pid, pid);
+	char ready;
+	ssize_t received;
+	do {
+		received = read(ready_pipe[0], &ready, sizeof(ready));
+	} while (received < 0 && errno == EINTR);
+	close(ready_pipe[0]);
+	if (received != (ssize_t)sizeof(ready) || ready != '1') {
+		kill(pid, SIGKILL);
+		while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {
+		}
+		free(anchor);
+		return false;
+	}
+	anchor->pid = pid;
+	anchor->process_group = pid;
+	server->session_process_group = pid;
+	wl_list_insert(&server->children, &anchor->link);
+	wlr_log(WLR_INFO, "Started Seyrix session process-group anchor pid=%ld",
+		(long)pid);
+	return true;
 }
 
 static int handle_child_signal(int signal_number, void *data) {
@@ -79,7 +157,21 @@ static int handle_child_signal(int signal_number, void *data) {
 static void wait_for_children(struct seyrix_server *server, uint64_t timeout_ms) {
 	uint64_t deadline = monotonic_ms() + timeout_ms;
 	struct timespec pause = {.tv_sec = 0, .tv_nsec = 10000000};
-	while (!wl_list_empty(&server->children) && monotonic_ms() < deadline) {
+	for (;;) {
+		bool any_running = false;
+		struct seyrix_child *child;
+		wl_list_for_each(child, &server->children, link) {
+			bool direct_child = child->pid > 0 &&
+				child->pid != server->session_process_group;
+			bool other_group = child->process_group > 0 &&
+				child->process_group != server->session_process_group &&
+				process_group_alive(child->process_group);
+			if (direct_child || other_group) {
+				any_running = true;
+				break;
+			}
+		}
+		if (!any_running || monotonic_ms() >= deadline) break;
 		reap_children(server);
 		nanosleep(&pause, NULL);
 	}
@@ -88,20 +180,47 @@ static void wait_for_children(struct seyrix_server *server, uint64_t timeout_ms)
 static void stop_children(struct seyrix_server *server) {
 	wait_for_children(server, 500);
 
+	if (process_group_alive(server->session_process_group)) {
+		kill(-server->session_process_group, SIGTERM);
+	}
 	struct seyrix_child *child;
 	wl_list_for_each(child, &server->children, link) {
-		kill(child->pid, SIGTERM);
+		if (child->pid > 0 && child->pid != server->session_process_group) {
+			kill(child->pid, SIGTERM);
+		}
 	}
 	wait_for_children(server, 500);
+	uint64_t deadline = monotonic_ms() + 500;
+	struct timespec pause = {.tv_sec = 0, .tv_nsec = 10000000};
+	while (process_group_alive(server->session_process_group) &&
+			monotonic_ms() < deadline) {
+		reap_children(server);
+		nanosleep(&pause, NULL);
+	}
+	if (process_group_alive(server->session_process_group)) {
+		kill(-server->session_process_group, SIGKILL);
+	}
 
 	struct seyrix_child *temporary;
 	wl_list_for_each_safe(child, temporary, &server->children, link) {
-		kill(child->pid, SIGKILL);
-		while (waitpid(child->pid, NULL, 0) < 0 && errno == EINTR) {
+		if (child->pid != server->session_process_group &&
+				child->process_group > 0 &&
+				process_group_alive(child->process_group)) {
+			kill(-child->process_group, SIGKILL);
+		}
+		if (child->pid > 0 && child->pid != server->session_process_group) {
+			kill(child->pid, SIGKILL);
+		}
+		while (child->pid > 0 && waitpid(child->pid, NULL, 0) < 0 && errno == EINTR) {
+		}
+		if (child->pid == server->session_process_group) {
+			while (waitpid(child->pid, NULL, 0) < 0 && errno == EINTR) {
+			}
 		}
 		wl_list_remove(&child->link);
 		free(child);
 	}
+	server->session_process_group = 0;
 }
 
 bool seyrix_spawn_terminal(struct seyrix_server *server) {
@@ -118,12 +237,15 @@ bool seyrix_spawn_terminal(struct seyrix_server *server) {
 		return false;
 	}
 	if (pid == 0) {
+		if (server->session_process_group <= 0 ||
+				setpgid(0, server->session_process_group) != 0) _exit(126);
 		execl("/usr/bin/weston-terminal", "weston-terminal", (char *)NULL);
 		perror("seyrix-compositor: exec weston-terminal");
 		_exit(127);
 	}
 
 	child->pid = pid;
+	(void)setpgid(pid, server->session_process_group);
 	wl_list_insert(&server->children, &child->link);
 	wlr_log(WLR_INFO, "Started weston-terminal with pid %ld", (long)pid);
 	return true;
@@ -131,12 +253,17 @@ bool seyrix_spawn_terminal(struct seyrix_server *server) {
 
 bool seyrix_server_init(struct seyrix_server *server) {
 	server->started_at_ms = monotonic_ms();
+	server->next_window_id = 1;
 	wl_list_init(&server->outputs);
 	wl_list_init(&server->windows);
 	wl_list_init(&server->keyboards);
 	wl_list_init(&server->children);
 
 	if (!runtime_directory_is_safe()) {
+		return false;
+	}
+	if (!start_session_process_group(server)) {
+		wlr_log(WLR_ERROR, "Cannot create the Seyrix session process group");
 		return false;
 	}
 

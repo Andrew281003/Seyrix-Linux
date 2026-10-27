@@ -320,5 +320,6 @@ void seyrix_workspace_move_focused(struct seyrix_server *server,
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}
 	seyrix_focus_window(server, seyrix_workspace_focus_candidate(server, window));
+	seyrix_shell_window_changed(window);
 	wlr_log(WLR_INFO, "Moved focused window to workspace %zu", destination_index + 1);
 }
