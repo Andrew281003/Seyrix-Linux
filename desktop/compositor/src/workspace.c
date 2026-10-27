@@ -282,6 +282,9 @@ void seyrix_workspace_move_focused(struct seyrix_server *server,
 		return;
 	}
 	struct seyrix_workspace *source = active_workspace(server);
+	if (source == NULL) {
+		return;
+	}
 	seyrix_popup_dismiss_window(window);
 	if (has_active_popup_grab(server)) {
 		wlr_log(WLR_INFO, "Window move deferred while an unrelated popup grab is active");

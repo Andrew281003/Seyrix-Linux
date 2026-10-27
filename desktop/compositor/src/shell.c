@@ -163,14 +163,6 @@ static bool send_action(struct seyrix_server *server, uint8_t action) {
 	return send_packet(server, &packet, sizeof(packet));
 }
 
-static bool send_id(struct seyrix_server *server, uint8_t action, uint32_t id) {
-	struct seyrix_shell_packet_id packet = {
-		.header = packet_header(action, sizeof(packet)),
-		.id = id,
-	};
-	return send_packet(server, &packet, sizeof(packet));
-}
-
 static void restore_focus(struct seyrix_server *server) {
 	struct seyrix_window *window = server->shell->restore_focus;
 	server->shell->restore_focus = NULL;

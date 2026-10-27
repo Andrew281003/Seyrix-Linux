@@ -53,7 +53,7 @@ executable(
     'src/layout-engine.c',
     'src/wm-config.c',
     'src/window-management.c',
-    '../../shell/src/shell-config.c',
+    '../shell/src/shell-config.c',
   ) + [layer_shell_protocol, output_management_protocol],
   c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
   dependencies: [wlroots, wayland_server, xkbcommon],

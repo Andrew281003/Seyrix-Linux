@@ -1,3 +1,5 @@
 *.sh text eol=lf
 *.exp text eol=lf
 config/archiso/** text eol=lf
+config/compositor-overlay/airootfs/usr/local/bin/start-seyrix text eol=lf
+config/graphics-overlay/airootfs/usr/local/bin/start-wayland text eol=lf
