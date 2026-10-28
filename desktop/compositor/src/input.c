@@ -649,7 +649,9 @@ static void handle_cursor_button(struct wl_listener *listener, void *data) {
 		} else {
 			struct seyrix_window *window = window_at(server, server->cursor->x,
 				server->cursor->y, &surface, &sx, &sy);
-			seyrix_focus_window(server, window);
+			if (window != NULL) {
+				seyrix_focus_window(server, window);
+			}
 		}
 	}
 }

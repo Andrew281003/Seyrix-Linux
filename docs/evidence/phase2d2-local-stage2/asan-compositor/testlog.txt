@@ -1,0 +1,53 @@
+Log of Meson test suite run on 2026-10-27T23:49:14.797896
+
+Inherited environment: UBSAN_OPTIONS=halt_on_error=1 ASAN_OPTIONS=detect_leaks=1 SHELL=/usr/bin/bash WSL2_GUI_APPS_ENABLED=1 WSL_DISTRO_NAME=archlinux GIT_DIR=/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux/.git/worktrees/Seyrix-Linux-Phase2D2 NAME=DESKTOP-EQCS9VJ PERF_EXEC_PATH=/usr/lib/linux-tools/6.18.54.1-microsoft-standard-WSL2/libexec/perf-core PWD=/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2 LOGNAME=root GIT_WORK_TREE=/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2 HOME=/root LANG=C.UTF-8 WSL_INTEROP=/run/WSL/358147_interop WAYLAND_DISPLAY=wayland-0 TERM=xterm-256color USER=root DISPLAY=:0 SHLVL=0 XDG_RUNTIME_DIR=/run/user/0 WSLENV='' PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/usr/lib/linux-tools/6.18.54.1-microsoft-standard-WSL2/bin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell:/mnt/c/Users/quake/.codex/tmp/arg0-windows/codex-arg0OoUdp1:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/libheif/libheif/bin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/jxrlib/jxrlib/bin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/poppler/Library/bin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/mnt/c/Program Files (x86)/VMware/VMware Player/bin/:/mnt/c/Program Files/Common Files/Oracle/Java/javapath:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0/:/mnt/c/Windows/System32/OpenSSH/:/mnt/c/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/dotnet/:/mnt/c/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/GitHub CLI/:/mnt/c/Program Files/nodejs/:/mnt/c/Program Files/WSL/:/mnt/c/Users/quake/AppData/Local/Programs/OpenAI/Codex/bin:/mnt/c/Users/quake/.cargo/bin:/mnt/c/Users/quake/AppData/Local/Programs/cursor/resources/app/codeBin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell:/mnt/c/Users/quake/AppData/Local/Microsoft/WindowsApps:/mnt/c/Users/quake/AppData/Local/Programs/Microsoft VS Code/bin:/mnt/c/msys64/ucrt64/bin:/mnt/c/Users/quake/AppData/Roaming/npm:/mnt/c/Users/quake/.dotnet/tools:/mnt/c/Users/quake/flutter-sdk/bin:/mnt/c/Users/quake/AppData/Local/Kingsoft/WPS Office/12.1.0.27458/clitool:/mnt/c/Users/quake/.dotnet/tools:/mnt/c/Users/quake/AppData/Local/GitHubDesktop/bin:/mnt/c/Users/quake/AppData/Local/Cosmos/Tools/xorriso:/mnt/c/Users/quake/AppData/Local/Cosmos/Tools/llvm-tools/bin:/mnt/c/Users/quake/AppData/Local/Cosmos/Tools/qemu:/mnt/c/Users/quake/AppData/Local/Cosmos/Tools/gdb/bin:/mnt/c/Users/quake/AppData/Local/Programs/Microsoft VS Code/bin/copilot-shim:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/mnt/c/Users/quake/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/git/cmd:/mnt/c/Users/quake/AppData/Local/OpenAI/Codex/bin/c602dfdab3808440:/mnt/c/Users/quake/AppData/Local/OpenAI/Codex/bin/2993767bd1dfb009' DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus HOSTTYPE=x86_64 PULSE_SERVER=unix:/mnt/wslg/PulseServer _=/usr/sbin/meson 
+
+==================================== 1/3 =====================================
+test:         seyrix-compositor:compositor shell IPC
+start time:   22:49:14
+duration:     0.01s
+result:       exit status 0
+command:      MALLOC_PERTURB_=72 MSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_summary=1:print_stacktrace=1 MESON_TEST_ITERATION=1 /var/tmp/seyrix-linux/phase2d2-stage2-asan-final/compositor-shell-ipc-test
+----------------------------------- stdout -----------------------------------
+PASS valid workspace datagram decodes
+PASS valid window identifier decodes
+PASS valid action datagram decodes
+PASS truncated header is rejected
+PASS truncated packet body is rejected
+PASS oversized datagram is rejected after MSG_TRUNC receive
+PASS incorrect protocol version is rejected
+PASS declared packet size mismatch is rejected
+PASS unknown message type is rejected
+PASS out-of-range workspace is rejected
+PASS zero window identifier is rejected
+PASS nonzero reserved workspace bytes are rejected
+PASS nonzero reserved action bytes are rejected
+PASS closed peer is reported without SIGPIPE
+PASS nonblocking send backpressure is reported
+PASS rapid independent socketpair decoder cycles remain valid
+SHELL_IPC_TEST=passed
+==============================================================================
+
+==================================== 2/3 =====================================
+test:         seyrix-compositor:compositor geometry
+start time:   22:49:14
+duration:     0.02s
+result:       exit status 0
+command:      MSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_summary=1:print_stacktrace=1 MESON_TEST_ITERATION=1 MALLOC_PERTURB_=16 /var/tmp/seyrix-linux/phase2d2-stage2-asan-final/compositor-geometry-test
+----------------------------------- stdout -----------------------------------
+COMPOSITOR_GEOMETRY=passed
+==============================================================================
+
+==================================== 3/3 =====================================
+test:         seyrix-compositor:compositor window management
+start time:   22:49:14
+duration:     0.04s
+result:       exit status 0
+command:      MALLOC_PERTURB_=13 MSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_summary=1:print_stacktrace=1 MESON_TEST_ITERATION=1 /var/tmp/seyrix-linux/phase2d2-stage2-asan-final/compositor-window-management-test
+----------------------------------- stdout -----------------------------------
+COMPOSITOR_WINDOW_MANAGEMENT=passed
+==============================================================================
+
+
+Ok:                3   
+Fail:              0   

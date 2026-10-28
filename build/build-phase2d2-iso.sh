@@ -85,8 +85,34 @@ ninja -C "$shell_build_dir"
 DESTDIR="$staging_dir" meson install -C "$shell_build_dir"
 
 cp -a "$repo_root/config/archiso/." "$profile_dir/"
+# Windows Git checkouts can represent index-mode symlinks as regular files
+# containing their targets. Recreate tracked Archiso root symlinks in the
+# isolated profile so systemd enablement and device aliases work in the image.
+while IFS= read -r -d '' index_entry; do
+	[[ "${index_entry%% *}" == 120000 ]] || continue
+	repo_path="${index_entry#*$'\t'}"
+	case "$repo_path" in
+		config/archiso/airootfs/*) ;;
+		*) continue ;;
+	esac
+	source_path="$repo_root/$repo_path"
+	profile_path="$profile_dir/${repo_path#config/archiso/}"
+	if [[ -L "$source_path" ]]; then
+		link_target="$(readlink "$source_path")"
+	else
+		link_target="$(sed -n '1{s/\r$//;p;}' "$source_path")"
+	fi
+	if [[ -z "$link_target" ]]; then
+		echo "Could not read tracked Archiso symlink target: $repo_path" >&2
+		exit 1
+	fi
+	rm -f -- "$profile_path"
+	ln -s -- "$link_target" "$profile_path"
+done < <(git -C "$repo_root" ls-files --stage -z)
 cp -a "$repo_root/config/graphics-overlay/airootfs/." "$profile_dir/airootfs/"
 cp -a "$repo_root/config/compositor-overlay/airootfs/." "$profile_dir/airootfs/"
+# Normalize the sourced login profile from Windows checkouts before it enters the ISO.
+sed -i 's/\r$//' "$profile_dir/airootfs/home/seyrix/.bash_profile"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-compositor" \
   "$profile_dir/airootfs/usr/bin/seyrix-compositor"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-protocol-probe" \
@@ -99,6 +125,8 @@ install -D -m 0755 "$repo_root/tests/phase2c-probe-check.sh" \
   "$profile_dir/airootfs/usr/bin/seyrix-phase2c-probe-check"
 cat "$repo_root/config/graphics-overlay/packages.x86_64" \
   "$repo_root/config/compositor-overlay/packages.x86_64" >> "$profile_dir/packages.x86_64"
+# Pacman treats CRLF package names as distinct names, so normalize the combined list.
+sed -i 's/\r$//' "$profile_dir/packages.x86_64"
 
 sed -i \
   -e 's/^iso_name=.*/iso_name="seyrix-phase2d2"/' \

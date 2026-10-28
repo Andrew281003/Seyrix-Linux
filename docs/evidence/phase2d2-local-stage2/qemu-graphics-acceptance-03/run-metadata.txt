@@ -1,0 +1,27 @@
+Run started UTC: 2026-10-27T22:46:07+00:00
+ISO: /var/tmp/seyrix-linux/phase2d2-stage2-final-focusfix-02/out/seyrix-phase2d2-2026.10.27-x86_64.iso
+ISO SHA-256: 9ace6c35c5c67f7bb2e4a8b181fe04d587c9cdda7b49df937abe52f190a49fb2
+ISO bytes: 1062240256
+Host kernel: 6.18.54.1-microsoft-standard-WSL2
+QEMU package: qemu-system-x86 11.1.2-1
+QEMU GTK package: qemu-ui-gtk 11.1.2-1
+QEMU virtio GPU package: qemu-hw-display-virtio-gpu 11.1.2-1
+QEMU virtio VGA package: qemu-hw-display-virtio-vga 11.1.2-1
+OVMF package: edk2-ovmf 202608-1
+Display: GTK on WSLg; guest virtio-vga 2D; QEMU TCG
+RAM: 4 GiB; vCPUs: 2; machine: q35; firmware: OVMF UEFI
+TCG thread mode: default
+Input: USB keyboard and USB tablet
+Storage: read-only ISO only; no physical disk passthrough
+QMP monitor: localhost TCP port 41607
+Compositor stress: 0
+AddressSanitizer/UBSan: 0
+Compositor renderer request: automatic
+QEMU run ID: 20261027T224607Z
+QEMU lock file: /tmp/seyrix-qemu-acceptance.lock
+QEMU lock timeout seconds: 30
+QEMU lock token: 20261027T224607Z-357944-32601
+Run started UTC: 2026-10-27T22:46:07+00:00
+Run finished UTC: 2026-10-27T22:48:08+00:00
+Run exit status: 1
+Expect PID: 357980

@@ -67,9 +67,26 @@ def main() -> int:
         print("Workspace selections must be numbered 1 through 4.", file=sys.stderr)
         return 2
     try:
-        button_x = (25, 58, 91, 124)
-        before = tuple(read_pixel(before_path, x, 8) for x in button_x)
-        after = tuple(read_pixel(after_path, x, 8) for x in button_x)
+        with before_path.open("rb") as stream:
+            magic = read_token(stream)
+            width = int(read_token(stream))
+            height = int(read_token(stream))
+            max_value = int(read_token(stream))
+        with after_path.open("rb") as stream:
+            after_magic = read_token(stream)
+            after_width = int(read_token(stream))
+            after_height = int(read_token(stream))
+            after_max_value = int(read_token(stream))
+        if (magic, max_value) != (b"P6", 255) or (after_magic, after_max_value) != (b"P6", 255):
+            raise ValueError("screenshots must be 8-bit P6 PPM images")
+        if (width, height) != (after_width, after_height):
+            raise ValueError("before and after screenshots have different dimensions")
+        # The four compact workspace buttons sit in the centered 214 px panel.
+        panel_left = (width - 214) // 2
+        button_x = tuple(panel_left + offset for offset in (24, 59, 95, 131))
+        button_y = height - 44
+        before = tuple(read_pixel(before_path, x, button_y) for x in button_x)
+        after = tuple(read_pixel(after_path, x, button_y) for x in button_x)
     except (OSError, ValueError) as error:
         print(f"PANEL_PIXEL_ASSERTION=failed reason={error}")
         return 1
@@ -78,13 +95,13 @@ def main() -> int:
     after_selected = [index for index, pixel in enumerate(after) if is_selected(pixel)]
     for index, (before_pixel, after_pixel) in enumerate(zip(before, after), start=1):
         print(
-            f"PANEL_WORKSPACE_BUTTON={index} point={button_x[index - 1]},8 "
+            f"PANEL_WORKSPACE_BUTTON={index} point={button_x[index - 1]},{button_y} "
             f"before={before_pixel[0]},{before_pixel[1]},{before_pixel[2]} "
             f"after={after_pixel[0]},{after_pixel[1]},{after_pixel[2]}"
         )
     before_expected = before_selected == [before_workspace]
     after_expected = after_selected == [after_workspace]
-    # Workspace 3 is sampled at the requested interior point (91,8).
+    # Workspace 3 is sampled at its button interior in the bottom-centered panel.
     selected_point_changed = sum(abs(a - b) for a, b in zip(before[2], after[2])) >= 50
     print(
         f"PANEL_WORKSPACE_ACTIVE_BEFORE={before_selected} "

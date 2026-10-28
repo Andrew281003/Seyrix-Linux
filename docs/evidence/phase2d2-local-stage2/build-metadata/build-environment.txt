@@ -1,0 +1,22 @@
+Build started UTC: 2026-10-27T22:30:46+00:00
+SOURCE_DATE_EPOCH: 1793140195
+Build host kernel: 6.18.54.1-microsoft-standard-WSL2
+Build host virtualization: wsl
+Source branch: phase2d2-desktop-shell
+Source commit: 245adc49141c0dee003afa87102d51b7341c5edf
+Source worktree: modified
+Compositor sanitizers: none
+Base profile source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/archiso
+Graphics overlay source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/graphics-overlay
+Compositor overlay source: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/config/compositor-overlay
+wlroots pkg-config version: 0.20.2
+wlr-protocols pkg-config version: 1.0
+Compositor build directory: /var/tmp/seyrix-linux/phase2d2-graphical-final-20261027T233000Z/compositor-build
+Protocol probe build directory: /var/tmp/seyrix-linux/phase2d2-graphical-final-20261027T233000Z/protocol-probe-build
+Build root: /var/tmp/seyrix-linux/phase2d2-graphical-final-20261027T233000Z
+ISO output directory: /var/tmp/seyrix-linux/phase2d2-graphical-final-20261027T233000Z/out
+Package signature policy: PackageRequired
+PackageTrustedOnly
+DatabaseOptional
+DatabaseTrustedOnly
+Image package count: 251

@@ -78,3 +78,10 @@ window_management_test = executable(
   c_args: ['-D_POSIX_C_SOURCE=200809L'],
 )
 test('compositor window management', window_management_test)
+
+shell_ipc_test = executable(
+  'compositor-shell-ipc-test',
+  '../../tests/shell-ipc-test.c',
+  c_args: ['-D_POSIX_C_SOURCE=200809L'],
+)
+test('compositor shell IPC', shell_ipc_test)

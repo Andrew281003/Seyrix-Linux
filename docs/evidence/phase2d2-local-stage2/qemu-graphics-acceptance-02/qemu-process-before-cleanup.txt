@@ -1,0 +1,5 @@
+Cleanup reason: test-exit-1
+QEMU PID: 351468
+Expected run identity: seyrix-phase2d2-graphics-test-20261027T224015Z
+Command line: /usr/sbin/qemu-system-x86_64 -name seyrix-phase2d2-graphics-test-20261027T224015Z -machine q35,accel=tcg -cpu qemu64 -smp 2 -m 4G -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd -drive if=pflash,format=raw,file=/mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/docs/evidence/phase2d2-local-stage2/qemu-graphics-acceptance-02/OVMF_VARS.fd -cdrom /var/tmp/seyrix-linux/phase2d2-stage2-final-symlinkfix-01/out/seyrix-phase2d2-2026.10.27-x86_64.iso -boot order=d,menu=off -device virtio-vga -device qemu-xhci -device usb-kbd -device usb-tablet -netdev user,id=net0 -device virtio-net-pci,netdev=net0 -display gtk,gl=off,show-cursor=on -serial stdio -qmp tcp:127.0.0.1:40839,server=on,wait=off -no-reboot 
+ 351468  351467 Ssl+     118 qemu-system-x86

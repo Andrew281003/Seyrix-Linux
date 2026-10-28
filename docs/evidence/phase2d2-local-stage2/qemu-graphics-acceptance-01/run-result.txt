@@ -1,0 +1,4 @@
+Run result: FAIL
+Failure exit status: 129
+Finished UTC: 2026-10-27T22:36:51+00:00
+Tests after the first failing or interrupted stage may be NOT RUN; stage evidence is in test.log and stage-results.log.

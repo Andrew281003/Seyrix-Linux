@@ -1,0 +1,5 @@
+Lock token: 20261027T225243Z-358593-32726
+Lock owner PID: 358593
+Lock started UTC: 2026-10-27T22:52:43+00:00
+Lock file: /tmp/seyrix-qemu-acceptance.lock
+Command: /mnt/c/Users/quake/Desktop/Coding/Seyrix-Linux-Phase2D2/tests/qemu-graphics.sh /var/tmp/seyrix-linux/phase2d2-stage2-final-focusfix-02/out/seyrix-phase2d2-2026.10.27-x86_64.iso

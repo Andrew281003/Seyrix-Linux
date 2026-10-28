@@ -33,13 +33,20 @@ set serial_log "$run_dir/serial.log"
 set timeout 360
 set phase2b 0
 set phase2c 0
+set phase2d2 0
 set sanitizers_enabled 0
 set renderer_request ""
 set egl_lifecycle_control 0
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		($env(SEYRIX_QEMU_WORKFLOW) eq "phase2b" ||
-		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c")} {
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c" ||
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d2")} {
 	set phase2b 1
+}
+if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d2"} {
+	set phase2d2 1
+	set phase2c 1
 }
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c"} {
@@ -183,6 +190,7 @@ proc keycode_for {character} {
         "_" { return [list "minus" 1] }
         "=" { return [list "equal" 0] }
         "." { return [list "dot" 0] }
+        ">" { return [list "dot" 1] }
         "\n" { return [list "ret" 0] }
         default { error "Unsupported QEMU key character: $character" }
     }
@@ -211,6 +219,13 @@ proc qmp_type {channel value} {
 proc qmp_mouse_move {channel x y} {
     set json [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%s}},{"type":"abs","data":{"axis":"y","value":%s}}]}}} $x $y]
     return [qmp_exec $channel $json]
+}
+
+proc qmp_mouse_click_pixel {channel x y width height} {
+	set absolute_x [expr {int(($x * 32767.0) / ($width - 1))}]
+	set absolute_y [expr {int(($y * 32767.0) / ($height - 1))}]
+	qmp_mouse_move $channel $absolute_x $absolute_y
+	qmp_mouse_click $channel
 }
 
 proc qmp_mouse_click {channel} {
@@ -576,7 +591,7 @@ expect {
     }
 }
 
-set input_monitor_command {mouse_event="$(awk '/^N: Name="QEMU QEMU USB Tablet"/ { found=1; next } found && /^H: Handlers=/ { if (match($0, /event[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit } }' /proc/bus/input/devices)"; if [[ -z "$mouse_event" ]]; then echo MOUSE_MONITOR_STARTED=failed; else nohup timeout 120s evtest "/dev/input/$mouse_event" >/tmp/seyrix-evtest-mouse.log 2>&1 </dev/null & echo MOUSE_MONITOR_STARTED=passed; fi}
+set input_monitor_command {mouse_event="$(awk '/^N: Name="QEMU QEMU USB Tablet"/ { found=1; next } found && /^H: Handlers=/ { if (match($0, /event[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit } }' /proc/bus/input/devices)"; if [[ -z "$mouse_event" ]]; then echo MOUSE_MONITOR_STARTED=failed; else nohup timeout 900s evtest "/dev/input/$mouse_event" >/tmp/seyrix-evtest-mouse.log 2>&1 </dev/null & echo MOUSE_MONITOR_STARTED=passed; fi}
 send -- "$input_monitor_command\r"
 expect {
     -re {MOUSE_MONITOR_STARTED=passed} {}
@@ -609,6 +624,10 @@ expect {
 }
 if {$phase2b} {
     qmp_hmp $qmp "screendump $run_dir/tty1-before-seyrix.ppm"
+    if {$phase2d2} {
+		set test_app_command {install -d -o 1000 -g 1000 /home/seyrix/.local/share/applications /home/seyrix/.local/bin && printf '%s\n' '#!/usr/bin/env bash' 'cd /tmp/seyrix-second' 'exec /usr/bin/weston-terminal' > /home/seyrix/.local/bin/seyrix-acceptance-terminal-second && chmod 755 /home/seyrix/.local/bin/seyrix-acceptance-terminal-second && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Acceptance Terminal' 'Exec=/usr/bin/weston-terminal' 'TryExec=/usr/bin/weston-terminal' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance.desktop && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Acceptance Terminal Backup' 'Exec=/home/seyrix/.local/bin/seyrix-acceptance-terminal-second' 'TryExec=/home/seyrix/.local/bin/seyrix-acceptance-terminal-second' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance-backup.desktop && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Missing Acceptance App' 'Exec=/usr/bin/seyrix-missing-app' 'TryExec=/usr/bin/seyrix-missing-app' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance-missing.desktop && chown 1000:1000 /home/seyrix/.local/bin/seyrix-acceptance-terminal-second /home/seyrix/.local/share/applications/seyrix-acceptance.desktop /home/seyrix/.local/share/applications/seyrix-acceptance-backup.desktop /home/seyrix/.local/share/applications/seyrix-acceptance-missing.desktop && echo PHASE2D2_TEST_APPS=installed}
+		run_serial_check $test_app_command {PHASE2D2_TEST_APPS=installed} {PHASE2D2_TEST_APPS=failed} "install two unprivileged temporary XDG launcher entries" 20
+	}
     if {$phase2c} {
         set wm_config_home "/tmp/seyrix-wm-config-$qemu_identity"
         set wm_probe_config_command "mkdir -p $wm_config_home/seyrix && chmod 755 $wm_config_home $wm_config_home/seyrix && printf 'version=1\\ndefault_mode=hybrid\\napp_id.7365797269782e706861736532632d70726f6265=floating\\n' > $wm_config_home/seyrix/window-management.conf && chmod 644 $wm_config_home/seyrix/window-management.conf && chown 1000:1000 $wm_config_home $wm_config_home/seyrix $wm_config_home/seyrix/window-management.conf && echo WM_TEST_CONFIG=ready"
@@ -664,7 +683,7 @@ if {$phase2b} {
         puts stderr "Seyrix compositor did not start or create a Wayland socket."
         exit 1
     }
-    if {$phase2c} {
+    if {$phase2c || $phase2d2} {
         set guest_helper [file join [file dirname [file normalize [info script]]] qemu-guest-helper.sh]
         install_guest_helper $guest_helper
         set run_identity_path "/tmp/seyrix-qemu-test-run-id-$qemu_identity"
@@ -678,6 +697,210 @@ if {$phase2b} {
     puts "APPLICATION_LAUNCH=passed"
     set graphics_ms [expr {[clock milliseconds] - $boot_started}]
     puts "GRAPHICAL_BOOT_MS=$graphics_ms"
+	if {$phase2d2} {
+		set timeout 240
+		set shell_ready_command {mkdir -p /tmp/seyrix-first /tmp/seyrix-second; shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_SHELL_PID=%s\nPHASE2D2_SHELL_UID=%s\n' "$shell_pid" "$shell_uid"; if [[ -n "$shell_pid" && "$shell_uid" == 1000 && -n "$terminal_pid" && -r /usr/share/seyrix/Manual.txt ]]; then echo PHASE2D2_SHELL_READY=passed; else echo PHASE2D2_SHELL_READY=failed; fi}
+		run_serial_check $shell_ready_command {PHASE2D2_SHELL_READY=passed} {PHASE2D2_SHELL_READY=failed} "verify native shell and terminal run as the seyrix user" 20
+		set shell_startup_failure_command {bash /tmp/seyrix-qemu-guest-helper.sh startup-failure}
+		run_serial_check $shell_startup_failure_command {PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "recover from a shell executable startup failure during restart" 30
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-desktop-initial.ppm"
+		qmp_key_chord $qmp {meta_l} q
+		set close_initial_terminal_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 0 ]] && pgrep -u 1000 -x seyrix-shell >/dev/null; then echo PHASE2D2_DESKTOP_REVEALED=passed; else echo PHASE2D2_DESKTOP_REVEALED=failed; fi}
+		run_serial_check $close_initial_terminal_command {PHASE2D2_DESKTOP_REVEALED=passed} {PHASE2D2_DESKTOP_REVEALED=failed} "close the initial terminal to expose the desktop surface" 15
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-wallpaper-and-desktop-item.ppm"
+
+		set output_size_command {size=$(sed -n 's/.* active at \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1x\2/p' /tmp/seyrix-compositor.log | head -n 1); if [[ -n "$size" ]]; then echo "PHASE2D2_OUTPUT_SIZE=$size"; else echo PHASE2D2_OUTPUT_SIZE=unknown; fi}
+		set output_size_result [run_serial_capture $output_size_command {PHASE2D2_OUTPUT_SIZE=([0-9]+)x([0-9]+)} {PHASE2D2_OUTPUT_SIZE=unknown} "read active output dimensions for pointer interaction" 10]
+		if {[lindex $output_size_result 0] ne "pass"} {
+			puts stderr "Could not determine the output dimensions for graphical input."
+			exit 1
+		}
+		set output_width [lindex $output_size_result 1]
+		set output_height [lindex $output_size_result 2]
+		set manual_map_baseline_command {before=$(grep -c 'Layer shell surface mapped namespace=seyrix-manual' /tmp/seyrix-compositor.log || true); printf '%s\n' "$before" > /tmp/seyrix-phase2d2-manual-map-baseline; echo PHASE2D2_MANUAL_BASELINE=ready}
+		run_serial_check $manual_map_baseline_command {PHASE2D2_MANUAL_BASELINE=ready} {PHASE2D2_MANUAL_BASELINE=failed} "record Manual overlay baseline before desktop click" 10
+		qmp_mouse_click_pixel $qmp 58 [expr {$output_height - 180}] $output_width $output_height
+		after 500
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-manual-open.ppm"
+		set manual_open_command {before=$(cat /tmp/seyrix-phase2d2-manual-map-baseline); after=$(grep -c 'Layer shell surface mapped namespace=seyrix-manual' /tmp/seyrix-compositor.log || true); if [[ "$after" -gt "$before" ]] && test -s /usr/share/seyrix/Manual.txt && grep -q '^SEYRIX-LINUX OPTIONAL SOFTWARE' /usr/share/seyrix/Manual.txt; then echo PHASE2D2_MANUAL_OPEN=passed; else echo PHASE2D2_MANUAL_OPEN=failed; fi}
+		run_serial_check $manual_open_command {PHASE2D2_MANUAL_OPEN=passed} {PHASE2D2_MANUAL_OPEN=failed} "open the installed Manual.txt from the desktop item" 15
+		qmp_key_chord $qmp {} esc
+		after 300
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-desktop-after-manual.ppm"
+
+		qmp_key_chord $qmp {meta_l} ret
+		set first_terminal_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 1 && "$mapped" -ge 2 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 1 && "$mapped" -ge 2 ]]; then echo PHASE2D2_TERMINAL_RESTORED=passed; else echo PHASE2D2_TERMINAL_RESTORED=failed; fi}
+		run_serial_check $first_terminal_command {PHASE2D2_TERMINAL_RESTORED=passed} {PHASE2D2_TERMINAL_RESTORED=failed} "open an unprivileged terminal after desktop input checks" 20
+		qmp_type $qmp "cd /tmp/seyrix-first\n"
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-first-terminal-cwd\n"
+		set first_terminal_identity_command {if grep -qx '/tmp/seyrix-first' /tmp/seyrix-phase2d2-first-terminal-cwd; then echo PHASE2D2_FIRST_TERMINAL_IDENTITY=passed; else echo PHASE2D2_FIRST_TERMINAL_IDENTITY=failed; fi}
+		run_serial_check $first_terminal_identity_command {PHASE2D2_FIRST_TERMINAL_IDENTITY=passed} {PHASE2D2_FIRST_TERMINAL_IDENTITY=failed} "mark the first terminal's private working directory" 15
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-terminal-first-window.ppm"
+		set background_marker_reset_command {rm -f /tmp/seyrix-phase2d2-background-focus; echo PHASE2D2_BACKGROUND_MARKER_RESET=ready}
+		run_serial_check $background_marker_reset_command {PHASE2D2_BACKGROUND_MARKER_RESET=ready} {PHASE2D2_BACKGROUND_MARKER_RESET=failed} "clear background-input marker before pointer test" 10
+		qmp_mouse_click_pixel $qmp 4 120 $output_width $output_height
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-background-click.ppm"
+		qmp_type $qmp "touch /tmp/seyrix-phase2d2-background-focus\n"
+		set background_focus_command {if test -f /tmp/seyrix-phase2d2-background-focus; then echo PHASE2D2_BACKGROUND_FOCUS=passed; else echo PHASE2D2_BACKGROUND_FOCUS=failed; fi}
+		run_serial_check $background_focus_command {PHASE2D2_BACKGROUND_FOCUS=passed} {PHASE2D2_BACKGROUND_FOCUS=failed} "click exposed wallpaper beside the tiled window without losing its keyboard focus" 20
+
+		set launcher_window_map_baseline_command {grep -c 'Window mapped:' /tmp/seyrix-compositor.log > /tmp/seyrix-phase2d2-launcher-window-map-baseline || true; echo PHASE2D2_LAUNCHER_WINDOW_BASELINE=ready}
+		run_serial_check $launcher_window_map_baseline_command {PHASE2D2_LAUNCHER_WINDOW_BASELINE=ready} {PHASE2D2_LAUNCHER_WINDOW_BASELINE=failed} "record mapped-window baseline before valid launcher execution" 10
+		qmp_key_chord $qmp {meta_l} spc
+		after 600
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-launcher-empty.ppm"
+		qmp_type $qmp "Acceptance"
+		after 600
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-launcher-search.ppm"
+		qmp_key_chord $qmp {} down
+		qmp_key_chord $qmp {} ret
+		set launcher_launch_command {before=$(cat /tmp/seyrix-phase2d2-launcher-window-map-baseline); for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 2 && "$mapped" -gt "$before" ]]; then break; fi; sleep 1; done; count=$(pgrep -u 1000 -x weston-terminal | wc -l); mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_TERMINAL_COUNT=%s\nPHASE2D2_MAPPED_BEFORE=%s\nPHASE2D2_MAPPED_AFTER=%s\n' "$count" "$before" "$mapped"; if [[ "$count" -eq 2 && "$mapped" -gt "$before" && "$shell_uid" == 1000 ]] && grep -q 'Layer shell surface mapped namespace=seyrix-launcher' /tmp/seyrix-compositor.log; then echo PHASE2D2_LAUNCHER_SEARCH_LAUNCH=passed; else echo PHASE2D2_LAUNCHER_SEARCH_LAUNCH=failed; pgrep -a -u 1000 -x weston-terminal || true; tail -n 40 /tmp/seyrix-compositor.log; fi}
+		run_serial_check $launcher_launch_command {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=passed} {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=failed} "search and launch a valid XDG desktop entry with keyboard navigation" 30
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-after-launch.ppm"
+		set launcher_cwd_reset_command {rm -f /tmp/seyrix-phase2d2-launcher-terminal-cwd; echo PHASE2D2_LAUNCHER_CWD_RESET=ready}
+		run_serial_check $launcher_cwd_reset_command {PHASE2D2_LAUNCHER_CWD_RESET=ready} {PHASE2D2_LAUNCHER_CWD_RESET=failed} "clear foreground identity marker after launcher app launch" 10
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-launcher-terminal-cwd\n"
+		set launcher_window_result [run_serial_capture {cat /tmp/seyrix-phase2d2-launcher-terminal-cwd} {(/tmp/seyrix-(first|second))} {PHASE2D2_LAUNCHER_FOCUS=unknown} "read the focused terminal after launcher execution" 10]
+		if {[lindex $launcher_window_result 0] ne "pass" ||
+				[lindex $launcher_window_result 1] ne "/tmp/seyrix-second"} {
+			puts stderr "The selected Backup XDG entry did not create and focus its /tmp/seyrix-second terminal."
+			exit 1
+		}
+		set foreground_terminal [lindex $launcher_window_result 1]
+		set other_terminal [expr {$foreground_terminal eq "/tmp/seyrix-first" ? "/tmp/seyrix-second" : "/tmp/seyrix-first"}]
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-dock-two-windows.ppm"
+		qmp_key_chord $qmp {meta_l} spc
+		qmp_type $qmp "Missing"
+		after 500
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-launcher-missing-entry.ppm"
+		qmp_key_chord $qmp {} ret
+		qmp_key_chord $qmp {} esc
+		set missing_entry_command {count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 2 ]] && ! pgrep -u 1000 -f 'seyrix-missing-app' >/dev/null && pgrep -u 1000 -x seyrix-shell >/dev/null; then echo PHASE2D2_LAUNCHER_MISSING_ENTRY=passed; else echo PHASE2D2_LAUNCHER_MISSING_ENTRY=failed; fi}
+		run_serial_check $missing_entry_command {PHASE2D2_LAUNCHER_MISSING_ENTRY=passed} {PHASE2D2_LAUNCHER_MISSING_ENTRY=failed} "reject a launcher entry whose TryExec target is missing" 20
+
+		qmp_key_chord $qmp {meta_l} spc
+		after 300
+		qmp_key_chord $qmp {} esc
+		set launcher_focus_reset_command {rm -f /tmp/seyrix-phase2d2-launcher-escape-cwd; echo PHASE2D2_LAUNCHER_FOCUS_RESET=ready}
+		run_serial_check $launcher_focus_reset_command {PHASE2D2_LAUNCHER_FOCUS_RESET=ready} {PHASE2D2_LAUNCHER_FOCUS_RESET=failed} "clear launcher focus identity before Escape test" 10
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-launcher-escape-cwd\n"
+		set launcher_escape_result [run_serial_capture {cat /tmp/seyrix-phase2d2-launcher-escape-cwd} {(/tmp/seyrix-(first|second))} {PHASE2D2_LAUNCHER_ESCAPE_FOCUS=failed} "read terminal identity after Escape dismisses the launcher" 15]
+		if {[lindex $launcher_escape_result 0] eq "pass" && [lindex $launcher_escape_result 1] eq $foreground_terminal} {
+			puts "PHASE2D2_LAUNCHER_ESCAPE_FOCUS=passed"
+		} else {
+			puts stderr "PHASE2D2_LAUNCHER_ESCAPE_FOCUS=failed expected=$foreground_terminal result=$launcher_escape_result"
+			incr acceptance_failures
+		}
+
+		set panel_metrics_command {window_count=$(pgrep -u 1000 -x weston-terminal | wc -l); ids=$(grep 'Window mapped:' /tmp/seyrix-compositor.log | sed -n 's/.*Window mapped: app_id=\([^ ]*\).*/\1/p' | sort -u); id_count=$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l); if [[ "$id_count" -eq 1 ]]; then groups=1; else groups=$window_count; fi; if [[ "$window_count" -eq 2 && "$groups" -ge 1 ]]; then echo "PHASE2D2_PANEL_METRICS=passed groups=$groups"; else echo PHASE2D2_PANEL_METRICS=failed; fi}
+		set panel_metrics_result [run_serial_capture $panel_metrics_command {PHASE2D2_PANEL_METRICS=passed groups=([0-9]+)} {PHASE2D2_PANEL_METRICS=failed} "determine running application groups for dock input coordinates" 15]
+		if {[lindex $panel_metrics_result 0] ne "pass"} {
+			puts stderr "Could not determine the live dock application group count."
+			exit 1
+		}
+		set panel_app_groups [lindex $panel_metrics_result 1]
+		if {$panel_app_groups > 16} { set panel_app_groups 16 }
+		set panel_content_width [expr {156 + 58 + 58 * $panel_app_groups}]
+		set panel_left [expr {($output_width - $panel_content_width) / 2}]
+		set panel_workspace_two_x [expr {$panel_left + 60}]
+		set panel_workspace_one_x [expr {$panel_left + 24}]
+		set panel_application_x [expr {$panel_left + 231}]
+		set panel_y [expr {$output_height - 29}]
+		set workspace_two_baseline_command {grep -c 'Switched to workspace 2' /tmp/seyrix-compositor.log > /tmp/seyrix-phase2d2-workspace-two-baseline || true; echo PHASE2D2_WORKSPACE_TWO_BASELINE=ready}
+		run_serial_check $workspace_two_baseline_command {PHASE2D2_WORKSPACE_TWO_BASELINE=ready} {PHASE2D2_WORKSPACE_TWO_BASELINE=failed} "record workspace two switch count before dock click" 10
+		qmp_mouse_click_pixel $qmp $panel_workspace_two_x $panel_y $output_width $output_height
+		after 300
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-workspace-two-selected.ppm"
+		set workspace_two_command {before=$(cat /tmp/seyrix-phase2d2-workspace-two-baseline); after=$(grep -c 'Switched to workspace 2' /tmp/seyrix-compositor.log || true); if [[ "$after" -gt "$before" ]]; then echo PHASE2D2_DOCK_WORKSPACE_SELECT=passed; else echo PHASE2D2_DOCK_WORKSPACE_SELECT=failed; fi}
+		run_serial_check $workspace_two_command {PHASE2D2_DOCK_WORKSPACE_SELECT=passed} {PHASE2D2_DOCK_WORKSPACE_SELECT=failed} "select workspace two from the dock" 15
+		set workspace_one_baseline_command {grep -c 'Switched to workspace 1' /tmp/seyrix-compositor.log > /tmp/seyrix-phase2d2-workspace-one-baseline || true; rm -f /tmp/seyrix-phase2d2-dock-window-cwd; echo PHASE2D2_WORKSPACE_ONE_BASELINE=ready}
+		run_serial_check $workspace_one_baseline_command {PHASE2D2_WORKSPACE_ONE_BASELINE=ready} {PHASE2D2_WORKSPACE_ONE_BASELINE=failed} "record workspace one and focus baselines before selecting a dock window" 10
+		qmp_mouse_click_pixel $qmp $panel_application_x $panel_y $output_width $output_height
+		after 300
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-dock-window-cwd\n"
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-dock-window-activated.ppm"
+		set dock_focus_command {before=$(cat /tmp/seyrix-phase2d2-workspace-one-baseline); after=$(grep -c 'Switched to workspace 1' /tmp/seyrix-compositor.log || true); cwd=$(cat /tmp/seyrix-phase2d2-dock-window-cwd 2>/dev/null || true); if [[ "$after" -gt "$before" && "$cwd" =~ ^/tmp/seyrix-(first|second)$ ]]; then echo PHASE2D2_DOCK_WINDOW_FOCUS=passed; else echo PHASE2D2_DOCK_WINDOW_FOCUS=failed; fi}
+		run_serial_check $dock_focus_command {PHASE2D2_DOCK_WINDOW_FOCUS=passed} {PHASE2D2_DOCK_WINDOW_FOCUS=failed} "focus the running application from the dock across workspaces" 20
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-workspace-one-restored.ppm"
+		set dock_terminal_result [run_serial_capture {cat /tmp/seyrix-phase2d2-dock-window-cwd} {(/tmp/seyrix-(first|second))} {PHASE2D2_DOCK_WINDOW_FOCUS=unknown} "identify the terminal focused by the dock" 10]
+		if {[lindex $dock_terminal_result 0] ne "pass"} {
+			puts stderr "The dock did not focus a running terminal window."
+			exit 1
+		}
+		set switcher_foreground [lindex $dock_terminal_result 1]
+		set switcher_other [expr {$switcher_foreground eq "/tmp/seyrix-first" ? "/tmp/seyrix-second" : "/tmp/seyrix-first"}]
+
+		set switcher_map_baseline_command {before=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); printf '%s\n' "$before" > /tmp/seyrix-phase2d2-switcher-map-baseline; echo PHASE2D2_SWITCHER_BASELINE=ready}
+		run_serial_check $switcher_map_baseline_command {PHASE2D2_SWITCHER_BASELINE=ready} {PHASE2D2_SWITCHER_BASELINE=failed} "record switcher surface baseline before MRU keyboard test" 10
+		set switcher_identity_reset_command {rm -f /tmp/seyrix-phase2d2-switcher-selected; echo PHASE2D2_SWITCHER_IDENTITY_RESET=ready}
+		run_serial_check $switcher_identity_reset_command {PHASE2D2_SWITCHER_IDENTITY_RESET=ready} {PHASE2D2_SWITCHER_IDENTITY_RESET=failed} "clear switcher target identity before keyboard test" 10
+		qmp_key_transition $qmp meta_l 1
+		after 100
+		qmp_key_transition $qmp tab 1
+		after 80
+		qmp_key_transition $qmp tab 0
+		after 500
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-switcher-open.ppm"
+		qmp_key_transition $qmp down 1
+		after 80
+		qmp_key_transition $qmp down 0
+		after 300
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-switcher-navigation.ppm"
+		qmp_key_transition $qmp meta_l 0
+		after 500
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-switcher-selected\n"
+		set switcher_navigation_command [format {before=$(cat /tmp/seyrix-phase2d2-switcher-map-baseline); after=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); if [[ "$after" -gt "$before" ]] && grep -qx '%s' /tmp/seyrix-phase2d2-switcher-selected; then echo PHASE2D2_SWITCHER_KEYBOARD_CYCLE=passed; else echo PHASE2D2_SWITCHER_KEYBOARD_CYCLE=failed; fi} $switcher_foreground]
+		run_serial_check $switcher_navigation_command {PHASE2D2_SWITCHER_KEYBOARD_CYCLE=passed} {PHASE2D2_SWITCHER_KEYBOARD_CYCLE=failed} "navigate with an arrow key and activate the previously focused terminal" 20
+		set switcher_first_baseline_command {before=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); printf '%s\n' "$before" > /tmp/seyrix-phase2d2-switcher-first-baseline; rm -f /tmp/seyrix-phase2d2-switcher-selected; echo PHASE2D2_SWITCHER_FIRST_BASELINE=ready}
+		run_serial_check $switcher_first_baseline_command {PHASE2D2_SWITCHER_FIRST_BASELINE=ready} {PHASE2D2_SWITCHER_FIRST_BASELINE=failed} "record second switcher surface baseline" 10
+		qmp_key_transition $qmp meta_l 1
+		after 100
+		qmp_key_transition $qmp tab 1
+		after 80
+		qmp_key_transition $qmp tab 0
+		after 500
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-switcher-mru-default.ppm"
+		qmp_key_transition $qmp meta_l 0
+		after 500
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-switcher-selected\n"
+		set switcher_default_command [format {before=$(cat /tmp/seyrix-phase2d2-switcher-first-baseline); after=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); if [[ "$after" -gt "$before" ]] && grep -qx '%s' /tmp/seyrix-phase2d2-switcher-selected; then echo PHASE2D2_SWITCHER_MRU_ORDER=passed; else echo PHASE2D2_SWITCHER_MRU_ORDER=failed; fi} $switcher_other]
+		run_serial_check $switcher_default_command {PHASE2D2_SWITCHER_MRU_ORDER=passed} {PHASE2D2_SWITCHER_MRU_ORDER=failed} "verify Super+Tab's default MRU selection activates the other window" 20
+
+		qmp_key_chord $qmp {meta_l} q
+		set close_test_window_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 1 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 1 ]]; then echo PHASE2D2_WINDOW_REMOVAL=passed; else echo PHASE2D2_WINDOW_REMOVAL=failed; pgrep -a -u 1000 -x weston-terminal || true; fi}
+		run_serial_check $close_test_window_command {PHASE2D2_WINDOW_REMOVAL=passed} {PHASE2D2_WINDOW_REMOVAL=failed} "remove the launcher test window without stale process state" 15
+		set single_window_switcher_baseline_command {before=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); printf '%s\n' "$before" > /tmp/seyrix-phase2d2-single-switcher-baseline; rm -f /tmp/seyrix-phase2d2-switcher-selected; echo PHASE2D2_SINGLE_SWITCHER_BASELINE=ready}
+		run_serial_check $single_window_switcher_baseline_command {PHASE2D2_SINGLE_SWITCHER_BASELINE=ready} {PHASE2D2_SINGLE_SWITCHER_BASELINE=failed} "record single-window switcher baseline after window destruction" 10
+		qmp_key_transition $qmp meta_l 1
+		after 100
+		qmp_key_transition $qmp tab 1
+		after 80
+		qmp_key_transition $qmp tab 0
+		after 500
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-switcher-after-window-destroy.ppm"
+		qmp_key_transition $qmp meta_l 0
+		after 300
+		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-switcher-selected\n"
+		set stale_window_command [format {before=$(cat /tmp/seyrix-phase2d2-single-switcher-baseline); after=$(grep -c 'Layer shell surface mapped namespace=seyrix-switcher' /tmp/seyrix-compositor.log || true); count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$after" -gt "$before" && "$count" -eq 1 ]] && grep -qx '%s' /tmp/seyrix-phase2d2-switcher-selected; then echo PHASE2D2_SWITCHER_STALE_WINDOW=passed; else echo PHASE2D2_SWITCHER_STALE_WINDOW=failed; fi} $switcher_foreground]
+		run_serial_check $stale_window_command {PHASE2D2_SWITCHER_STALE_WINDOW=passed} {PHASE2D2_SWITCHER_STALE_WINDOW=failed} "show the surviving window after the other switcher entry is destroyed" 20
+
+		set launcher_map_baseline_command {before=$(grep -c 'Layer shell surface mapped namespace=seyrix-launcher' /tmp/seyrix-compositor.log || true); printf '%s\n' "$before" > /tmp/seyrix-phase2d2-launcher-map-baseline; echo PHASE2D2_CRASH_LAUNCHER_BASELINE=ready}
+		run_serial_check $launcher_map_baseline_command {PHASE2D2_CRASH_LAUNCHER_BASELINE=ready} {PHASE2D2_CRASH_LAUNCHER_BASELINE=failed} "record launcher surface baseline before crash-recovery test" 10
+		qmp_key_chord $qmp {meta_l} spc
+		after 300
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-launcher-before-shell-crash.ppm"
+		set launcher_map_open_command {before=$(cat /tmp/seyrix-phase2d2-launcher-map-baseline); after=$(grep -c 'Layer shell surface mapped namespace=seyrix-launcher' /tmp/seyrix-compositor.log || true); if [[ "$after" -gt "$before" ]]; then echo PHASE2D2_CRASH_LAUNCHER_OPEN=passed; else echo PHASE2D2_CRASH_LAUNCHER_OPEN=failed; fi}
+		run_serial_check $launcher_map_open_command {PHASE2D2_CRASH_LAUNCHER_OPEN=passed} {PHASE2D2_CRASH_LAUNCHER_OPEN=failed} "confirm launcher surface is open before killing the shell" 10
+		set shell_crash_command {before=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); if [[ -z "$shell_pid" ]]; then echo PHASE2D2_SHELL_CRASH_RESTART=failed; else kill -KILL "$shell_pid"; for n in $(seq 1 40); do started=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); if [[ "$started" -gt "$before" ]]; then break; fi; sleep 0.25; done; started=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); if [[ "$started" -gt "$before" ]] && pgrep -u 1000 -x seyrix-shell >/dev/null && grep -q 'Seyrix shell exited; compositor remains available' /tmp/seyrix-compositor.log; then echo PHASE2D2_SHELL_CRASH_RESTART=passed; else echo PHASE2D2_SHELL_CRASH_RESTART=failed; tail -n 50 /tmp/seyrix-compositor.log; fi; fi}
+		run_serial_check $shell_crash_command {PHASE2D2_SHELL_CRASH_RESTART=passed} {PHASE2D2_SHELL_CRASH_RESTART=failed} "restart the shell after a SIGKILL while an overlay is open" 20
+		qmp_type $qmp "touch /tmp/seyrix-phase2d2-crash-focus\n"
+		set crash_focus_command {if test -f /tmp/seyrix-phase2d2-crash-focus; then echo PHASE2D2_CRASH_OVERLAY_FOCUS=passed; else echo PHASE2D2_CRASH_OVERLAY_FOCUS=failed; fi}
+		run_serial_check $crash_focus_command {PHASE2D2_CRASH_OVERLAY_FOCUS=passed} {PHASE2D2_CRASH_OVERLAY_FOCUS=failed} "restore terminal input focus after shell crash with launcher visible" 20
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-shell-restarted.ppm"
+		set cleanup_test_window_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 1 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 1 ]]; then echo PHASE2D2_TEST_WINDOW_CLEANUP=passed; else echo PHASE2D2_TEST_WINDOW_CLEANUP=failed; fi}
+		run_serial_check $cleanup_test_window_command {PHASE2D2_TEST_WINDOW_CLEANUP=passed} {PHASE2D2_TEST_WINDOW_CLEANUP=failed} "restore one terminal before existing compositor regression checks" 15
+		puts "PHASE2D2_INTERACTIONS=complete"
+	}
 
     if {$phase2c && [info exists env(SEYRIX_QEMU_WORKSPACE_ONLY)] &&
             $env(SEYRIX_QEMU_WORKSPACE_ONLY) eq "1"} {
@@ -1181,8 +1404,10 @@ if {$phase2b} {
 		set shell_ready_check {for n in $(seq 1 30); do panel=$(pgrep -u 1000 -x seyrix-shell | head -n 1); if [[ -n "$panel" ]] && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then break; fi; sleep 1; done; if [[ -n "$panel" ]] && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log; then echo PHASE2C_PANEL=passed; else echo PHASE2C_PANEL=failed; printf 'PANEL_START_DIAGNOSTICS pid=%s map_count=%s\n' "${panel:-missing}" "$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log || true)"; grep -E 'Started isolated Seyrix layer-shell panel|Layer shell surface mapped|seyrix panel' /tmp/seyrix-compositor.log | tail -n 16; fi}
 		run_serial_check $shell_ready_check {PHASE2C_PANEL=passed} {PHASE2C_PANEL=failed} "isolated layer-shell panel startup"
 		qmp_hmp $qmp "screendump $run_dir/seyrix-panel-workspace-before.ppm"
-		qmp_mouse_move $qmp 4659 546
-		qmp_mouse_click $qmp
+		set panel_left [expr {($output_width - 214) / 2}]
+		set panel_workspace_three_x [expr {$panel_left + 95}]
+		set panel_workspace_y [expr {$output_height - 29}]
+		qmp_mouse_click_pixel $qmp $panel_workspace_three_x $panel_workspace_y $output_width $output_height
 		set panel_select_check {for n in $(seq 1 15); do grep -q 'Switched to workspace 3' /tmp/seyrix-compositor.log && break; sleep 1; done; panel=$(pgrep -u 1000 -x seyrix-shell | head -n 1); if grep -q 'Switched to workspace 3' /tmp/seyrix-compositor.log && [[ -n "$panel" ]]; then echo PHASE2C_PANEL_WORKSPACE_SELECT=passed; else echo PHASE2C_PANEL_WORKSPACE_SELECT=failed; printf 'PANEL_PROCESS=%s\n' "${panel:-missing}"; grep -E 'Switched to workspace|seyrix-panel|Started isolated Seyrix' /tmp/seyrix-compositor.log | tail -n 12; fi}
 		run_serial_check $panel_select_check {PHASE2C_PANEL_WORKSPACE_SELECT=passed} {PHASE2C_PANEL_WORKSPACE_SELECT=failed} "native panel workspace selection and process retention" 20
 		set panel_before [file normalize [file join $run_dir seyrix-panel-workspace-before.ppm]]
@@ -1424,8 +1649,8 @@ if {$phase2b} {
 		run_serial_check $workspace_cleanup_check {WORKSPACE_CLEANUP=passed} {WORKSPACE_CLEANUP=failed} "closing windows on separate workspaces"
 		puts "PHASE2C_WORKSPACES=completed"
 
-		set panel_crash_check {bash /tmp/seyrix-qemu-guest-helper.sh crash-panel}
-		run_serial_check $panel_crash_check {PHASE2C_PANEL_CRASH_ISOLATION=passed} {PHASE2C_PANEL_CRASH_ISOLATION=failed} "panel process crash isolation"
+		set panel_crash_check {bash /tmp/seyrix-qemu-guest-helper.sh crash-panel-owner}
+		run_serial_check $panel_crash_check {PHASE2D2_PANEL_OWNER_CRASH_ISOLATION=passed} {PHASE2D2_PANEL_OWNER_CRASH_ISOLATION=failed|QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "panel-owner shell crash isolation"
 		qmp_key_chord $qmp {meta_l} ret
 		after 600
 		qmp_type $qmp "touch /tmp/phase2c-compositor-after-panel-crash\n"
@@ -1596,7 +1821,11 @@ if {$phase2b} {
         puts "STRESS_CAMPAIGN=passed"
     }
 
-    qmp_key_chord $qmp {meta_l shift} q
+    if {$phase2d2} {
+		set shell_restart_budget_command {reset_before=$(grep -c 'Reset Seyrix shell restart budget after 60-second shell process lifetime' /tmp/seyrix-compositor.log || true); sleep 61; before=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); desktop_before=$(grep -c 'Layer shell surface mapped namespace=seyrix-desktop' /tmp/seyrix-compositor.log || true); restart_count=0; for cycle in 1 2 3 4 5; do pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); process_count=$(pgrep -u 1000 -x seyrix-shell | wc -l); if [[ -z "$pid" || "$process_count" -ne 1 ]]; then break; fi; schedule_before=$(grep -c 'Scheduling isolated shell restart attempt' /tmp/seyrix-compositor.log || true); kill -KILL "$pid"; expected_delay=$((1000 << (cycle - 1))); for n in $(seq 1 180); do started=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); desktop_mapped=$(grep -c 'Layer shell surface mapped namespace=seyrix-desktop' /tmp/seyrix-compositor.log || true); if [[ "$started" -gt "$before" && "$desktop_mapped" -gt "$desktop_before" ]]; then break; fi; sleep 0.25; done; started=$(grep -c 'Started isolated Seyrix desktop shell' /tmp/seyrix-compositor.log || true); desktop_mapped=$(grep -c 'Layer shell surface mapped namespace=seyrix-desktop' /tmp/seyrix-compositor.log || true); schedule=$(grep 'Scheduling isolated shell restart attempt' /tmp/seyrix-compositor.log | tail -n 1); printf 'PHASE2D2_RESTART_CYCLE_OBS cycle=%s expected_delay_ms=%s started_before=%s started_after=%s desktop_before=%s desktop_after=%s shell_count=%s schedule=%s\n' "$cycle" "$expected_delay" "$before" "$started" "$desktop_before" "$desktop_mapped" "$process_count" "$schedule"; if [[ "$started" -le "$before" || "$desktop_mapped" -le "$desktop_before" || "$process_count" -ne 1 || "$schedule" != *"attempt $cycle in $expected_delay ms"* ]]; then break; fi; restart_count=$cycle; before=$started; desktop_before=$desktop_mapped; printf 'PHASE2D2_RESTART_CYCLE=%s delay_ms=%s shell_count=%s\n' "$cycle" "$expected_delay" "$process_count"; done; reset_after=$(grep -c 'Reset Seyrix shell restart budget after 60-second shell process lifetime' /tmp/seyrix-compositor.log || true); if [[ "$restart_count" -eq 5 && "$reset_after" -gt "$reset_before" ]]; then pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); kill -KILL "$pid"; sleep 3; if ! pgrep -u 1000 -x seyrix-shell >/dev/null && grep -q 'Seyrix shell restart limit reached for this failure burst' /tmp/seyrix-compositor.log; then echo PHASE2D2_RESTART_BUDGET=passed; else echo PHASE2D2_RESTART_BUDGET=failed; tail -n 60 /tmp/seyrix-compositor.log; fi; else echo PHASE2D2_RESTART_BUDGET=failed; printf 'restart_count=%s reset_before=%s reset_after=%s\n' "$restart_count" "$reset_before" "$reset_after"; tail -n 60 /tmp/seyrix-compositor.log; fi}
+		run_serial_check $shell_restart_budget_command {PHASE2D2_RESTART_BUDGET=passed} {PHASE2D2_RESTART_BUDGET=failed} "verify stable restart-budget reset and five retries after rapid shell crashes" 120
+	}
+	qmp_key_chord $qmp {meta_l shift} q
     set compositor_exit_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; printf 'COMPOSITOR_LOG_TAIL_BEGIN\n'; if grep -Eq 'AddressSanitizer:|LeakSanitizer:|runtime error:' /tmp/seyrix-compositor.log; then cat /tmp/seyrix-compositor.log; else tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; fi; printf 'COMPOSITOR_LOG_TAIL_END\n'; printf 'OUTPUT_TEARDOWN_LOG='; if grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo unexpected; else echo clean; fi; printf 'CLEAN_STOP_LOG='; if grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log; then echo present; else echo missing; fi; printf 'MEM_TOTAL_KB='; awk '/MemTotal/ {print $2}' /proc/meminfo; printf 'MEM_AVAILABLE_KB='; awk '/MemAvailable/ {print $2}' /proc/meminfo; printf 'RUNNING_SERVICES='; systemctl list-units --type=service --state=running --no-legend | wc -l; printf 'PACKAGE_COUNT='; pacman --config /dev/null -Q | wc -l; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
     send -- "$compositor_exit_command\r"
     expect {
@@ -1626,6 +1855,37 @@ if {$phase2b} {
     }
     qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-exit.ppm"
     puts "SESSION_EXIT=passed"
+    if {$phase2d2} {
+		qmp_type $qmp "start-wayland\n"
+		set weston_fallback_command {for n in $(seq 1 120); do if test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && pgrep -u 1000 -x weston >/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then break; fi; sleep 1; done; if test -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && pgrep -u 1000 -x weston >/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null; then echo PHASE2D2_WESTON_FALLBACK=passed; else echo PHASE2D2_WESTON_FALLBACK=failed; cat /tmp/seyrix-weston-status.txt 2>/dev/null || true; tail -n 50 /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null || true; fi}
+		run_serial_check $weston_fallback_command {PHASE2D2_WESTON_FALLBACK=passed} {PHASE2D2_WESTON_FALLBACK=failed} "start the Weston software-rendering fallback after a normal Seyrix exit" 130
+		after 2000
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-weston-fallback.ppm"
+		qmp_mouse_click_pixel $qmp [expr {$output_width / 2}] [expr {$output_height / 2}] $output_width $output_height
+		after 250
+		qmp_type $qmp "exit\n"
+		set weston_exit_command {for n in $(seq 1 60); do if test ! -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && ! pgrep -u 1000 -x weston >/dev/null && ! pgrep -u 1000 -x weston-terminal >/dev/null; then break; fi; sleep 1; done; if test ! -f "/run/user/$(id -u seyrix)/seyrix-wayland-ready" && ! pgrep -u 1000 -x weston >/dev/null && ! pgrep -u 1000 -x weston-terminal >/dev/null && systemctl is-active --quiet getty@tty1; then echo PHASE2D2_WESTON_EXIT=passed; else echo PHASE2D2_WESTON_EXIT=failed; pgrep -a -u 1000 -f 'weston|weston-terminal' || true; fi; printf 'WESTON_RENDERER_STATUS='; cat /tmp/seyrix-weston-status.txt 2>/dev/null || true; printf 'WESTON_RENDERER_LOGS_BEGIN\n'; grep -hEi 'renderer|rendering device|libseat|drm' /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null | tail -n 40 || true; printf 'WESTON_RENDERER_LOGS_END\n'}
+		run_serial_check $weston_exit_command {PHASE2D2_WESTON_EXIT=passed} {PHASE2D2_WESTON_EXIT=failed} "exit the Weston fallback and return to tty1" 70
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-weston-exit.ppm"
+		qmp_type $qmp "start-seyrix"
+		qmp_key_transition $qmp ret 1
+		after 80
+		qmp_key_transition $qmp ret 0
+		set compositor_before_sigterm_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started isolated Seyrix desktop shell pid=' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started weston-terminal with pid' /tmp/seyrix-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started isolated Seyrix desktop shell pid=' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started weston-terminal with pid' /tmp/seyrix-compositor.log 2>/dev/null; then echo PHASE2D2_COMPOSITOR_TERMINATION_SESSION=ready; else echo PHASE2D2_COMPOSITOR_TERMINATION_SESSION=failed; tail -n 40 /tmp/seyrix-compositor.log; fi}
+		run_serial_check $compositor_before_sigterm_command {PHASE2D2_COMPOSITOR_TERMINATION_SESSION=ready} {PHASE2D2_COMPOSITOR_TERMINATION_SESSION=failed} "start a fresh live shell session for compositor SIGTERM cleanup" 70
+		set compositor_sigterm_command {bash /tmp/seyrix-qemu-guest-helper.sh terminate-compositor}
+		run_serial_check $compositor_sigterm_command {PHASE2D2_COMPOSITOR_SIGTERM_CLEANUP=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "send SIGTERM to the compositor and verify clean session child shutdown" 30
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-compositor-sigterm-cleanup.ppm"
+		qmp_type $qmp "start-seyrix"
+		qmp_key_transition $qmp ret 1
+		after 80
+		qmp_key_transition $qmp ret 0
+		set compositor_after_sigterm_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started isolated Seyrix desktop shell pid=' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started weston-terminal with pid' /tmp/seyrix-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started isolated Seyrix desktop shell pid=' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Started weston-terminal with pid' /tmp/seyrix-compositor.log 2>/dev/null; then echo PHASE2D2_COMPOSITOR_CRASH_SESSION=ready; else echo PHASE2D2_COMPOSITOR_CRASH_SESSION=failed; tail -n 40 /tmp/seyrix-compositor.log; fi}
+		run_serial_check $compositor_after_sigterm_command {PHASE2D2_COMPOSITOR_CRASH_SESSION=ready} {PHASE2D2_COMPOSITOR_CRASH_SESSION=failed} "start a fresh compositor session for forced SIGKILL cleanup" 70
+		set compositor_crash_command {bash /tmp/seyrix-qemu-guest-helper.sh crash-compositor}
+		run_serial_check $compositor_crash_command {PHASE2D2_COMPOSITOR_CRASH_CLEANUP=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "kill the compositor and verify PDEATHSIG process-group cleanup" 30
+		qmp_hmp $qmp "screendump $run_dir/phase2d2-compositor-crash-cleanup.ppm"
+	}
     if {[info exists env(SEYRIX_QEMU_STRESS)] && $env(SEYRIX_QEMU_STRESS) eq "1"} {
         qmp_type $qmp $compositor_launch_command
         set restart_start [clock milliseconds]
@@ -1869,7 +2129,7 @@ if {$egl_lifecycle_control} {
 	}
 }
 
-set shutdown_command {printf 'SEYRIX_GRAPHICS_CHECK_END\n'; systemctl poweroff}
+set shutdown_command {printf 'SYSTEM_JOURNAL_BEGIN\n'; journalctl -b --no-pager -n 200; printf 'SYSTEM_JOURNAL_END\nSEYRIX_GRAPHICS_CHECK_END\n'; systemctl poweroff}
 send -- "$shutdown_command\r"
 set timeout 90
 expect {

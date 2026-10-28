@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wlr/util/log.h>
@@ -18,7 +19,14 @@
 
 static void close_status_channel(struct seyrix_server *server);
 static void hide_overlay(struct seyrix_server *server, bool restore);
+static void disconnect_shell_client(struct seyrix_server *server);
 static void schedule_restart(struct seyrix_server *server);
+
+static uint64_t monotonic_ms(void) {
+	struct timespec now;
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+	return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+}
 
 enum overlay_kind {
 	OVERLAY_NONE,
@@ -34,6 +42,7 @@ struct seyrix_shell {
 	struct wl_event_source *restart_timer;
 	struct seyrix_window *restore_focus;
 	enum overlay_kind overlay;
+	uint64_t process_started_ms;
 	unsigned int restart_attempts;
 	bool restart_scheduled;
 	bool shutting_down;
@@ -54,21 +63,19 @@ static bool send_packet(struct seyrix_server *server, const void *packet,
 			size > UINT16_MAX) {
 		return false;
 	}
-	ssize_t sent = send(server->shell->status_socket, packet, size,
-		MSG_DONTWAIT | MSG_NOSIGNAL);
-	if (sent == (ssize_t)size) {
+	int send_error = 0;
+	enum seyrix_shell_ipc_send_result result = seyrix_shell_ipc_send_packet(
+		server->shell->status_socket, packet, size, &send_error);
+	if (result == SEYRIX_SHELL_IPC_SENT) {
 		return true;
 	}
-	int saved_errno = errno;
-	if (sent < 0) {
-		wlr_log(WLR_ERROR, "Shell IPC send failed: %s", strerror(saved_errno));
+	if (result == SEYRIX_SHELL_IPC_WOULD_BLOCK) {
+		wlr_log(WLR_ERROR, "Shell IPC send queue is full; restarting shell client");
 	} else {
-		wlr_log(WLR_ERROR, "Shell IPC send returned a partial packet");
+		wlr_log(WLR_ERROR, "Shell IPC send failed: %s", strerror(send_error));
 	}
-	close_status_channel(server);
-	hide_overlay(server, true);
-	schedule_restart(server);
-	errno = saved_errno;
+	disconnect_shell_client(server);
+	errno = send_error;
 	return false;
 }
 
@@ -81,6 +88,20 @@ static void close_status_channel(struct seyrix_server *server) {
 		close(server->shell->status_socket);
 		server->shell->status_socket = -1;
 	}
+}
+
+static void disconnect_shell_client(struct seyrix_server *server) {
+	if (server->shell == NULL) return;
+	close_status_channel(server);
+	hide_overlay(server, true);
+	if (server->shell->process > 0) {
+		if (kill(server->shell->process, SIGTERM) != 0 && errno != ESRCH) {
+			wlr_log(WLR_ERROR, "Cannot stop failed Seyrix shell client: %s",
+				strerror(errno));
+		}
+		return;
+	}
+	schedule_restart(server);
 }
 
 static struct seyrix_window *window_by_shell_id(struct seyrix_server *server,
@@ -254,8 +275,11 @@ static int restart_shell_client(void *data) {
 
 static void schedule_restart(struct seyrix_server *server) {
 	if (server->shell == NULL || server->shell->shutting_down ||
-			server->shell->restart_attempts >= 5 ||
 			server->shell->restart_scheduled) {
+		return;
+	}
+	if (server->shell->restart_attempts >= 5) {
+		wlr_log(WLR_ERROR, "Seyrix shell restart limit reached for this failure burst");
 		return;
 	}
 	if (server->shell->restart_timer == NULL) {
@@ -278,22 +302,13 @@ static void schedule_restart(struct seyrix_server *server) {
 		server->shell->restart_attempts, delay);
 }
 
-static bool valid_header(const struct seyrix_shell_packet_header *header,
-		ssize_t received, size_t expected_size) {
-	return received == (ssize_t)expected_size &&
-		header->version == SEYRIX_SHELL_IPC_VERSION &&
-		header->size == expected_size;
-}
-
 static int handle_shell_message(int fd, uint32_t mask, void *data) {
 	struct seyrix_server *server = data;
 	if (server->shell == NULL || server->shell->status_socket != fd) {
 		return 0;
 	}
 	if ((mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) != 0) {
-		close_status_channel(server);
-		hide_overlay(server, true);
-		schedule_restart(server);
+		disconnect_shell_client(server);
 		wlr_log(WLR_INFO, "Seyrix shell channel closed; compositor remains available");
 		return 0;
 	}
@@ -307,75 +322,45 @@ static int handle_shell_message(int fd, uint32_t mask, void *data) {
 		ssize_t received = recv(fd, &packet, sizeof(packet),
 			MSG_DONTWAIT | MSG_TRUNC);
 		if (received == 0) {
-			close_status_channel(server);
-			schedule_restart(server);
+			disconnect_shell_client(server);
 			return 0;
 		}
 		if (received < 0) {
 			if (errno == EINTR) continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-			close_status_channel(server);
-			schedule_restart(server);
+			disconnect_shell_client(server);
 			return 0;
 		}
-		if (received > (ssize_t)sizeof(packet)) {
-			wlr_log(WLR_ERROR, "Rejected oversized shell IPC packet");
-			close_status_channel(server);
-			schedule_restart(server);
-			return 0;
-		}
-		if (received < (ssize_t)sizeof(packet.header)) {
+		struct seyrix_shell_request request;
+		if (received < 0 || (size_t)received > sizeof(packet) ||
+				!seyrix_shell_ipc_decode_request(&packet, (size_t)received,
+					(uint8_t)SEYRIX_WORKSPACE_COUNT, &request)) {
 			goto invalid_packet;
 		}
-		switch (packet.header.type) {
+		switch (request.type) {
 		case SEYRIX_SHELL_SELECT_WORKSPACE:
-			if (!valid_header(&packet.header, received, sizeof(packet.workspace)) ||
-					packet.workspace.workspace >= SEYRIX_WORKSPACE_COUNT) {
-				goto invalid_packet;
-			}
-		seyrix_workspace_switch(server, packet.workspace.workspace);
+			seyrix_workspace_switch(server, request.workspace);
 			break;
 		case SEYRIX_SHELL_REQUEST_FOCUS:
-			if (!valid_header(&packet.header, received, sizeof(packet.id))) {
-				goto invalid_packet;
-			}
-		activate_window(server, packet.id.id);
+			activate_window(server, request.window_id);
 			break;
 		case SEYRIX_SHELL_REQUEST_MANUAL:
-			if (!valid_header(&packet.header, received, sizeof(packet.action))) {
-				goto invalid_packet;
-			}
 			(void)start_overlay(server, OVERLAY_MANUAL, SEYRIX_SHELL_SHOW_MANUAL);
 			break;
 		case SEYRIX_SHELL_REQUEST_LAUNCHER:
-			if (!valid_header(&packet.header, received, sizeof(packet.action))) {
-				goto invalid_packet;
-			}
 			(void)start_overlay(server, OVERLAY_LAUNCHER,
 				SEYRIX_SHELL_SHOW_LAUNCHER);
 			break;
 		case SEYRIX_SHELL_REQUEST_SNAPSHOT:
-			if (!valid_header(&packet.header, received, sizeof(packet.action))) {
-				goto invalid_packet;
-			}
 			send_snapshot(server);
 			break;
 		case SEYRIX_SHELL_ACTIVATE_WINDOW:
-			if (!valid_header(&packet.header, received, sizeof(packet.id))) {
-				goto invalid_packet;
-			}
-			activate_window(server, packet.id.id);
+			activate_window(server, request.window_id);
 			break;
 		case SEYRIX_SHELL_CLOSE_OVERLAY:
-			if (!valid_header(&packet.header, received, sizeof(packet.action))) {
-				goto invalid_packet;
-			}
 			hide_overlay(server, true);
 			break;
 		case SEYRIX_SHELL_DISMISS_OVERLAY:
-			if (!valid_header(&packet.header, received, sizeof(packet.action))) {
-				goto invalid_packet;
-			}
 			hide_overlay(server, false);
 			break;
 		default:
@@ -385,8 +370,7 @@ static int handle_shell_message(int fd, uint32_t mask, void *data) {
 
 invalid_packet:
 	wlr_log(WLR_ERROR, "Rejected invalid shell IPC packet; restarting shell client");
-	close_status_channel(server);
-	schedule_restart(server);
+	disconnect_shell_client(server);
 	return 0;
 }
 
@@ -421,6 +405,7 @@ bool seyrix_shell_start(struct seyrix_server *server) {
 	struct seyrix_child *child = calloc(1, sizeof(*child));
 	if (child == NULL) {
 		wlr_log(WLR_ERROR, "Cannot allocate Seyrix shell child record");
+		schedule_restart(server);
 		return false;
 	}
 	int sockets[2];
@@ -429,6 +414,7 @@ bool seyrix_shell_start(struct seyrix_server *server) {
 		wlr_log(WLR_ERROR, "Cannot create Seyrix shell IPC channel: %s",
 			strerror(errno));
 		free(child);
+		schedule_restart(server);
 		return false;
 	}
 	pid_t pid = fork();
@@ -437,6 +423,7 @@ bool seyrix_shell_start(struct seyrix_server *server) {
 		close(sockets[0]);
 		close(sockets[1]);
 		free(child);
+		schedule_restart(server);
 		return false;
 	}
 	if (pid == 0) {
@@ -472,6 +459,7 @@ bool seyrix_shell_start(struct seyrix_server *server) {
 		(void)kill(pid, SIGTERM);
 		return false;
 	}
+	server->shell->process_started_ms = monotonic_ms();
 	wlr_log(WLR_INFO, "Started isolated Seyrix desktop shell pid=%ld", (long)pid);
 	send_snapshot(server);
 	return true;
@@ -481,10 +469,20 @@ void seyrix_shell_child_exited(struct seyrix_server *server, pid_t pid) {
 	if (server->shell == NULL || server->shell->process != pid) {
 		return;
 	}
+	uint64_t now = monotonic_ms();
+	bool stable = server->shell->process_started_ms != 0 && now >=
+		server->shell->process_started_ms && now -
+		server->shell->process_started_ms >= 60000U;
 	server->shell->process = -1;
+	server->shell->process_started_ms = 0;
 	close_status_channel(server);
 	hide_overlay(server, true);
 	wlr_log(WLR_INFO, "Seyrix shell exited; compositor remains available");
+	if (stable) {
+		server->shell->restart_attempts = 0;
+		wlr_log(WLR_INFO,
+			"Reset Seyrix shell restart budget after 60-second shell process lifetime");
+	}
 	schedule_restart(server);
 }
 

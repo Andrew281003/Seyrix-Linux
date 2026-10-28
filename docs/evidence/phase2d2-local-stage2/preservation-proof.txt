@@ -1,0 +1,29 @@
+Phase 2D.2 Stage 2 preservation snapshot
+Recorded: 2026-10-28 (Europe/Budapest)
+
+Protected original worktree
+Path: C:\Users\quake\Desktop\Coding\Seyrix-Linux
+Branch: phase2d1-hybrid-window-management
+HEAD: d1873c68a29b24e285e58568551b030985ef8b98
+Observed status at completion (the changes named in the user's preflight):
+ M config/archiso/airootfs/etc/localtime
+ M config/archiso/airootfs/etc/systemd/system-generators/systemd-gpt-auto-generator
+ M config/archiso/airootfs/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service
+ M config/archiso/airootfs/etc/systemd/system/multi-user.target.wants/systemd-networkd.service
+ M config/archiso/airootfs/etc/systemd/system/multi-user.target.wants/systemd-resolved.service
+ M config/archiso/airootfs/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service
+ M config/archiso/airootfs/etc/systemd/system/sockets.target.wants/systemd-networkd.socket
+ M tests/egl-gbm-lifecycle-control.c
+ M tests/qemu-graphics.exp
+ M tests/qemu-graphics.sh
+?? docs/evidence/phase2c2/egl-lifecycle/
+?? docs/phase2c2-egl-investigation.md
+?? tests/qemu-egl-lifecycle-guest.sh
+?? tests/wlroots-renderer-lifecycle-control.c
+
+Target worktree baseline before this task's commit
+Path: C:\Users\quake\Desktop\Coding\Seyrix-Linux-Phase2D2
+Branch: phase2d2-desktop-shell
+HEAD: 245adc49141c0dee003afa87102d51b7341c5edf
+
+The existing dirty one-line corruption in docs/phase2d2-local-stage1-report.md was not changed or staged. No file operation targeted the protected original worktree; it was inspected with read-only Git queries only.

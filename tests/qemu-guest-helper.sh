@@ -41,6 +41,10 @@ process_uid() {
   awk '/^Uid:/ { print $2; exit }' "/proc/$1/status" 2>/dev/null || true
 }
 
+process_group_id() {
+  awk '{ sub(/^.*\) /, ""); print $3; exit }' "/proc/$1/stat" 2>/dev/null || true
+}
+
 process_has_arg_pair() {
   local pid="$1" expected_name="$2" expected_value="$3"
   local argument previous=""
@@ -102,34 +106,303 @@ kill_probe_client() {
 }
 
 current_compositor_pid() {
+  local proc_dir pid uid executable state anchor_pid anchor_uid anchor_executable anchor_state
+  local anchor_parent compositor_uid compositor_executable compositor_state compositor_parent
   local -a pids=()
-  mapfile -t pids < <(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' || true)
-  [[ "${#pids[@]}" -eq 1 ]] || return 1
-  printf '%s' "${pids[0]}"
+  anchor_pid="$(sed -n 's/.*Started Seyrix session process-group anchor pid=\([0-9][0-9]*\).*/\1/p' \
+    "$compositor_log" | tail -n 1)"
+  [[ "$anchor_pid" =~ ^[0-9]+$ && -r "/proc/$anchor_pid/status" ]] || {
+    printf 'COMPOSITOR_IDENTITY_ANCHOR unavailable pid=%s\n' "${anchor_pid:-none}" >&2
+    return 1
+  }
+  anchor_uid="$(process_uid "$anchor_pid")"
+  anchor_executable="$(readlink -f "/proc/$anchor_pid/exe" 2>/dev/null || true)"
+  anchor_state="$(awk '/^State:/ { print $2; exit }' "/proc/$anchor_pid/status" 2>/dev/null || true)"
+  anchor_parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$anchor_pid/status" 2>/dev/null || true)"
+  [[ "$anchor_uid" == 1000 && "$anchor_executable" == /usr/bin/seyrix-compositor &&
+     "$anchor_state" != Z && "$anchor_state" != X && "$anchor_parent" =~ ^[0-9]+$ ]] || {
+    printf 'COMPOSITOR_IDENTITY_ANCHOR invalid pid=%s uid=%s exe=%s state=%s ppid=%s\n' \
+      "$anchor_pid" "${anchor_uid:-none}" "${anchor_executable:-none}" \
+      "${anchor_state:-none}" "${anchor_parent:-none}" >&2
+    return 1
+  }
+  compositor_uid="$(process_uid "$anchor_parent")"
+  compositor_executable="$(readlink -f "/proc/$anchor_parent/exe" 2>/dev/null || true)"
+  compositor_state="$(awk '/^State:/ { print $2; exit }' "/proc/$anchor_parent/status" 2>/dev/null || true)"
+  compositor_parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$anchor_parent/status" 2>/dev/null || true)"
+  [[ "$compositor_uid" == 1000 && "$compositor_executable" == /usr/bin/seyrix-compositor &&
+     "$compositor_state" != Z && "$compositor_state" != X && "$compositor_parent" =~ ^[0-9]+$ ]] || {
+    printf 'COMPOSITOR_IDENTITY_PARENT invalid pid=%s uid=%s exe=%s state=%s ppid=%s\n' \
+      "$anchor_parent" "${compositor_uid:-none}" "${compositor_executable:-none}" \
+      "${compositor_state:-none}" "${compositor_parent:-none}" >&2
+    return 1
+  }
+  for proc_dir in /proc/[0-9]*; do
+    [[ -r "$proc_dir/status" ]] || continue
+    pid="${proc_dir##*/}"
+    [[ "$pid" != "$anchor_pid" ]] || continue
+    uid="$(process_uid "$pid")"
+    [[ "$uid" == 1000 ]] || continue
+    executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+    [[ "$executable" == /usr/bin/seyrix-compositor ]] || continue
+    state="$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+    [[ "$state" != Z && "$state" != X ]] || continue
+    pids+=("$pid")
+  done
+  if [[ "${#pids[@]}" -ne 1 || "${pids[0]:-}" != "$anchor_parent" ]]; then
+    printf 'COMPOSITOR_IDENTITY_CANDIDATES count=%s pids=%s anchor_pid=%s anchor_parent=%s\n' \
+      "${#pids[@]}" "${pids[*]:-none}" "$anchor_pid" "$anchor_parent" >&2
+    return 1
+  fi
+  printf '%s' "$anchor_parent"
 }
 
-kill_panel_child() {
-  local run_id compositor panel uid executable parent
+crash_panel_owner_shell() {
+  local run_id compositor shell_pid uid executable state parent
+  local before_started before_panels before_exits started panels exits current
+  local new_shell_pid new_uid new_executable new_state new_parent proc_dir pid
+  local -a pids=()
   run_id="$(test_run_id)"
   compositor="$(current_compositor_pid)" || fail "current-compositor-identity-ambiguous"
-  panel="$(sed -n 's/.*Started isolated Seyrix layer-shell panel pid=\([0-9][0-9]*\).*/\1/p' \
+  grep -q 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" ||
+    fail "panel-surface-not-mapped-by-current-shell"
+  before_started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
+  before_panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
+  before_exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
+  shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
     "$compositor_log" | tail -n 1)"
-  [[ "$panel" =~ ^[0-9]+$ ]] || fail "panel-pid-not-recorded-by-current-compositor"
-  uid="$(process_uid "$panel")"
-  executable="$(readlink -f "/proc/$panel/exe" 2>/dev/null || true)"
-  parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$panel/status" 2>/dev/null || true)"
-  [[ "$uid" == 1000 && "$executable" == /usr/bin/seyrix-shell && "$parent" == "$compositor" ]] ||
-    fail "panel-process-not-current-compositor-child-pid-$panel"
-  printf 'PANEL_TERMINATION_BEGIN pid=%s compositor_pid=%s run=%s uid=%s exe=%s\n' \
-    "$panel" "$compositor" "$run_id" "$uid" "$executable"
-  kill -KILL "$panel"
-  for _ in $(seq 1 20); do
-    [[ -e "/proc/$panel" ]] || break
+  [[ "$shell_pid" =~ ^[0-9]+$ && -r "/proc/$shell_pid/status" ]] ||
+    fail "panel-owner-shell-pid-not-recorded-by-current-compositor"
+  uid="$(process_uid "$shell_pid")"
+  executable="$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null || true)"
+  state="$(awk '/^State:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
+  parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
+  [[ "$uid" == 1000 && "$executable" == /usr/bin/seyrix-shell &&
+     "$state" != Z && "$state" != X && "$parent" == "$compositor" ]] ||
+    fail "panel-owner-shell-not-current-compositor-child-pid-$shell_pid"
+  for proc_dir in /proc/[0-9]*; do
+    [[ -r "$proc_dir/status" ]] || continue
+    pid="${proc_dir##*/}"
+    [[ "$(process_uid "$pid")" == 1000 ]] || continue
+    [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == /usr/bin/seyrix-shell ]] || continue
+    [[ "$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)" != Z ]] || continue
+    [[ "$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)" != X ]] || continue
+    [[ "$(awk '/^PPid:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)" == "$compositor" ]] || continue
+    pids+=("$pid")
+  done
+  [[ "${#pids[@]}" -eq 1 && "${pids[0]}" == "$shell_pid" ]] ||
+    fail "panel-owner-shell-child-identity-ambiguous-pids-${pids[*]:-none}"
+  printf 'PANEL_OWNER_TERMINATION_BEGIN shell_pid=%s compositor_pid=%s run=%s uid=%s exe=%s\n' \
+    "$shell_pid" "$compositor" "$run_id" "$uid" "$executable"
+  kill -KILL "$shell_pid"
+  for _ in $(seq 1 80); do
+    started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
+    panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
+    exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
+    if [[ "$started" -gt "$before_started" && "$panels" -gt "$before_panels" &&
+          "$exits" -gt "$before_exits" ]]; then
+      new_shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
+        "$compositor_log" | tail -n 1)"
+      current="$(current_compositor_pid || true)"
+      new_uid="$(process_uid "$new_shell_pid")"
+      new_executable="$(readlink -f "/proc/$new_shell_pid/exe" 2>/dev/null || true)"
+      new_state="$(awk '/^State:/ { print $2; exit }' "/proc/$new_shell_pid/status" 2>/dev/null || true)"
+      new_parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$new_shell_pid/status" 2>/dev/null || true)"
+      pids=()
+      for proc_dir in /proc/[0-9]*; do
+        [[ -r "$proc_dir/status" ]] || continue
+        pid="${proc_dir##*/}"
+        [[ "$(process_uid "$pid")" == 1000 ]] || continue
+        [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == /usr/bin/seyrix-shell ]] || continue
+        state="$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+        [[ "$state" != Z && "$state" != X ]] || continue
+        parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+        [[ "$parent" == "$compositor" ]] || continue
+        pids+=("$pid")
+      done
+      if [[ "$current" == "$compositor" && "$new_uid" == 1000 &&
+            "$new_executable" == /usr/bin/seyrix-shell && "$new_state" != Z &&
+            "$new_state" != X && "$new_parent" == "$compositor" &&
+            "${#pids[@]}" -eq 1 && "${pids[0]}" == "$new_shell_pid" ]]; then
+        printf 'PHASE2D2_PANEL_OWNER_CRASH_ISOLATION=passed old_shell_pid=%s new_shell_pid=%s compositor_pid=%s panel_maps=%s\n' \
+          "$shell_pid" "$new_shell_pid" "$compositor" "$((panels - before_panels))"
+        return 0
+      fi
+    fi
     sleep 0.25
   done
-  [[ ! -e "/proc/$panel" ]] || fail "panel-process-did-not-exit-pid-$panel"
-  current_compositor_pid >/dev/null || fail "compositor-did-not-survive-panel-termination"
-  echo PHASE2C_PANEL_CRASH_ISOLATION=passed
+  printf 'PANEL_OWNER_RECOVERY_FAILED compositor_pid=%s started_before=%s started_after=%s panel_maps_before=%s panel_maps_after=%s exits_before=%s exits_after=%s\n' \
+    "$compositor" "$before_started" "${started:-unknown}" "$before_panels" \
+    "${panels:-unknown}" "$before_exits" "${exits:-unknown}"
+  fail "panel-owner-shell-crash-did-not-restore-panel-and-compositor"
+}
+
+recover_shell_after_startup_failure() {
+  local run_id compositor shell_pid uid executable state parent
+  local binary=/usr/bin/seyrix-shell backup=/usr/bin/seyrix-shell.phase2d2-test-backup
+  local before_started before_panels before_exits before_schedules started panels exits schedules
+  local new_shell_pid new_uid new_executable new_state new_parent current proc_dir pid
+  local -a pids=()
+  run_id="$(test_run_id)"
+  compositor="$(current_compositor_pid)" || fail "current-compositor-identity-ambiguous"
+  [[ -x "$binary" && ! -e "$backup" ]] || fail "shell-startup-failure-fixture-not-clean"
+  before_started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
+  before_panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
+  before_exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
+  before_schedules="$(grep -c 'Scheduling isolated shell restart attempt' "$compositor_log" || true)"
+  shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
+    "$compositor_log" | tail -n 1)"
+  [[ "$shell_pid" =~ ^[0-9]+$ && -r "/proc/$shell_pid/status" ]] ||
+    fail "current-shell-pid-not-recorded"
+  uid="$(process_uid "$shell_pid")"
+  executable="$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null || true)"
+  state="$(awk '/^State:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
+  parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
+  [[ "$uid" == 1000 && "$executable" == "$binary" &&
+     "$state" != Z && "$state" != X && "$parent" == "$compositor" ]] ||
+    fail "current-shell-identity-invalid-pid-$shell_pid"
+  printf 'SHELL_STARTUP_FAILURE_BEGIN shell_pid=%s compositor_pid=%s run=%s backup=%s\n' \
+    "$shell_pid" "$compositor" "$run_id" "$backup"
+  mv -- "$binary" "$backup" || fail "cannot-hide-shell-executable-for-test"
+  trap 'if [[ -e /usr/bin/seyrix-shell.phase2d2-test-backup && ! -e /usr/bin/seyrix-shell ]]; then mv -- /usr/bin/seyrix-shell.phase2d2-test-backup /usr/bin/seyrix-shell; fi' EXIT
+  kill -KILL "$shell_pid"
+  for _ in $(seq 1 100); do
+    exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
+    schedules="$(grep -c 'Scheduling isolated shell restart attempt' "$compositor_log" || true)"
+    if [[ "$exits" -ge $((before_exits + 2)) &&
+          "$schedules" -ge $((before_schedules + 2)) ]] &&
+       grep -Fq 'Scheduling isolated shell restart attempt 1 in 1000 ms' "$compositor_log" &&
+       grep -Fq 'Scheduling isolated shell restart attempt 2 in 2000 ms' "$compositor_log"; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ ! -x "$backup" || -e "$binary" ||
+        "${exits:-0}" -lt $((before_exits + 2)) ||
+        "${schedules:-0}" -lt $((before_schedules + 2)) ]] ||
+     ! grep -Fq 'Scheduling isolated shell restart attempt 2 in 2000 ms' "$compositor_log"; then
+    if [[ -e "$backup" && ! -e "$binary" ]]; then mv -- "$backup" "$binary"; fi
+    fail "shell-startup-failure-was-not-observed-after-first-retry"
+  fi
+  mv -- "$backup" "$binary" || fail "cannot-restore-shell-executable-after-test"
+  for _ in $(seq 1 120); do
+    started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
+    panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
+    current="$(current_compositor_pid || true)"
+    if [[ "$started" -ge $((before_started + 2)) &&
+          "$panels" -gt "$before_panels" && "$current" == "$compositor" ]]; then
+      new_shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
+        "$compositor_log" | tail -n 1)"
+      new_uid="$(process_uid "$new_shell_pid")"
+      new_executable="$(readlink -f "/proc/$new_shell_pid/exe" 2>/dev/null || true)"
+      new_state="$(awk '/^State:/ { print $2; exit }' "/proc/$new_shell_pid/status" 2>/dev/null || true)"
+      new_parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$new_shell_pid/status" 2>/dev/null || true)"
+      pids=()
+      for proc_dir in /proc/[0-9]*; do
+        [[ -r "$proc_dir/status" ]] || continue
+        pid="${proc_dir##*/}"
+        [[ "$(process_uid "$pid")" == 1000 ]] || continue
+        [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == "$binary" ]] || continue
+        state="$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+        [[ "$state" != Z && "$state" != X ]] || continue
+        parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
+        [[ "$parent" == "$compositor" ]] || continue
+        pids+=("$pid")
+      done
+      if [[ "$new_uid" == 1000 && "$new_executable" == "$binary" &&
+            "$new_state" != Z && "$new_state" != X && "$new_parent" == "$compositor" &&
+            "${#pids[@]}" -eq 1 && "${pids[0]}" == "$new_shell_pid" ]]; then
+        printf 'PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed failed_launches=1 restart_attempts=2 recovered_shell_pid=%s compositor_pid=%s panel_maps=%s\n' \
+          "$new_shell_pid" "$compositor" "$((panels - before_panels))"
+        return 0
+      fi
+    fi
+    sleep 0.25
+  done
+  if [[ -e "$backup" && ! -e "$binary" ]]; then mv -- "$backup" "$binary"; fi
+  fail "shell-did-not-recover-after-startup-exec-failure"
+}
+
+stop_compositor_and_verify_cleanup() {
+  local compositor anchor shell_pid terminal_pid run_id uid executable state parent group
+  local signal_name="${1:-SIGKILL}" signal_option before_clean_stops clean_stops
+  local candidate candidate_state candidate_group current tty_shell
+  local -a active_group_pids=()
+  case "$signal_name" in
+    SIGTERM) signal_option=TERM ;;
+    SIGKILL) signal_option=KILL ;;
+    *) fail "unsupported-compositor-signal-$signal_name" ;;
+  esac
+  run_id="$(test_run_id)"
+  compositor="$(current_compositor_pid)" || fail "current-compositor-identity-ambiguous"
+  anchor="$(sed -n 's/.*Started Seyrix session process-group anchor pid=\([0-9][0-9]*\).*/\1/p' \
+    "$compositor_log" | tail -n 1)"
+  shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
+    "$compositor_log" | tail -n 1)"
+  terminal_pid="$(sed -n 's/.*Started weston-terminal with pid \([0-9][0-9]*\).*/\1/p' \
+    "$compositor_log" | tail -n 1)"
+  [[ "$anchor" =~ ^[0-9]+$ && "$shell_pid" =~ ^[0-9]+$ &&
+     "$terminal_pid" =~ ^[0-9]+$ ]] || fail "session-process-identities-not-recorded"
+  [[ "$(process_uid "$anchor")" == 1000 &&
+     "$(readlink -f "/proc/$anchor/exe" 2>/dev/null || true)" == /usr/bin/seyrix-compositor &&
+     "$(awk '/^PPid:/ { print $2; exit }' "/proc/$anchor/status" 2>/dev/null || true)" == "$compositor" &&
+     "$(process_group_id "$anchor")" == "$anchor" ]] || fail "session-anchor-identity-invalid-pid-$anchor"
+  for candidate in "$shell_pid" "$terminal_pid"; do
+    [[ -r "/proc/$candidate/status" ]] || fail "session-child-missing-pid-$candidate"
+    uid="$(process_uid "$candidate")"
+    executable="$(readlink -f "/proc/$candidate/exe" 2>/dev/null || true)"
+    state="$(awk '/^State:/ { print $2; exit }' "/proc/$candidate/status" 2>/dev/null || true)"
+    parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$candidate/status" 2>/dev/null || true)"
+    group="$(process_group_id "$candidate")"
+    if [[ "$candidate" == "$shell_pid" ]]; then
+      [[ "$executable" == /usr/bin/seyrix-shell ]] || fail "session-shell-executable-invalid-pid-$candidate"
+    else
+      [[ "$executable" == /usr/bin/weston-terminal ]] || fail "session-terminal-executable-invalid-pid-$candidate"
+    fi
+    [[ "$uid" == 1000 && "$state" != Z && "$state" != X &&
+       "$parent" == "$compositor" && "$group" == "$anchor" ]] ||
+      fail "session-child-ownership-invalid-pid-$candidate"
+  done
+  before_clean_stops="$(grep -c 'Seyrix compositor stopped cleanly' "$compositor_log" || true)"
+  printf 'COMPOSITOR_TERMINATION_BEGIN compositor_pid=%s anchor_pid=%s shell_pid=%s terminal_pid=%s run=%s signal=%s\n' \
+    "$compositor" "$anchor" "$shell_pid" "$terminal_pid" "$run_id" "$signal_name"
+  kill -"$signal_option" "$compositor"
+  for _ in $(seq 1 100); do
+    active_group_pids=()
+    for proc_dir in /proc/[0-9]*; do
+      [[ -r "$proc_dir/status" ]] || continue
+      candidate="${proc_dir##*/}"
+      candidate_state="$(awk '/^State:/ { print $2; exit }' "$proc_dir/status" 2>/dev/null || true)"
+      [[ "$candidate_state" != Z && "$candidate_state" != X ]] || continue
+      candidate_group="$(process_group_id "$candidate")"
+      [[ "$candidate_group" == "$anchor" ]] && active_group_pids+=("$candidate")
+    done
+    current="$(readlink -f "/proc/$compositor/exe" 2>/dev/null || true)"
+    tty_shell=0
+    if systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$'; then
+      tty_shell=1
+    fi
+    if [[ -z "$current" && "${#active_group_pids[@]}" -eq 0 && "$tty_shell" -eq 1 ]]; then
+      break
+    fi
+    sleep 0.2
+  done
+  if [[ -n "${current:-}" || "${#active_group_pids[@]}" -ne 0 || "$tty_shell" -ne 1 ]]; then
+    printf 'COMPOSITOR_TERMINATION_CLEANUP_FAILED signal=%s compositor_exe=%s group_pids=%s tty_shell=%s\n' \
+      "$signal_name" "${current:-none}" "${active_group_pids[*]:-none}" "${tty_shell:-0}"
+    pgrep -a -u 1000 -f 'seyrix-compositor|seyrix-shell|weston-terminal' || true
+    fail "compositor-$signal_name-did-not-clean-session-process-group"
+  fi
+  if [[ "$signal_name" == SIGTERM ]]; then
+    clean_stops="$(grep -c 'Seyrix compositor stopped cleanly' "$compositor_log" || true)"
+    [[ "$clean_stops" -gt "$before_clean_stops" ]] ||
+      fail "compositor-sigterm-did-not-log-clean-shutdown"
+    printf 'PHASE2D2_COMPOSITOR_SIGTERM_CLEANUP=passed compositor_pid=%s anchor_pid=%s shell_pid=%s terminal_pid=%s active_group_members=0 tty_shell=present clean_stop_log=present\n' \
+      "$compositor" "$anchor" "$shell_pid" "$terminal_pid"
+  else
+    printf 'PHASE2D2_COMPOSITOR_CRASH_CLEANUP=passed compositor_pid=%s anchor_pid=%s shell_pid=%s terminal_pid=%s active_group_members=0 tty_shell=present\n' \
+      "$compositor" "$anchor" "$shell_pid" "$terminal_pid"
+  fi
 }
 
 kill_current_mapped_terminal() {
@@ -823,7 +1096,10 @@ case "${1:-}" in
   wm-geometry-changed) shift; wm_geometry_changed "$@" ;;
   popup-alive) popup_process_alive ;;
   terminate-client) shift; kill_probe_client "$@" ;;
-  crash-panel) kill_panel_child ;;
+  crash-panel-owner) crash_panel_owner_shell ;;
+  startup-failure) recover_shell_after_startup_failure ;;
+  terminate-compositor) stop_compositor_and_verify_cleanup SIGTERM ;;
+  crash-compositor) stop_compositor_and_verify_cleanup SIGKILL ;;
   kill-mapped-terminal) kill_current_mapped_terminal ;;
   terminate-popup) kill_probe_client "seyrix.qemu.$(test_run_id).popup" ;;
   *) fail "unknown-mode-${1:-missing}" ;;
