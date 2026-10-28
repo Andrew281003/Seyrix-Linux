@@ -55,7 +55,7 @@ Phase 2D.2 also records Fontconfig/Pango allocations in the sanitized shell UI t
 
 The minimal image does not provide System Settings, a package manager, browser, or file manager. Seyrix has no production installer, supported-hardware matrix, production authentication policy, or release/update process. QEMU acceptance is evidence for the tested virtual configuration only. The repository has not selected a project-wide license; the copied Archiso profile retains its upstream GPL-3.0-or-later notice, and Arch packages retain their package licenses.
 
-For detailed results and limits, see the [Phase 2D.1 report](phase2d1-report.md), [Phase 2D.2 Stage 1 report](phase2d2-local-stage1-report.md), [Phase 2D.2 graphical acceptance report](phase2d2-local-stage2-report.md).
+For detailed results and limits, see the [Phase 2D.1 report](phase2d1-report.md), [Phase 2D.2 Stage 1 report](phase2d2-local-stage1-report.md), [Phase 2D.2 graphical acceptance report](phase2d2-local-stage2-report.md), and the [Phase 2D.2 final integration report](phase2d2-final-integration-report.md).
 
 ## Further phase work
 

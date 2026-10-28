@@ -53,3 +53,4 @@ The project has not selected a project-wide license. The Archiso profile retains
 - [Phase 2D.1 report](docs/phase2d1-report.md)
 - [Phase 2D.2 Stage 1 report](docs/phase2d2-local-stage1-report.md)
 - [Phase 2D.2 graphical acceptance report](docs/phase2d2-local-stage2-report.md)
+- [Phase 2D.2 final integration report](docs/phase2d2-final-integration-report.md)

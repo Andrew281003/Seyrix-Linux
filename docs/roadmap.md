@@ -29,4 +29,4 @@ Phase 2D.3 is the next planned milestone. Its requirements, implementation scope
 
 The system remains under development and is not production-ready. A supported-hardware matrix, persistent installation and recovery design, production authentication, update and release model, Secure Boot policy, and project-wide licensing need separate decisions and evidence. The current minimal image has no graphical settings editor, package manager, browser, or file manager. Dock auto-hide is not implemented.
 
-See the [architecture overview](architecture.md), [Phase 2D.1 report](phase2d1-report.md), [Phase 2D.2 Stage 1 report](phase2d2-local-stage1-report.md), and [Phase 2D.2 graphical acceptance report](phase2d2-local-stage2-report.md) for current system details and verification evidence.
+See the [architecture overview](architecture.md), [Phase 2D.1 report](phase2d1-report.md), [Phase 2D.2 Stage 1 report](phase2d2-local-stage1-report.md), [Phase 2D.2 graphical acceptance report](phase2d2-local-stage2-report.md), and [Phase 2D.2 final integration report](phase2d2-final-integration-report.md) for the current system and verification record.
