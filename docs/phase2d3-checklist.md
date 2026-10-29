@@ -7,6 +7,8 @@
 
 ## 2D.3B — Native app foundation
 
+> Progress: implementation and native checks are recorded in [phase2d3b-report.md](phase2d3b-report.md). Graphical acceptance is incomplete, so the 2D.3B acceptance items below remain unchecked.
+
 - [ ] Build `seyrix-settings` in C17 with GTK4 and install its desktop entry.
 - [ ] Add the compositor-owned, same-uid authenticated, versioned settings endpoint.
 - [ ] Show all six categories, basic search, responsive navigation, status/errors, and read-only About data.
