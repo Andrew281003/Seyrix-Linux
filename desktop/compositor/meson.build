@@ -49,6 +49,7 @@ executable(
     'src/decoration.c',
     'src/layer-shell.c',
     'src/shell.c',
+    'src/settings-control.c',
     'src/workspace.c',
     'src/layout-engine.c',
     'src/wm-config.c',

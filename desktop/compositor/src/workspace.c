@@ -245,6 +245,7 @@ void seyrix_workspace_switch(struct seyrix_server *server, size_t index) {
 		}
 	}
 	server->active_workspace_index = index;
+	seyrix_settings_control_changed(server);
 	if (server->seat != NULL) {
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}

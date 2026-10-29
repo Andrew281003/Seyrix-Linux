@@ -257,6 +257,7 @@ static void persist_preferences(struct seyrix_server *server,
 	if (!seyrix_wm_config_save(&server->wm_config, error, sizeof(error))) {
 		wlr_log(WLR_ERROR, "Cannot save window-management configuration: %s", error);
 	}
+	seyrix_settings_control_changed(server);
 }
 
 void seyrix_wm_relayout_workspace(struct seyrix_workspace *workspace) {
@@ -528,6 +529,7 @@ void seyrix_wm_toggle_floating(struct seyrix_server *server) {
 		if (!seyrix_wm_config_save(&server->wm_config, error, sizeof(error))) {
 			wlr_log(WLR_ERROR, "Cannot save window classification: %s", error);
 		}
+		seyrix_settings_control_changed(server);
 	}
 	seyrix_wm_relayout_workspace(workspace);
 	wlr_log(WLR_INFO, "Focused window classification changed to %s",
@@ -647,5 +649,6 @@ bool seyrix_wm_reload_config(struct seyrix_server *server) {
 		seyrix_wm_relayout_workspace(workspace);
 	}
 	wlr_log(WLR_INFO, "Window-management configuration reloaded");
+	seyrix_settings_control_changed(server);
 	return true;
 }

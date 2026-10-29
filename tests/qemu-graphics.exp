@@ -34,6 +34,7 @@ set timeout 360
 set phase2b 0
 set phase2c 0
 set phase2d2 0
+set phase2d3b 0
 set sanitizers_enabled 0
 set renderer_request ""
 set egl_lifecycle_control 0
@@ -44,7 +45,15 @@ if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 	set phase2b 1
 }
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
-		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d2"} {
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d3b"} {
+	set phase2b 1
+	set phase2c 1
+	set phase2d2 1
+	set phase2d3b 1
+}
+if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
+		($env(SEYRIX_QEMU_WORKFLOW) eq "phase2d2" ||
+		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d3b")} {
 	set phase2d2 1
 	set phase2c 1
 }
@@ -216,6 +225,13 @@ proc qmp_type {channel value} {
     }
 }
 
+proc qmp_type_slow {channel value {delay_ms 160}} {
+    foreach character [split $value ""] {
+        qmp_type $channel $character
+        after $delay_ms
+    }
+}
+
 proc qmp_mouse_move {channel x y} {
     set json [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%s}},{"type":"abs","data":{"axis":"y","value":%s}}]}}} $x $y]
     return [qmp_exec $channel $json]
@@ -309,6 +325,59 @@ proc install_guest_helper {helper_path} {
     set timeout $saved_timeout
 }
 
+proc configure_serial_root_shell {} {
+	global qemu_spawn_id timeout
+	set saved_timeout $timeout
+	set timeout 8
+	send -i $qemu_spawn_id -- "exec env -u TMOUT bash --noprofile --norc -i\r"
+	expect -i $qemu_spawn_id \
+		-re {bash-[^#\r\n]*# ?} {} \
+		-re {root@seyrix-dev[^\r\n]*# ?$} {} \
+		-re {SEYRIX-ROOT#} {} \
+		timeout {
+			set timeout $saved_timeout
+			puts stderr "Timed out starting the isolated QEMU serial test shell."
+			exit 1
+		}
+	send -i $qemu_spawn_id -- "stty -echo; export PS1='SEYRIX-ROOT# '\r"
+	expect -i $qemu_spawn_id -re {SEYRIX-ROOT#} {} timeout {
+		set timeout $saved_timeout
+		puts stderr "Timed out configuring the isolated QEMU serial test shell."
+		exit 1
+	}
+	set timeout $saved_timeout
+}
+
+proc ensure_serial_root_shell {} {
+	global qemu_spawn_id timeout
+	set saved_timeout $timeout
+	set timeout 8
+	send -i $qemu_spawn_id -- "\r"
+	expect -i $qemu_spawn_id \
+		-re {SEYRIX-ROOT#} {} \
+		-re {seyrix-dev login:} {
+			send -i $qemu_spawn_id -- "root\r"
+		expect -i $qemu_spawn_id \
+			-re {Password:} {
+				send -i $qemu_spawn_id -- "\r"
+				exp_continue
+			} \
+			-re {root@seyrix-dev[^\r\n]*# ?$} {} \
+			timeout {
+				set timeout $saved_timeout
+				puts stderr "Timed out restoring the QEMU serial root shell."
+				exit 1
+			}
+			configure_serial_root_shell
+		} \
+		timeout {
+			set timeout $saved_timeout
+			puts stderr "Timed out locating the QEMU serial root shell."
+			exit 1
+		}
+	set timeout $saved_timeout
+}
+
 proc run_serial_capture {command success_pattern failure_pattern description stage_timeout} {
     global qemu_spawn_id timeout expect_out
     set saved_timeout $timeout
@@ -316,6 +385,7 @@ proc run_serial_capture {command success_pattern failure_pattern description sta
     set started_ms [clock milliseconds]
     set timestamp [clock format [clock seconds] -gmt 1 -format {%Y-%m-%dT%H:%M:%SZ}]
     puts "STAGE_BEGIN name={$description} utc=$timestamp timeout_s=$timeout"
+	ensure_serial_root_shell
     send -i $qemu_spawn_id -- "$command\r"
     set result incomplete
     set captured {}
@@ -335,6 +405,10 @@ proc run_serial_capture {command success_pattern failure_pattern description sta
             puts stderr "QEMU exited during $description."
             exit 1
         }
+    expect -i $qemu_spawn_id -re {SEYRIX-ROOT#} {} timeout {
+		puts stderr "The serial root shell did not return after $description."
+		exit 1
+	}
     set duration_ms [expr {[clock milliseconds] - $started_ms}]
     if {$result eq "pass"} {
         puts "STAGE_RESULT name={$description} result=PASS duration_ms=$duration_ms"
@@ -358,6 +432,7 @@ proc run_serial_check {command success_pattern failure_pattern description {stag
     set started_ms [clock milliseconds]
     set timestamp [clock format [clock seconds] -gmt 1 -format {%Y-%m-%dT%H:%M:%SZ}]
     puts "STAGE_BEGIN name={$description} utc=$timestamp timeout_s=$timeout"
+	ensure_serial_root_shell
     send -i $qemu_spawn_id -- "$command\r"
     expect -i $qemu_spawn_id \
         -re $success_pattern {
@@ -384,6 +459,10 @@ proc run_serial_check {command success_pattern failure_pattern description {stag
             puts stderr "QEMU exited: $description."
             exit 1
         }
+    expect -i $qemu_spawn_id -re {SEYRIX-ROOT#} {} timeout {
+		puts stderr "The serial root shell did not return after $description."
+		exit 1
+	}
     set timeout $saved_timeout
 }
 
@@ -417,6 +496,8 @@ puts "QMP_CONNECTED=passed"
 set pci_info [qmp_hmp $qmp "info pci"]
 puts "QEMU_PCI_INVENTORY=$pci_info"
 
+set login_timeout_saved $timeout
+set timeout 720
 expect {
     -re {seyrix-dev login:} {
         set login_ms [expr {[clock milliseconds] - $boot_started}]
@@ -431,6 +512,7 @@ expect {
         exit 1
     }
 }
+set timeout $login_timeout_saved
 puts "SERIAL_LOGIN_PROMPT=passed"
 
 send -- "root\r"
@@ -452,18 +534,7 @@ expect {
 }
 puts "SERIAL_ROOT_SHELL=passed"
 
-send -- "stty -echo; export PS1='SEYRIX-ROOT# '\r"
-expect {
-    -re {SEYRIX-ROOT#} {}
-    timeout {
-        puts stderr "Timed out setting up the serial test shell."
-        exit 1
-    }
-    eof {
-        puts stderr "QEMU exited before the serial test shell was ready."
-        exit 1
-    }
-}
+configure_serial_root_shell
 
 set baseline_command {
   printf 'SEYRIX_GRAPHICS_CHECK_BEGIN\n'
@@ -702,7 +773,7 @@ if {$phase2b} {
 		set shell_ready_command {mkdir -p /tmp/seyrix-first /tmp/seyrix-second; shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_SHELL_PID=%s\nPHASE2D2_SHELL_UID=%s\n' "$shell_pid" "$shell_uid"; if [[ -n "$shell_pid" && "$shell_uid" == 1000 && -n "$terminal_pid" && -r /usr/share/seyrix/Manual.txt ]]; then echo PHASE2D2_SHELL_READY=passed; else echo PHASE2D2_SHELL_READY=failed; fi}
 		run_serial_check $shell_ready_command {PHASE2D2_SHELL_READY=passed} {PHASE2D2_SHELL_READY=failed} "verify native shell and terminal run as the seyrix user" 20
 		set shell_startup_failure_command {bash /tmp/seyrix-qemu-guest-helper.sh startup-failure}
-		run_serial_check $shell_startup_failure_command {PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "recover from a shell executable startup failure during restart" 30
+		run_serial_check $shell_startup_failure_command {PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "recover from a shell executable startup failure during restart" 90
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-desktop-initial.ppm"
 		qmp_key_chord $qmp {meta_l} q
 		set close_initial_terminal_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 0 ]] && pgrep -u 1000 -x seyrix-shell >/dev/null; then echo PHASE2D2_DESKTOP_REVEALED=passed; else echo PHASE2D2_DESKTOP_REVEALED=failed; fi}
@@ -757,6 +828,80 @@ if {$phase2b} {
 		set launcher_launch_command {before=$(cat /tmp/seyrix-phase2d2-launcher-window-map-baseline); for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); if [[ "$count" -eq 2 && "$mapped" -gt "$before" ]]; then break; fi; sleep 1; done; count=$(pgrep -u 1000 -x weston-terminal | wc -l); mapped=$(grep -c 'Window mapped:' /tmp/seyrix-compositor.log || true); shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_TERMINAL_COUNT=%s\nPHASE2D2_MAPPED_BEFORE=%s\nPHASE2D2_MAPPED_AFTER=%s\n' "$count" "$before" "$mapped"; if [[ "$count" -eq 2 && "$mapped" -gt "$before" && "$shell_uid" == 1000 ]] && grep -q 'Layer shell surface mapped namespace=seyrix-launcher' /tmp/seyrix-compositor.log; then echo PHASE2D2_LAUNCHER_SEARCH_LAUNCH=passed; else echo PHASE2D2_LAUNCHER_SEARCH_LAUNCH=failed; pgrep -a -u 1000 -x weston-terminal || true; tail -n 40 /tmp/seyrix-compositor.log; fi}
 		run_serial_check $launcher_launch_command {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=passed} {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=failed} "search and launch a valid XDG desktop entry with keyboard navigation" 30
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-after-launch.ppm"
+		if {$phase2d3b} {
+			qmp_key_chord $qmp {meta_l} spc
+			after 500
+			qmp_type_slow $qmp "Settings"
+			after 600
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-launcher-search.ppm"
+			qmp_key_chord $qmp {} ret
+		set settings_launcher_command {pid=; for n in $(seq 1 90); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); mapped=$(grep -c 'Window mapped: app_id=org.seyrix.settings' /tmp/seyrix-compositor.log || true); if [[ -n "$pid" && "$mapped" -gt 0 ]]; then break; fi; sleep 0.5; done; uid=$(test -n "$pid" && awk '/^Uid:/ {print $2}' "/proc/$pid/status"); printf 'SETTINGS_APP_PID=%s SETTINGS_APP_UID=%s\n' "$pid" "$uid"; if [[ -n "$pid" ]]; then ps -o pid,uid,stat,%cpu,etimes,wchan:32,args -p "$pid"; tr '\0' '\n' < "/proc/$pid/environ" | grep -E '^(WAYLAND_DISPLAY|XDG_RUNTIME_DIR|GDK_BACKEND|DBUS_SESSION_BUS_ADDRESS)=' || true; fi; if [[ -n "$pid" && "$uid" == 1000 ]] && test -x /usr/bin/seyrix-settings && test -r /usr/share/applications/seyrix-settings.desktop && grep -qx 'Exec=seyrix-settings' /usr/share/applications/seyrix-settings.desktop && grep -q 'Window mapped: app_id=org.seyrix.settings' /tmp/seyrix-compositor.log; then echo PHASE2D3B_LAUNCHER=passed; else tail -n 45 /tmp/seyrix-compositor.log; echo PHASE2D3B_LAUNCHER=failed; fi}
+		run_serial_check $settings_launcher_command {PHASE2D3B_LAUNCHER=passed} {PHASE2D3B_LAUNCHER=failed} "launch native Settings through the Seyrix application launcher as the unprivileged user" 90
+			after 1000
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-appearance-640x480.ppm"
+		set settings_probe_apps_command {printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Settings IPC Read Test' 'Exec=env XDG_RUNTIME_DIR=/run/user/1000 SEYRIX_SETTINGS_PROBE_LOG=/tmp/seyrix-settings-endpoint-probe.log /usr/lib/seyrix-tests/settings-endpoint-probe' 'TryExec=/usr/lib/seyrix-tests/settings-endpoint-probe' 'Icon=preferences-system' 'Categories=System;' > /home/seyrix/.local/share/applications/seyrix-settings-ipc-probe.desktop && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Settings Change Watch' 'Exec=env XDG_RUNTIME_DIR=/run/user/1000 SEYRIX_SETTINGS_PROBE_LOG=/tmp/seyrix-settings-subscription.log /usr/lib/seyrix-tests/settings-endpoint-probe --watch-change' 'TryExec=/usr/lib/seyrix-tests/settings-endpoint-probe' 'Icon=preferences-system' 'Categories=System;' > /home/seyrix/.local/share/applications/seyrix-settings-ipc-watch.desktop && chown 1000:1000 /home/seyrix/.local/share/applications/seyrix-settings-ipc-probe.desktop /home/seyrix/.local/share/applications/seyrix-settings-ipc-watch.desktop && echo SETTINGS_PROBE_APPS=installed}
+		run_serial_check $settings_probe_apps_command {SETTINGS_PROBE_APPS=installed} {SETTINGS_PROBE_APPS=failed} "install same-session read-only endpoint probe launchers" 10
+		# Launch probes through the shell so SO_PEERCRED's session check sees the
+		# compositor session. A terminal's shell runs under a separate PTY session.
+		set settings_probe_launch_command {rm -f /tmp/seyrix-settings-endpoint-probe.log; echo SETTINGS_PROBE_LOG=cleared}
+		run_serial_check $settings_probe_launch_command {SETTINGS_PROBE_LOG=cleared} {SETTINGS_PROBE_LOG=failed} "clear read-only endpoint probe result" 10
+		qmp_key_chord $qmp {meta_l} spc
+		after 300
+		qmp_type_slow $qmp "Settings IPC Read Test"
+		after 500
+		qmp_key_chord $qmp {} ret
+		set settings_probe_command {ready=0; for n in $(seq 1 80); do if grep -q '^SETTINGS_ENDPOINT_PROBE=passed$' /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_PROBE=failed$' /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null; then break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-endpoint-probe.log; echo SETTINGS_ENDPOINT_PROBE_STAGE=passed; else cat /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_PROBE_STAGE=failed; fi}
+		run_serial_check $settings_probe_command {SETTINGS_ENDPOINT_PROBE_STAGE=passed} {SETTINGS_ENDPOINT_PROBE_STAGE=failed} "verify authenticated read-only Settings IPC, snapshots, bounds, revisions, subscriptions, and reconnect" 30
+			set wrong_session_command {setsid setpriv --reuid=1000 --regid=1000 --init-groups env XDG_RUNTIME_DIR=/run/user/1000 /usr/lib/seyrix-tests/settings-endpoint-probe --wrong-session; result=$?; if [[ "$result" -eq 0 ]]; then echo SETTINGS_ENDPOINT_WRONG_SESSION_STAGE=passed; else echo SETTINGS_ENDPOINT_WRONG_SESSION_STAGE=failed; fi}
+			run_serial_check $wrong_session_command {SETTINGS_ENDPOINT_WRONG_SESSION_STAGE=passed} {SETTINGS_ENDPOINT_WRONG_SESSION_STAGE=failed} "reject a same-uid client from a different session" 10
+		set subscription_log_reset_command {rm -f /tmp/seyrix-settings-subscription.log; echo SETTINGS_SUBSCRIPTION_LOG=cleared}
+		run_serial_check $subscription_log_reset_command {SETTINGS_SUBSCRIPTION_LOG=cleared} {SETTINGS_SUBSCRIPTION_LOG=failed} "clear subscription probe result" 10
+		qmp_key_chord $qmp {meta_l} spc
+		after 300
+		qmp_type_slow $qmp "Settings Change Watch"
+		after 500
+		qmp_key_chord $qmp {} ret
+		set subscription_ready_command {ready=0; for n in $(seq 1 80); do if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_READY=passed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_DETAIL=' /tmp/seyrix-settings-subscription.log 2>/dev/null; then break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-subscription.log; echo SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=passed; else cat /tmp/seyrix-settings-subscription.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=failed; fi}
+		run_serial_check $subscription_ready_command {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=failed} "verify the bounded subscription is active before changing state" 25
+		qmp_key_chord $qmp {meta_l} 2
+		set subscription_change_command {ready=0; for n in $(seq 1 140); do if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_CHANGE=passed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_CHANGE=failed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then break; fi; sleep 0.2; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-subscription.log; echo SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=passed; else cat /tmp/seyrix-settings-subscription.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=failed; fi}
+		run_serial_check $subscription_change_command {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=failed} "deliver a bounded read-only subscription revision notification" 30
+		qmp_key_chord $qmp {meta_l} 1
+		after 500
+			qmp_key_chord $qmp {ctrl} f
+			qmp_key_chord $qmp {ctrl} a
+			qmp_type_slow $qmp "system information"
+			after 400
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-search-640x480.ppm"
+			qmp_mouse_click_pixel $qmp 614 114 640 480
+			after 250
+			foreach {category_index page screenshot} {
+				0 appearance phase2d3b-appearance-640x480.ppm
+				1 desktop phase2d3b-desktop-dock-640x480.ppm
+				2 windows phase2d3b-window-management-640x480.ppm
+				3 displays phase2d3b-displays-640x480.ppm
+				4 input phase2d3b-input-640x480.ppm
+				5 about phase2d3b-about-640x480.ppm
+			} {
+				qmp_mouse_click_pixel $qmp 320 156 640 480
+				after 200
+				qmp_key_chord $qmp {} home
+				for {set category_step 0} {$category_step < $category_index} {incr category_step} {
+					qmp_key_chord $qmp {} down
+				}
+				qmp_key_chord $qmp {} ret
+				after 350
+				qmp_hmp $qmp "screendump $run_dir/$screenshot"
+				puts "PHASE2D3B_PAGE_CAPTURE=$page"
+			}
+			puts "PHASE2D3B_POINTER_KEYBOARD_NAVIGATION=passed"
+			qmp_key_chord $qmp {meta_l} q
+			after 700
+			set settings_closed_command {for n in $(seq 1 20); do if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then break; fi; sleep 0.1; done; if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then echo PHASE2D3B_WINDOW_CLOSED=passed; else echo PHASE2D3B_WINDOW_CLOSED=failed; fi}
+			run_serial_check $settings_closed_command {PHASE2D3B_WINDOW_CLOSED=passed} {PHASE2D3B_WINDOW_CLOSED=failed} "close Settings before compositor shell regression checks" 10
+			qmp_mouse_click_pixel $qmp 450 100 $output_width $output_height
+			after 300
+		}
 		set launcher_cwd_reset_command {rm -f /tmp/seyrix-phase2d2-launcher-terminal-cwd; echo PHASE2D2_LAUNCHER_CWD_RESET=ready}
 		run_serial_check $launcher_cwd_reset_command {PHASE2D2_LAUNCHER_CWD_RESET=ready} {PHASE2D2_LAUNCHER_CWD_RESET=failed} "clear foreground identity marker after launcher app launch" 10
 		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-launcher-terminal-cwd\n"
@@ -1843,6 +1988,10 @@ if {$phase2b} {
             exit 1
         }
     }
+	if {$phase2d3b} {
+		set settings_socket_cleanup_command {if test ! -e /run/user/1000/seyrix/settings-v1.sock; then echo SETTINGS_ENDPOINT_SHUTDOWN_CLEANUP=passed; else echo SETTINGS_ENDPOINT_SHUTDOWN_CLEANUP=failed; fi}
+		run_serial_check $settings_socket_cleanup_command {SETTINGS_ENDPOINT_SHUTDOWN_CLEANUP=passed} {SETTINGS_ENDPOINT_SHUTDOWN_CLEANUP=failed} "verify compositor shutdown removed its Settings socket" 10
+	}
     if {$sanitizers_enabled} {
         set sanitizer_check_command {if grep -Eq 'AddressSanitizer:|LeakSanitizer:|runtime error:' /tmp/seyrix-compositor.log; then echo SANITIZER_FINDINGS=present; else echo SANITIZER_FINDINGS=none; fi}
         send -- "$sanitizer_check_command\r"

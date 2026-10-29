@@ -352,6 +352,7 @@ static void handle_keyboard_destroy(struct wl_listener *listener, void *data) {
 		}
 	}
 	update_seat_capabilities(server);
+	seyrix_settings_control_changed(server);
 }
 
 static bool configure_keyboard(struct seyrix_server *server,
@@ -400,18 +401,23 @@ static bool configure_keyboard(struct seyrix_server *server,
 static void handle_new_input(struct wl_listener *listener, void *data) {
 	struct seyrix_server *server = wl_container_of(listener, server, new_input);
 	struct wlr_input_device *device = data;
+	bool changed = false;
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		configure_keyboard(server, device);
+		changed = configure_keyboard(server, device);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		wlr_cursor_attach_input_device(server->cursor, device);
 		wlr_log(WLR_INFO, "Pointer discovered: %s", device->name);
+		changed = true;
 		break;
 	default:
 		break;
 	}
 	update_seat_capabilities(server);
+	if (changed) {
+		seyrix_settings_control_changed(server);
+	}
 }
 
 static void handle_request_cursor(struct wl_listener *listener, void *data) {

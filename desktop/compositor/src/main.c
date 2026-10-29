@@ -21,6 +21,7 @@
 #include "layer-shell.h"
 #include "popup.h"
 #include "shell.h"
+#include "settings-control.h"
 
 static uint64_t monotonic_ms(void) {
 	struct timespec now;
@@ -366,6 +367,10 @@ bool seyrix_server_init(struct seyrix_server *server) {
 		wlr_log(WLR_ERROR, "Cannot export Wayland session environment");
 		return false;
 	}
+	if (!seyrix_settings_control_init(server)) {
+		wlr_log(WLR_ERROR, "Cannot initialize the read-only Settings endpoint");
+		return false;
+	}
 
 	if (!wlr_backend_start(server->backend)) {
 		wlr_log(WLR_ERROR, "Cannot start Wayland backend");
@@ -399,6 +404,7 @@ void seyrix_server_run(struct seyrix_server *server) {
 }
 
 void seyrix_server_finish(struct seyrix_server *server) {
+	seyrix_settings_control_finish(server);
 	if (server->display != NULL) {
 		wl_display_destroy_clients(server->display);
 	}

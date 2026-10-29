@@ -189,6 +189,7 @@ static void handle_layout_change(struct wl_listener *listener, void *data) {
 	seyrix_wm_outputs_changed(server);
 	seyrix_shell_outputs_changed(server);
 	seyrix_window_state_outputs_changed(server);
+	seyrix_settings_control_changed(server);
 	if (!server->output_manager_applying) {
 		output_manager_update(server);
 	}
@@ -245,6 +246,7 @@ static void handle_output_commit(struct wl_listener *listener, void *data) {
 	seyrix_layer_shell_outputs_changed(output->server);
 	seyrix_wm_outputs_changed(output->server);
 	seyrix_window_state_outputs_changed(output->server);
+	seyrix_settings_control_changed(output->server);
 	if (!output->server->output_manager_applying) {
 		output_manager_update(output->server);
 	}
@@ -272,6 +274,7 @@ static void handle_output_destroy(struct wl_listener *listener, void *data) {
 	seyrix_wm_outputs_changed(server);
 	seyrix_window_state_outputs_changed(server);
 	seyrix_shell_outputs_changed(server);
+	seyrix_settings_control_changed(server);
 	output_manager_update(server);
 	wlr_log(WLR_INFO, "Output %s removed", output->wlr_output->name);
 	free(output);
@@ -354,6 +357,7 @@ static void handle_new_output(struct wl_listener *listener, void *data) {
 	seyrix_layer_shell_outputs_changed(server);
 	seyrix_wm_outputs_changed(server);
 	seyrix_window_state_outputs_changed(server);
+	seyrix_settings_control_changed(server);
 	output_manager_update(server);
 	wlr_output_schedule_frame(wlr_output);
 }

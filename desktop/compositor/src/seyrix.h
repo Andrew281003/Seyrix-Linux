@@ -37,6 +37,7 @@ struct seyrix_window;
 struct seyrix_window_state;
 struct seyrix_decoration;
 struct seyrix_shell;
+struct seyrix_settings_control;
 struct seyrix_server;
 
 #define SEYRIX_WORKSPACE_COUNT SEYRIX_WM_WORKSPACE_COUNT
@@ -76,6 +77,7 @@ struct seyrix_server {
 	struct wlr_seat *seat;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct seyrix_shell *shell;
+	struct seyrix_settings_control *settings_control;
 
 	struct wl_list outputs;
 	struct wl_list windows;
@@ -207,6 +209,8 @@ bool seyrix_spawn_terminal(struct seyrix_server *server);
 
 bool seyrix_output_init(struct seyrix_server *server);
 void seyrix_output_finish(struct seyrix_server *server);
+
+void seyrix_settings_control_changed(struct seyrix_server *server);
 
 bool seyrix_input_init(struct seyrix_server *server);
 void seyrix_input_finish(struct seyrix_server *server);
