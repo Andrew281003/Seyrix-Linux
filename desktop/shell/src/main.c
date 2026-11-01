@@ -1079,6 +1079,12 @@ static bool open_overlay(struct shell_client *client,
 		uint32_t ids[SEYRIX_SHELL_MAX_WINDOWS];
 		size_t count = switcher_ids(client, ids, SEYRIX_SHELL_MAX_WINDOWS);
 		client->selected_index = count > 1 ? 1 : 0;
+		for (size_t index = 0; index < count; index++) {
+			if (ids[index] == client->model.focused_window_id) {
+				client->selected_index = count > 1 ? (index + 1) % count : 0;
+				break;
+			}
+		}
 	} else if (kind == SEYRIX_SHELL_VIEW_MANUAL && client->manual_text == NULL) {
 		client->manual_text = load_manual();
 	}

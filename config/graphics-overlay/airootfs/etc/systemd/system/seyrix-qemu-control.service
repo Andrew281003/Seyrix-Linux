@@ -1,0 +1,20 @@
+[Unit]
+Description=Bounded Seyrix user control shell for QEMU acceptance
+ConditionPathExists=/dev/virtio-ports/org.seyrix.qemu-control
+
+[Service]
+Type=simple
+User=seyrix
+Group=seyrix
+WorkingDirectory=/home/seyrix
+Environment=HOME=/home/seyrix
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+ExecStart=/usr/bin/bash --noprofile --norc -c "exec 0<>/dev/virtio-ports/org.seyrix.qemu-control; exec 1>&0 2>&1; export HOME=/home/seyrix TERM=linux PS1='SEYRIX-USER# '; exec /usr/bin/bash --noprofile --norc --noediting -i"
+RuntimeMaxSec=25min
+TimeoutStopSec=5s
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

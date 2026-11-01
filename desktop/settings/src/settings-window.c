@@ -55,6 +55,7 @@ struct seyrix_settings_window {
 	GtkWidget *category_selector;
 	GtkWidget *paned;
 	GtkWidget *stack;
+	GtkWidget *pages[CATEGORY_COUNT + 1];
 	GtkWidget *search;
 	GtkWidget *status;
 	GtkWidget *values[VALUE_COUNT];
@@ -65,6 +66,7 @@ struct seyrix_settings_window {
 	struct seyrix_system_info system_info;
 	bool sidebar_detached;
 	bool compact_window_maximized;
+	bool compact_layout;
 	guint layout_source;
 };
 
@@ -80,6 +82,7 @@ static const char *const category_names[CATEGORY_COUNT] = {
 static const char *const category_ids[CATEGORY_COUNT] = {
 	"appearance", "desktop", "windows", "displays", "input", "about",
 };
+
 
 static const char *const category_selector_names[] = {
 	"Appearance", "Desktop & Dock", "Window Management", "Displays",
@@ -124,8 +127,10 @@ static const char css[] =
 	"window { background: #121a22; color: #e8edf2; }"
 	"headerbar { background: #1c2630; border-bottom: 1px solid #344452; }"
 	".sidebar-list { background: #18222c; padding: 10px; }"
-	".sidebar-list row { padding: 8px 10px; border-radius: 8px; }"
+	".sidebar-list row { padding: 8px 10px; border-radius: 8px; color: #e8edf2; }"
+	".sidebar-list row label { color: #e8edf2; }"
 	".sidebar-list row:selected { background: #31546c; color: #ffffff; }"
+	".sidebar-list row:selected label { color: #ffffff; }"
 	".settings-page { padding: 16px; }"
 	".settings-page-title { font-size: 22px; font-weight: 700; }"
 	".settings-subtitle { color: #b7c3ce; margin-bottom: 8px; }"
@@ -180,6 +185,7 @@ static GtkWidget *make_page(struct seyrix_settings_window *window,
 	gtk_widget_add_css_class(description, "settings-subtitle");
 	gtk_box_append(GTK_BOX(content), description);
 	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), content);
+	window->pages[category] = scroll;
 	gtk_stack_add_named(GTK_STACK(window->stack), scroll,
 		category_ids[category]);
 	return content;
@@ -244,7 +250,7 @@ static GtkWidget *add_value_row(GtkWidget *page, const char *title,
 	GtkWidget *value = gtk_label_new(initial);
 	gtk_label_set_xalign(GTK_LABEL(value), 0.0f);
 	gtk_label_set_wrap(GTK_LABEL(value), TRUE);
-	gtk_widget_set_size_request(value, 145, -1);
+	gtk_widget_set_hexpand(value, TRUE);
 	gtk_widget_add_css_class(value, "settings-current");
 	gtk_accessible_update_property(GTK_ACCESSIBLE(value),
 		GTK_ACCESSIBLE_PROPERTY_LABEL, title,
@@ -403,6 +409,17 @@ static void build_about(struct seyrix_settings_window *window) {
 	}
 }
 
+static void set_visible_page(struct seyrix_settings_window *window,
+		size_t page_index) {
+	if (window == NULL || page_index >= G_N_ELEMENTS(window->pages) ||
+			window->pages[page_index] == NULL ||
+			!GTK_IS_STACK(window->stack)) {
+		return;
+	}
+	GtkWidget *page = window->pages[page_index];
+	gtk_stack_set_visible_child(GTK_STACK(window->stack), page);
+}
+
 static void select_category(struct seyrix_settings_window *window,
 		enum category_id category) {
 	if (category >= CATEGORY_COUNT) {
@@ -414,8 +431,7 @@ static void select_category(struct seyrix_settings_window *window,
 		gtk_drop_down_set_selected(GTK_DROP_DOWN(window->category_selector),
 			(guint)category);
 	}
-	gtk_stack_set_visible_child_name(GTK_STACK(window->stack),
-		category_ids[category]);
+	set_visible_page(window, category);
 	GtkListBoxRow *row = gtk_list_box_get_row_at_index(
 		GTK_LIST_BOX(window->sidebar), category);
 	if (row != NULL && gtk_list_box_get_selected_row(
@@ -431,6 +447,24 @@ static void on_category_selector_changed(GObject *object, GParamSpec *property,
 	guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
 	if (selected < CATEGORY_COUNT) {
 		select_category(window, (enum category_id)selected);
+	}
+}
+
+static void update_compact_rows(GtkWidget *widget, bool compact) {
+	if (GTK_IS_BOX(widget) &&
+			gtk_widget_has_css_class(widget, "settings-row")) {
+		gtk_orientable_set_orientation(GTK_ORIENTABLE(widget), compact ?
+			GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+		GtkWidget *copy = gtk_widget_get_first_child(widget);
+		GtkWidget *control = copy != NULL ? gtk_widget_get_next_sibling(copy) : NULL;
+		if (control != NULL && !GTK_IS_BOX(control)) {
+			gtk_widget_set_valign(control, compact ? GTK_ALIGN_START :
+				GTK_ALIGN_CENTER);
+		}
+	}
+	for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL;
+			child = gtk_widget_get_next_sibling(child)) {
+		update_compact_rows(child, compact);
 	}
 }
 
@@ -453,6 +487,10 @@ static void update_responsive_layout(struct seyrix_settings_window *window) {
 		return;
 	}
 	bool compact = width > 0 && width < 760;
+	if (window->compact_layout != compact) {
+		window->compact_layout = compact;
+		update_compact_rows(window->stack, compact);
+	}
 	if (compact && !window->compact_window_maximized) {
 		window->compact_window_maximized = true;
 		gtk_window_maximize(GTK_WINDOW(window->window));
@@ -472,6 +510,7 @@ static void update_responsive_layout(struct seyrix_settings_window *window) {
 		g_object_unref(window->sidebar_scroll);
 		window->sidebar_detached = false;
 	}
+	gtk_widget_set_visible(window->sidebar_scroll, !compact);
 }
 
 static gboolean on_window_layout_check(gpointer data) {
@@ -493,19 +532,16 @@ static void on_sidebar_row_selected(GtkListBox *list, GtkListBoxRow *row,
 		return;
 	}
 	struct seyrix_settings_window *window = data;
-	int category = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row),
-		"seyrix-category"));
+	int category = gtk_list_box_row_get_index(row);
 	if (category >= 0 && category < CATEGORY_COUNT) {
-		window->selected_category = (enum category_id)category;
-		if (gtk_drop_down_get_selected(GTK_DROP_DOWN(window->category_selector)) !=
-				(guint)category) {
-			gtk_drop_down_set_selected(GTK_DROP_DOWN(window->category_selector),
-				(guint)category);
-		}
+		select_category(window, (enum category_id)category);
 		gtk_editable_set_text(GTK_EDITABLE(window->search), "");
-		gtk_stack_set_visible_child_name(GTK_STACK(window->stack),
-			category_ids[category]);
 	}
+}
+
+static void on_sidebar_row_activated(GtkListBox *list, GtkListBoxRow *row,
+		gpointer data) {
+	on_sidebar_row_selected(list, row, data);
 }
 
 static void on_search_result_clicked(GtkButton *button, gpointer data) {
@@ -531,11 +567,10 @@ static void on_search_changed(GtkEditable *editable, gpointer data) {
 	gchar *folded_query = g_utf8_casefold(query, -1);
 	if (folded_query == NULL || folded_query[0] == '\0') {
 		g_free(folded_query);
-		gtk_stack_set_visible_child_name(GTK_STACK(window->stack),
-			category_ids[window->selected_category]);
+		set_visible_page(window, window->selected_category);
 		return;
 	}
-	GtkWidget *page = gtk_stack_get_child_by_name(GTK_STACK(window->stack), "search");
+	GtkWidget *page = window->pages[CATEGORY_COUNT];
 	GtkWidget *list = g_object_get_data(G_OBJECT(page), "results-list");
 	clear_search_results(list);
 	unsigned int results = 0;
@@ -580,7 +615,7 @@ static void on_search_changed(GtkEditable *editable, gpointer data) {
 		gtk_widget_add_css_class(empty, "settings-description");
 		gtk_list_box_append(GTK_LIST_BOX(list), empty);
 	}
-	gtk_stack_set_visible_child_name(GTK_STACK(window->stack), "search");
+	set_visible_page(window, CATEGORY_COUNT);
 	g_free(folded_query);
 }
 
@@ -628,6 +663,7 @@ static void build_search_page(struct seyrix_settings_window *window) {
 	gtk_box_append(GTK_BOX(box), list);
 	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(page), box);
 	g_object_set_data(G_OBJECT(page), "results-list", list);
+	window->pages[CATEGORY_COUNT] = page;
 	gtk_stack_add_named(GTK_STACK(window->stack), page, "search");
 }
 
@@ -859,7 +895,10 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 	window->stack = gtk_stack_new();
 	gtk_stack_set_transition_type(GTK_STACK(window->stack),
 		GTK_STACK_TRANSITION_TYPE_NONE);
+	gtk_stack_set_hhomogeneous(GTK_STACK(window->stack), FALSE);
+	gtk_stack_set_vhomogeneous(GTK_STACK(window->stack), FALSE);
 	gtk_widget_set_hexpand(window->stack, TRUE);
+	gtk_widget_set_vexpand(window->stack, TRUE);
 	gtk_paned_set_end_child(GTK_PANED(window->paned), window->stack);
 	gtk_paned_set_resize_end_child(GTK_PANED(window->paned), TRUE);
 	gtk_paned_set_shrink_end_child(GTK_PANED(window->paned), TRUE);
@@ -868,6 +907,8 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 	build_pages(window);
 	g_signal_connect(window->sidebar, "row-selected",
 		G_CALLBACK(on_sidebar_row_selected), window);
+	g_signal_connect(window->sidebar, "row-activated",
+		G_CALLBACK(on_sidebar_row_activated), window);
 	g_signal_connect(window->search, "search-changed",
 		G_CALLBACK(on_search_changed), window);
 	g_signal_connect(window->category_selector, "notify::selected",
@@ -905,5 +946,7 @@ void seyrix_settings_window_destroy(struct seyrix_settings_window *window) {
 		gtk_window_destroy(GTK_WINDOW(window->window));
 		window->window = NULL;
 	}
+	window->stack = NULL;
+	window->sidebar = NULL;
 	g_free(window);
 }

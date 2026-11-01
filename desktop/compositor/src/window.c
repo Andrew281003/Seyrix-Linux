@@ -86,6 +86,18 @@ void seyrix_focus_window(struct seyrix_server *server,
 
 	server->focused_window = window;
 	seyrix_decoration_set_focused(window, true);
+	if (previous_window != window) {
+		pid_t pid;
+		uint32_t surface_id;
+		window_identity(window, &pid, &surface_id);
+		wlr_log(WLR_INFO,
+			"Window focused: pid=%ld surface=%u app_id=%s title=%s",
+			(long)pid, surface_id,
+			window->xdg_toplevel->app_id != NULL ?
+				window->xdg_toplevel->app_id : "",
+			window->xdg_toplevel->title != NULL ?
+				window->xdg_toplevel->title : "");
+	}
 	wlr_scene_node_raise_to_top(&window->scene_tree->node);
 	if (window->link.prev != NULL && window->link.next != NULL) {
 		wl_list_remove(&window->link);
@@ -232,7 +244,11 @@ static void handle_window_map(struct wl_listener *listener, void *data) {
 	if (seyrix_workspace_window_is_visible(window)) {
 		seyrix_focus_window(window->server, window);
 	}
-	wlr_log(WLR_INFO, "Window mapped: app_id=%s title=%s",
+	pid_t pid;
+	uint32_t surface_id;
+	window_identity(window, &pid, &surface_id);
+	wlr_log(WLR_INFO, "Window mapped: pid=%ld surface=%u app_id=%s title=%s",
+		(long)pid, surface_id,
 		window->xdg_toplevel->app_id != NULL ? window->xdg_toplevel->app_id : "",
 		window->xdg_toplevel->title != NULL ? window->xdg_toplevel->title : "");
 }

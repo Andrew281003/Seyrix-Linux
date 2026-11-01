@@ -62,7 +62,25 @@ static bool settings_send(struct seyrix_settings_client *client,
 		const uint8_t *packet, size_t packet_size) {
 	ssize_t sent = send(client->fd, packet, packet_size,
 		MSG_DONTWAIT | MSG_NOSIGNAL);
-	return sent >= 0 && (size_t)sent == packet_size;
+	if (sent >= 0 && (size_t)sent == packet_size) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		struct seyrix_settings_frame frame;
+		if (seyrix_settings_decode_frame(packet, packet_size, &frame)) {
+			wlr_log(WLR_INFO,
+				"Settings endpoint sent peer_pid=%ld opcode=%u request=%u bytes=%zu revision=%llu",
+				(long)client->pid, frame.opcode, frame.request_id, packet_size,
+				(unsigned long long)frame.revision);
+		}
+#endif
+		return true;
+	}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+	int send_errno = errno;
+	wlr_log(WLR_INFO,
+		"Settings endpoint send failed peer_pid=%ld sent=%ld expected=%zu errno=%d",
+		(long)client->pid, (long)sent, packet_size, send_errno);
+#endif
+	return false;
 }
 
 static bool settings_add_tlv(uint8_t *buffer, size_t capacity, size_t *used,
@@ -433,6 +451,11 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 		return 0;
 	}
 	if ((mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) != 0) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		wlr_log(WLR_INFO,
+			"Settings endpoint peer hangup pid=%ld mask=0x%x negotiated=%d subscribed=%d",
+			(long)client->pid, mask, client->negotiated, client->subscribed);
+#endif
 		settings_remove_client(client);
 		return 0;
 	}
@@ -450,6 +473,10 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 		ssize_t received = recvmsg(fd, &message,
 			MSG_DONTWAIT | MSG_TRUNC | MSG_CMSG_CLOEXEC);
 		if (received == 0) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+			wlr_log(WLR_INFO, "Settings endpoint peer closed pid=%ld",
+				(long)client->pid);
+#endif
 			settings_remove_client(client);
 			return 0;
 		}
@@ -461,6 +488,12 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				return 0;
 			}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+			int receive_errno = errno;
+			wlr_log(WLR_INFO,
+				"Settings endpoint receive failed peer_pid=%ld errno=%d",
+				(long)client->pid, receive_errno);
+#endif
 			settings_remove_client(client);
 			return 0;
 		}
@@ -480,13 +513,41 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 			received_fds = true;
 		}
 		struct seyrix_settings_frame frame;
-		if (received_fds || (message.msg_flags & MSG_TRUNC) != 0 ||
-				(size_t)received > sizeof(packet) ||
-				!seyrix_settings_decode_frame(packet, (size_t)received, &frame)) {
+		bool truncated = (message.msg_flags & MSG_TRUNC) != 0 ||
+			(size_t)received > sizeof(packet);
+		bool decoded = !truncated &&
+			seyrix_settings_decode_frame(packet, (size_t)received, &frame);
+		if (received_fds || truncated || !decoded) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+			const char *reason = received_fds ? "ancillary-data" :
+				truncated ? "truncated" : "invalid-wire-frame";
+			wlr_log(WLR_INFO,
+				"Settings endpoint rejected frame peer_pid=%ld reason=%s size=%ld msg_flags=0x%x control_len=%zu magic=%02x%02x%02x%02x",
+				(long)client->pid, reason, (long)received, message.msg_flags,
+				(size_t)message.msg_controllen,
+				(unsigned int)(received > 0 ? packet[0] : 0),
+				(unsigned int)(received > 1 ? packet[1] : 0),
+				(unsigned int)(received > 2 ? packet[2] : 0),
+				(unsigned int)(received > 3 ? packet[3] : 0));
+#endif
 			settings_remove_client(client);
 			return 0;
 		}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		wlr_log(WLR_INFO,
+			"Settings endpoint frame peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u revision=%llu negotiated=%d",
+			(long)client->pid, frame.frame_version, frame.flags, frame.opcode,
+			frame.request_id, frame.payload_size,
+			(unsigned long long)frame.revision, client->negotiated);
+#endif
 		if (!settings_handle_request(client, &frame)) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+			wlr_log(WLR_INFO,
+				"Settings endpoint rejected request peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u negotiated=%d",
+				(long)client->pid, frame.frame_version, frame.flags,
+				frame.opcode, frame.request_id, frame.payload_size,
+				client->negotiated);
+#endif
 			settings_remove_client(client);
 			return 0;
 		}
@@ -524,8 +585,27 @@ static bool settings_accept_peer(struct seyrix_settings_control *control,
 	}
 	if (!seyrix_settings_peer_authorized(credentials.uid, credentials.pid,
 			control->owner_uid, getpid())) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		errno = 0;
+		pid_t peer_sid = credentials.pid > 0 ? getsid(credentials.pid) : -1;
+		int peer_sid_errno = errno;
+		errno = 0;
+		pid_t owner_sid = getsid(0);
+		int owner_sid_errno = errno;
+		wlr_log(WLR_INFO,
+			"Settings endpoint rejected peer uid=%ld pid=%ld sid=%ld sid_errno=%d; owner uid=%ld pid=%ld sid=%ld sid_errno=%d",
+			(long)credentials.uid, (long)credentials.pid, (long)peer_sid,
+			peer_sid_errno, (long)control->owner_uid, (long)getpid(),
+			(long)owner_sid, owner_sid_errno);
+#endif
 		return false;
 	}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+	wlr_log(WLR_INFO,
+		"Settings endpoint accepted peer uid=%ld pid=%ld sid=%ld owner_pid=%ld owner_sid=%ld",
+		(long)credentials.uid, (long)credentials.pid,
+		(long)getsid(credentials.pid), (long)getpid(), (long)getsid(0));
+#endif
 	*uid = credentials.uid;
 	*pid = credentials.pid;
 	return true;

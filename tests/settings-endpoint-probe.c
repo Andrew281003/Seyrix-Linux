@@ -19,6 +19,11 @@
 
 enum { PROBE_TIMEOUT_MS = 3000, PROBE_MAX_HELD_SUBSCRIBERS = 9 };
 
+static bool probe_trace_enabled(void) {
+	const char *value = getenv("SEYRIX_SETTINGS_PROBE_TRACE");
+	return value != NULL && strcmp(value, "1") == 0;
+}
+
 static int endpoint_connect(bool check_owner) {
 	const char *runtime = getenv("XDG_RUNTIME_DIR");
 	if (runtime == NULL || runtime[0] != '/') {
@@ -97,17 +102,25 @@ static bool send_packet(int fd, uint16_t opcode, uint32_t request_id,
 }
 
 static bool receive_frame(int fd, struct seyrix_settings_frame *frame,
-		uint8_t *packet) {
+		uint8_t *packet, size_t packet_capacity) {
+	if (packet == NULL || packet_capacity < SEYRIX_SETTINGS_HEADER_SIZE ||
+			packet_capacity > SEYRIX_SETTINGS_MAX_PACKET_SIZE) {
+		return false;
+	}
 	struct pollfd poll_fd = {.fd = fd, .events = POLLIN | POLLHUP | POLLERR};
 	int ready;
 	do {
 		ready = poll(&poll_fd, 1, PROBE_TIMEOUT_MS);
 	} while (ready < 0 && errno == EINTR);
+	if (probe_trace_enabled()) {
+		fprintf(stderr, "SETTINGS_PROBE_TRACE poll ready=%d revents=0x%x errno=%d\n",
+			ready, poll_fd.revents, ready < 0 ? errno : 0);
+	}
 	if (ready <= 0 || (poll_fd.revents & POLLIN) == 0) {
 		return false;
 	}
 	char ancillary[CMSG_SPACE(sizeof(int) * 4)];
-	struct iovec iov = {.iov_base = packet, .iov_len = sizeof(packet)};
+	struct iovec iov = {.iov_base = packet, .iov_len = packet_capacity};
 	struct msghdr message = {
 		.msg_iov = &iov,
 		.msg_iovlen = 1,
@@ -115,6 +128,7 @@ static bool receive_frame(int fd, struct seyrix_settings_frame *frame,
 		.msg_controllen = sizeof(ancillary),
 	};
 	ssize_t received = recvmsg(fd, &message, MSG_TRUNC | MSG_CMSG_CLOEXEC);
+	int receive_errno = received < 0 ? errno : 0;
 	bool has_control = CMSG_FIRSTHDR(&message) != NULL;
 	for (struct cmsghdr *header = CMSG_FIRSTHDR(&message);
 			header != NULL; header = CMSG_NXTHDR(&message, header)) {
@@ -128,9 +142,20 @@ static bool receive_frame(int fd, struct seyrix_settings_frame *frame,
 			}
 		}
 	}
-	return !has_control && received > 0 && (size_t)received <= sizeof(packet) &&
+	bool decoded = received > 0 && (size_t)received <= packet_capacity &&
 		(message.msg_flags & MSG_TRUNC) == 0 &&
 		seyrix_settings_decode_frame(packet, (size_t)received, frame);
+	if (probe_trace_enabled()) {
+		fprintf(stderr,
+			"SETTINGS_PROBE_TRACE recv bytes=%ld errno=%d msg_flags=0x%x control_len=%zu has_control=%d decoded=%d magic=%02x%02x%02x%02x\n",
+			(long)received, receive_errno, message.msg_flags,
+			(size_t)message.msg_controllen, has_control, decoded,
+			(unsigned int)(received > 0 ? packet[0] : 0),
+			(unsigned int)(received > 1 ? packet[1] : 0),
+			(unsigned int)(received > 2 ? packet[2] : 0),
+			(unsigned int)(received > 3 ? packet[3] : 0));
+	}
+	return !has_control && decoded;
 }
 
 static bool exchange(int fd, uint16_t opcode, uint32_t request_id,
@@ -140,7 +165,8 @@ static bool exchange(int fd, uint16_t opcode, uint32_t request_id,
 		struct seyrix_settings_frame *response, uint8_t *response_storage) {
 	if (!send_packet(fd, opcode, request_id, revision, payload, payload_size,
 			frame_version, invalid_magic, 0) ||
-		!receive_frame(fd, response, response_storage) ||
+		!receive_frame(fd, response, response_storage,
+			SEYRIX_SETTINGS_MAX_PACKET_SIZE) ||
 		response->opcode != SEYRIX_SETTINGS_OP_RESPONSE ||
 		response->request_id != request_id || response->payload_size < 4 ||
 		seyrix_settings_read_u16(response->payload + 2) != opcode ||
@@ -154,10 +180,37 @@ static bool handshake(int fd, uint32_t request_id) {
 	const uint8_t versions[4] = {1, 1, 0, 0};
 	struct seyrix_settings_frame response;
 	uint8_t storage[SEYRIX_SETTINGS_MAX_PACKET_SIZE];
-	return exchange(fd, SEYRIX_SETTINGS_OP_HELLO, request_id, 0, versions,
-		sizeof(versions), 1, false, SEYRIX_SETTINGS_ERROR_OK,
-		&response, storage) && response.payload_size == 6 &&
-		response.payload[4] == 1 && response.payload[5] == 0;
+	if (!send_packet(fd, SEYRIX_SETTINGS_OP_HELLO, request_id, 0, versions,
+			sizeof(versions), 1, false, 0)) {
+		fprintf(stderr, "SETTINGS_ENDPOINT_HELLO_DETAIL=send-failed errno=%d\n",
+			errno);
+		return false;
+	}
+	if (!receive_frame(fd, &response, storage, sizeof(storage))) {
+		fprintf(stderr,
+			"SETTINGS_ENDPOINT_HELLO_DETAIL=no-valid-response errno=%d uid=%ld pid=%ld sid=%ld ppid=%ld ppid_sid=%ld\n",
+			errno, (long)geteuid(), (long)getpid(), (long)getsid(0),
+			(long)getppid(), (long)getsid(getppid()));
+		return false;
+	}
+	if (response.opcode != SEYRIX_SETTINGS_OP_RESPONSE ||
+			response.request_id != request_id || response.payload_size != 6 ||
+			seyrix_settings_read_u16(response.payload) !=
+				SEYRIX_SETTINGS_ERROR_OK ||
+			seyrix_settings_read_u16(response.payload + 2) !=
+				SEYRIX_SETTINGS_OP_HELLO || response.payload[4] != 1 ||
+			response.payload[5] != 0) {
+		fprintf(stderr,
+			"SETTINGS_ENDPOINT_HELLO_DETAIL=unexpected-response opcode=%u request_id=%u payload=%u error=%u response_opcode=%u uid=%ld pid=%ld sid=%ld\n",
+			response.opcode, response.request_id, response.payload_size,
+			response.payload_size >= 4 ?
+				seyrix_settings_read_u16(response.payload) : UINT16_MAX,
+			response.payload_size >= 4 ?
+				seyrix_settings_read_u16(response.payload + 2) : UINT16_MAX,
+			(long)geteuid(), (long)getpid(), (long)getsid(0));
+		return false;
+	}
+	return true;
 }
 
 static bool get_snapshot(int fd, uint32_t request_id, uint64_t revision,
@@ -229,7 +282,7 @@ static bool probe_subscription_limit(uint64_t revision) {
 		uint8_t storage[SEYRIX_SETTINGS_MAX_PACKET_SIZE];
 		bool sent = send_packet(fd, SEYRIX_SETTINGS_OP_SUBSCRIBE, 2,
 			revision, NULL, 0, 1, false, 0);
-		if (!sent || !receive_frame(fd, &response, storage) ||
+		if (!sent || !receive_frame(fd, &response, storage, sizeof(storage)) ||
 				response.opcode != SEYRIX_SETTINGS_OP_RESPONSE ||
 				response.request_id != 2 || response.payload_size < 4 ||
 				seyrix_settings_read_u16(response.payload + 2) !=
@@ -308,7 +361,7 @@ static bool probe_watch_change(void) {
 		if (ready < 0 && errno == EINTR) continue;
 		if (ready <= 0 || (poll_fd.revents & POLLIN) == 0) continue;
 		uint8_t event_packet[SEYRIX_SETTINGS_MAX_PACKET_SIZE];
-		if (!receive_frame(fd, &response, event_packet)) break;
+		if (!receive_frame(fd, &response, event_packet, sizeof(event_packet))) break;
 		if (response.opcode != SEYRIX_SETTINGS_OP_CHANGED ||
 				response.request_id != 0 || response.payload_size != 0 ||
 				response.revision <= subscribed.revision) {
@@ -377,7 +430,7 @@ static bool run_protocol_probe(void) {
 	}
 	if (!send_packet(fd, SEYRIX_SETTINGS_OP_SUBSCRIBE, 7, revision,
 			NULL, 0, 1, false, 0) ||
-		!receive_frame(fd, &response, storage) ||
+		!receive_frame(fd, &response, storage, sizeof(storage)) ||
 		response.opcode != SEYRIX_SETTINGS_OP_RESPONSE ||
 		response.request_id != 7 || response.payload_size < 4 ||
 		seyrix_settings_read_u16(response.payload + 2) !=
@@ -404,6 +457,14 @@ static bool run_protocol_probe(void) {
 	printf("SETTINGS_ENDPOINT_NEGOTIATION_CORRELATION=passed\n");
 	printf("SETTINGS_ENDPOINT_STALE_REVISION=passed\n");
 	printf("SETTINGS_ENDPOINT_MALFORMED_VERSION_UNKNOWN=passed\n");
+	if (!exchange(fd, SEYRIX_SETTINGS_OP_UNSUBSCRIBE, 8, revision,
+			NULL, 0, 1, false, SEYRIX_SETTINGS_ERROR_OK,
+			&response, storage)) {
+		fprintf(stderr, "SETTINGS_ENDPOINT_PROBE_DETAIL=unsubscribe\n");
+		close(fd);
+		return false;
+	}
+	printf("SETTINGS_ENDPOINT_UNSUBSCRIBE=passed\n");
 	if (!probe_subscription_limit(revision)) {
 		fprintf(stderr, "SETTINGS_ENDPOINT_PROBE_DETAIL=subscriber-bound\n");
 		close(fd);

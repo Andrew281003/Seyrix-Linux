@@ -13,9 +13,14 @@ if [[ -f "$repo_root/.git" ]]; then
 		git_command=(git --git-dir="$git_directory" --work-tree="$repo_root")
 	fi
 fi
+source "$repo_root/build/retention.sh"
+seyrix_retention_init
+seyrix_retention_acquire_lock
 build_id="$(date -u +%Y%m%dT%H%M%SZ)"
-build_root="${SEYRIX_BUILD_ROOT:-${TMPDIR:-/var/tmp}/seyrix-linux/phase2d3b-${build_id}}"
+build_root="${SEYRIX_BUILD_ROOT:-${SEYRIX_ARTIFACT_ROOT}/phase2d3b-${build_id}}"
+build_root="$(realpath -m -- "$build_root")"
 output_dir="${SEYRIX_OUTPUT_DIR:-${build_root}/out}"
+output_dir="$(realpath -m -- "$output_dir")"
 work_dir="${build_root}/work"
 profile_dir="${build_root}/profile"
 metadata_dir="${build_root}/metadata"
@@ -51,6 +56,18 @@ if [[ -n "$sanitizers" && "$sanitizers" != address &&
 	exit 2
 fi
 
+case "${SEYRIX_QEMU_ACCEPTANCE_HOOKS:-0}" in
+	1|true) qemu_acceptance_hooks=true ;;
+	0|false|'') qemu_acceptance_hooks=false ;;
+	*) echo "SEYRIX_QEMU_ACCEPTANCE_HOOKS must be 0/false or 1/true." >&2; exit 2 ;;
+esac
+
+case "${SEYRIX_BUILD_NATIVE_SANITIZERS:-0}" in
+	1|true) native_sanitizers=true ;;
+	0|false|'') native_sanitizers=false ;;
+	*) echo "SEYRIX_BUILD_NATIVE_SANITIZERS must be 0/false or 1/true." >&2; exit 2 ;;
+esac
+
 if ! pkg-config --exists wlr-protocols ||
     ! pkg-config --exists wayland-protocols; then
   echo "Install wlr-protocols and wayland-protocols development files." >&2
@@ -63,22 +80,34 @@ if [[ -e "$build_root" ]]; then
   exit 2
 fi
 
+if ! seyrix_retention_is_managed_path "$build_root" ||
+    ! seyrix_retention_is_child "$SEYRIX_ARTIFACT_ROOT" "$build_root" ||
+    ! seyrix_retention_is_child "$build_root" "$output_dir"; then
+  echo "Build and ISO output paths must be under the external artifact root and outside every Git worktree." >&2
+  exit 2
+fi
+seyrix_retention_preflight "$SEYRIX_RETENTION_BUILD_RESERVE_BYTES" "$build_root"
+
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
 if [[ ! "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]]; then
   echo "SOURCE_DATE_EPOCH must be a non-negative integer." >&2
   exit 2
 fi
 
+mkdir -p "$build_root"
+seyrix_retention_begin "$build_root" build
+trap 'seyrix_retention_finish_build "$build_root" "$?"' EXIT
 mkdir -p "$work_dir" "$output_dir" "$profile_dir" "$metadata_dir" "$staging_dir"
 if [[ -n "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "ISO output directory must be empty: $output_dir" >&2
   exit 2
 fi
 
-compositor_build_args=(--buildtype=release --prefix=/usr --wrap-mode=nofallback)
+compositor_build_args=(--buildtype=release --prefix=/usr --wrap-mode=nofallback
+	"-Dqemu_acceptance_hooks=$qemu_acceptance_hooks")
 if [[ -n "$sanitizers" ]]; then
 	compositor_build_args=(--buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback
-		"-Db_sanitize=$sanitizers")
+		"-Db_sanitize=$sanitizers" "-Dqemu_acceptance_hooks=$qemu_acceptance_hooks")
 fi
 meson setup "$compositor_build_dir" "$repo_root/desktop/compositor" \
 	"${compositor_build_args[@]}"
@@ -94,6 +123,7 @@ DESTDIR="$staging_dir" meson install -C "$protocol_probe_build_dir"
 meson setup "$shell_build_dir" "$repo_root/desktop/shell" \
   --buildtype=release --prefix=/usr --wrap-mode=nofallback
 ninja -C "$shell_build_dir"
+meson test -C "$shell_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$shell_build_dir"
 
 meson setup "$settings_build_dir" "$repo_root/desktop/settings" \
@@ -101,6 +131,26 @@ meson setup "$settings_build_dir" "$repo_root/desktop/settings" \
 ninja -C "$settings_build_dir"
 meson test -C "$settings_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$settings_build_dir"
+
+if [[ "$native_sanitizers" == true ]]; then
+	: > "$metadata_dir/sanitizer-results.txt"
+	for component in compositor settings shell; do
+		sanitizer_build_dir="$build_root/${component}-sanitizer-build"
+		meson setup "$sanitizer_build_dir" "$repo_root/desktop/$component" \
+			--buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback \
+			-Db_sanitize=address,undefined
+		ninja -C "$sanitizer_build_dir"
+		if ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+			meson test -C "$sanitizer_build_dir" --print-errorlogs \
+			2>&1 | tee "$metadata_dir/sanitizer-${component}.log"; then
+			printf '%s=PASS\n' "$component" >> "$metadata_dir/sanitizer-results.txt"
+		else
+			printf '%s=FAIL\n' "$component" >> "$metadata_dir/sanitizer-results.txt"
+		fi
+	done
+	printf 'Sanitizer findings summary:\n'
+	cat "$metadata_dir/sanitizer-results.txt"
+fi
 
 cp -a "$repo_root/config/archiso/." "$profile_dir/"
 # Windows Git checkouts can represent index-mode symlinks as regular files
@@ -129,6 +179,9 @@ while IFS= read -r -d '' index_entry; do
 done < <("${git_command[@]}" ls-files --stage -z)
 cp -a "$repo_root/config/graphics-overlay/airootfs/." "$profile_dir/airootfs/"
 cp -a "$repo_root/config/compositor-overlay/airootfs/." "$profile_dir/airootfs/"
+install -d "$profile_dir/airootfs/etc/systemd/system/multi-user.target.wants"
+ln -sfn ../seyrix-qemu-control.service \
+	"$profile_dir/airootfs/etc/systemd/system/multi-user.target.wants/seyrix-qemu-control.service"
 # Normalize the sourced login profile from Windows checkouts before it enters the ISO.
 sed -i 's/\r$//' "$profile_dir/airootfs/home/seyrix/.bash_profile"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-compositor" \
@@ -176,6 +229,8 @@ sed -i \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-phase2c-probe-check"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-compositor"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/local/bin/start-seyrix"]="0:0:755"' \
+	-e '/^file_permissions=(/a\  ["/etc/udev/rules.d/95-seyrix-qemu-control.rules"]="0:0:644"' \
+	-e '/^file_permissions=(/a\  ["/etc/systemd/system/seyrix-qemu-control.service"]="0:0:644"' \
   -e '/^file_permissions=(/a\  ["/root"]="0:0:750"' \
   -e '/^file_permissions=(/a\  ["/home/seyrix"]="1000:1000:700"' \
   -e '/^file_permissions=(/a\  ["/home/seyrix/.bash_profile"]="1000:1000:600"' \

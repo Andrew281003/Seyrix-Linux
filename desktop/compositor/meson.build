@@ -15,6 +15,11 @@ xkbcommon = dependency('xkbcommon')
 wlr_protocols = dependency('wlr-protocols')
 wayland_scanner = find_program('wayland-scanner')
 
+compositor_c_args = ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L']
+if get_option('qemu_acceptance_hooks')
+  compositor_c_args += ['-DSEYRIX_QEMU_ACCEPTANCE_HOOKS=1']
+endif
+
 layer_shell_protocol = custom_target(
   'layer-shell-protocol-header',
   input: join_paths(
@@ -56,7 +61,7 @@ executable(
     'src/window-management.c',
     '../shell/src/shell-config.c',
   ) + [layer_shell_protocol, output_management_protocol],
-  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
+  c_args: compositor_c_args,
   dependencies: [wlroots, wayland_server, xkbcommon],
   install: true,
   install_dir: get_option('bindir'),

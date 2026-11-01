@@ -1,0 +1,6 @@
+option(
+  'qemu_acceptance_hooks',
+  type: 'boolean',
+  value: false,
+  description: 'Compile user-scoped fault injection hooks for QEMU acceptance images',
+)

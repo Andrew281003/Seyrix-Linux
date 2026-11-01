@@ -20,7 +20,6 @@ fail() {
 runtime_dir=/run/user/1000
 compositor_log=/tmp/seyrix-compositor.log
 geometry_log=/tmp/seyrix-compositor.log
-evdev_log=/tmp/seyrix-evtest-mouse.log
 wayland_display="$(sed -n 's/.*WAYLAND_DISPLAY=\([^ ]*\).*/\1/p' "$compositor_log" | head -n 1)"
 [[ -n "$wayland_display" ]] || fail "wayland-display-unavailable"
 
@@ -238,14 +237,26 @@ crash_panel_owner_shell() {
 }
 
 recover_shell_after_startup_failure() {
-  local run_id compositor shell_pid uid executable state parent
-  local binary=/usr/bin/seyrix-shell backup=/usr/bin/seyrix-shell.phase2d2-test-backup
+  local run_id compositor shell_pid uid executable state parent fixture
   local before_started before_panels before_exits before_schedules started panels exits schedules
   local new_shell_pid new_uid new_executable new_state new_parent current proc_dir pid
+  local trace_path=/tmp/seyrix-shell-startup-failure.trace
   local -a pids=()
+  shell_startup_trace() {
+    local message="SHELL_RECOVERY_TRACE $*"
+    printf '%s\n' "$message" >>"$trace_path" || return 1
+    printf '%s\n' "$message"
+  }
+  : >"$trace_path" || fail "cannot-create-shell-startup-trace"
+  chmod 600 "$trace_path" || fail "cannot-restrict-shell-startup-trace"
   run_id="$(test_run_id)"
   compositor="$(current_compositor_pid)" || fail "current-compositor-identity-ambiguous"
-  [[ -x "$binary" && ! -e "$backup" ]] || fail "shell-startup-failure-fixture-not-clean"
+  [[ "$(id -u)" == 1000 ]] || fail "shell-startup-failure-test-not-running-as-seyrix"
+  [[ -d "$runtime_dir" && -O "$runtime_dir" &&
+     "$(stat -c '%a' "$runtime_dir")" == 700 ]] ||
+    fail "private-user-runtime-directory-not-available"
+  fixture="$runtime_dir/seyrix-qemu-fail-shell-exec-once"
+  [[ ! -e "$fixture" && ! -L "$fixture" ]] || fail "shell-startup-failure-fixture-not-clean"
   before_started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
   before_panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
   before_exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
@@ -258,38 +269,45 @@ recover_shell_after_startup_failure() {
   executable="$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null || true)"
   state="$(awk '/^State:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
   parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$shell_pid/status" 2>/dev/null || true)"
-  [[ "$uid" == 1000 && "$executable" == "$binary" &&
+  [[ "$uid" == 1000 && "$executable" == /usr/bin/seyrix-shell &&
      "$state" != Z && "$state" != X && "$parent" == "$compositor" ]] ||
     fail "current-shell-identity-invalid-pid-$shell_pid"
-  printf 'SHELL_STARTUP_FAILURE_BEGIN shell_pid=%s compositor_pid=%s run=%s backup=%s\n' \
-    "$shell_pid" "$compositor" "$run_id" "$backup"
-  mv -- "$binary" "$backup" || fail "cannot-hide-shell-executable-for-test"
-  trap 'if [[ -e /usr/bin/seyrix-shell.phase2d2-test-backup && ! -e /usr/bin/seyrix-shell ]]; then mv -- /usr/bin/seyrix-shell.phase2d2-test-backup /usr/bin/seyrix-shell; fi' EXIT
+  printf 'SHELL_STARTUP_FAILURE_BEGIN shell_pid=%s compositor_pid=%s run=%s fixture=%s uid=%s\n' \
+    "$shell_pid" "$compositor" "$run_id" "$fixture" "$(id -u)"
+  shell_startup_trace "phase=validated shell_pid=$shell_pid compositor_pid=$compositor before_started=$before_started before_panels=$before_panels before_exits=$before_exits before_schedules=$before_schedules"
+  : >"$fixture" || fail "cannot-create-private-shell-startup-fixture"
+  chmod 600 "$fixture" || fail "cannot-restrict-shell-startup-fixture"
+  trap 'rm -f -- "$fixture"' EXIT
   kill -KILL "$shell_pid"
-  for _ in $(seq 1 100); do
+  shell_startup_trace "phase=kill-returned shell_pid=$shell_pid"
+  for attempt in $(seq 1 100); do
     exits="$(grep -c 'Seyrix shell exited; compositor remains available' "$compositor_log" || true)"
     schedules="$(grep -c 'Scheduling isolated shell restart attempt' "$compositor_log" || true)"
     if [[ "$exits" -ge $((before_exits + 2)) &&
           "$schedules" -ge $((before_schedules + 2)) ]] &&
+       grep -Fq 'SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed' "$compositor_log" &&
        grep -Fq 'Scheduling isolated shell restart attempt 1 in 1000 ms' "$compositor_log" &&
        grep -Fq 'Scheduling isolated shell restart attempt 2 in 2000 ms' "$compositor_log"; then
+      shell_startup_trace "phase=retry-sequence-observed iteration=$attempt exits=$exits schedules=$schedules"
       break
+    fi
+    if (( attempt % 10 == 0 )); then
+      shell_startup_trace "phase=waiting-for-retries iteration=$attempt exits=$exits schedules=$schedules fixture_present=$([[ -e "$fixture" ]] && echo yes || echo no)"
     fi
     sleep 0.1
   done
-  if [[ ! -x "$backup" || -e "$binary" ||
+  if [[ -e "$fixture" ||
         "${exits:-0}" -lt $((before_exits + 2)) ||
         "${schedules:-0}" -lt $((before_schedules + 2)) ]] ||
+     ! grep -Fq 'SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed' "$compositor_log" ||
      ! grep -Fq 'Scheduling isolated shell restart attempt 2 in 2000 ms' "$compositor_log"; then
-    if [[ -e "$backup" && ! -e "$binary" ]]; then mv -- "$backup" "$binary"; fi
     fail "shell-startup-failure-was-not-observed-after-first-retry"
   fi
-  mv -- "$backup" "$binary" || fail "cannot-restore-shell-executable-after-test"
-  for _ in $(seq 1 120); do
+  for attempt in $(seq 1 120); do
     started="$(grep -c 'Started isolated Seyrix desktop shell pid=' "$compositor_log" || true)"
     panels="$(grep -c 'Layer shell surface mapped namespace=seyrix-panel' "$compositor_log" || true)"
     current="$(current_compositor_pid || true)"
-    if [[ "$started" -ge $((before_started + 2)) &&
+    if [[ "$started" -ge $((before_started + 1)) &&
           "$panels" -gt "$before_panels" && "$current" == "$compositor" ]]; then
       new_shell_pid="$(sed -n 's/.*Started isolated Seyrix desktop shell pid=\([0-9][0-9]*\).*/\1/p' \
         "$compositor_log" | tail -n 1)"
@@ -302,24 +320,29 @@ recover_shell_after_startup_failure() {
         [[ -r "$proc_dir/status" ]] || continue
         pid="${proc_dir##*/}"
         [[ "$(process_uid "$pid")" == 1000 ]] || continue
-        [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == "$binary" ]] || continue
+        [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == /usr/bin/seyrix-shell ]] || continue
         state="$(awk '/^State:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
         [[ "$state" != Z && "$state" != X ]] || continue
         parent="$(awk '/^PPid:/ { print $2; exit }' "/proc/$pid/status" 2>/dev/null || true)"
         [[ "$parent" == "$compositor" ]] || continue
         pids+=("$pid")
       done
-      if [[ "$new_uid" == 1000 && "$new_executable" == "$binary" &&
+      if [[ "$new_uid" == 1000 && "$new_executable" == /usr/bin/seyrix-shell &&
             "$new_state" != Z && "$new_state" != X && "$new_parent" == "$compositor" &&
             "${#pids[@]}" -eq 1 && "${pids[0]}" == "$new_shell_pid" ]]; then
+        shell_startup_trace "phase=recovered-session-observed iteration=$attempt shell_pid=$new_shell_pid compositor=$compositor"
         printf 'PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed failed_launches=1 restart_attempts=2 recovered_shell_pid=%s compositor_pid=%s panel_maps=%s\n' \
           "$new_shell_pid" "$compositor" "$((panels - before_panels))"
+        rm -f -- "$fixture"
+        trap - EXIT
         return 0
       fi
     fi
+    if (( attempt % 20 == 0 )); then
+      shell_startup_trace "phase=waiting-for-shell iteration=$attempt started=$started panels=$panels compositor=$current"
+    fi
     sleep 0.25
   done
-  if [[ -e "$backup" && ! -e "$binary" ]]; then mv -- "$backup" "$binary"; fi
   fail "shell-did-not-recover-after-startup-exec-failure"
 }
 
@@ -492,7 +515,7 @@ resize_start() {
     --app-id "$app_id" --initial-size 440x320 --log "$log")
   [[ -z "$min_size" ]] || args+=(--min-size "$min_size")
   [[ -z "$max_size" ]] || args+=(--max-size "$max_size")
-  nohup runuser -u seyrix -- env XDG_RUNTIME_DIR="$runtime_dir" \
+  nohup env XDG_RUNTIME_DIR="$runtime_dir" \
     WAYLAND_DISPLAY="$wayland_display" seyrix-protocol-probe "${args[@]}" \
     >"$output" 2>&1 </dev/null &
 
@@ -726,7 +749,7 @@ watch_start() {
   local log=/tmp/seyrix-watch-pointer.log
   local output=/tmp/seyrix-watch-pointer.stdout
   rm -f -- "$log" "$output" /tmp/seyrix-watch-pointer.identity
-  nohup runuser -u seyrix -- env XDG_RUNTIME_DIR="$runtime_dir" \
+  nohup env XDG_RUNTIME_DIR="$runtime_dir" \
     WAYLAND_DISPLAY="$wayland_display" seyrix-protocol-probe --watch-pointer \
     --initial-size 280x180 --title "Seyrix QEMU Pointer Watch" \
     --app-id "seyrix.qemu.$run_id.pointer-watch" --log "$log" \
@@ -959,12 +982,81 @@ wm_snapshot() {
   printf 'WM_GEOMETRY_SNAPSHOT=passed label=%s count=%s\n' "$label" "$expected_count"
 }
 
+focus_target() {
+  local expected_count="${1:-2}" focused_line focused_pid target_pid=""
+  local output_line output_width output_height geometry_line
+  local x y width height point_x point_y qmp_x qmp_y focus_before button_before
+  local -a pids=()
+
+  mapfile -t pids < <(pgrep -u 1000 -x weston-terminal | sort -n || true)
+  if [[ "${#pids[@]}" -ne "$expected_count" ]]; then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=process-count expected=%s actual=%s\n' \
+      "$expected_count" "${#pids[@]}"
+    return 1
+  fi
+
+  focused_line="$(grep -E 'Window focused: pid=[0-9]+' "$geometry_log" | tail -n 1 || true)"
+  focused_pid="$(sed -nE 's/.*Window focused: pid=([0-9]+).*/\1/p' <<< "$focused_line")"
+  if [[ ! "$focused_pid" =~ ^[0-9]+$ ]]; then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=current-focus-unavailable line=%s\n' \
+      "${focused_line:-missing}"
+    return 1
+  fi
+  for pid in "${pids[@]}"; do
+    if [[ "$pid" != "$focused_pid" ]]; then
+      target_pid="$pid"
+      break
+    fi
+  done
+  if [[ -z "$target_pid" ]]; then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=unfocused-window-unavailable focused_pid=%s\n' \
+      "$focused_pid"
+    return 1
+  fi
+
+  if ! wm_snapshot focus-pointer "$expected_count" 1 visible; then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=visible-geometry-unavailable\n'
+    return 1
+  fi
+  output_line="$(grep -E 'Output .* active at [0-9]+x[0-9]+' "$geometry_log" | tail -n 1)"
+  output_width="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\1/p' <<< "$output_line")"
+  output_height="$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\2/p' <<< "$output_line")"
+  geometry_line="$(grep -F "GEOMETRY_EVIDENCE event=commit pid=$target_pid " \
+    "$geometry_log" | tail -n 1 || true)"
+  x="$(field "$geometry_line" x || true)"
+  y="$(field "$geometry_line" y || true)"
+  width="$(field "$geometry_line" width || true)"
+  height="$(field "$geometry_line" height || true)"
+  if [[ ! "$output_width" =~ ^[1-9][0-9]*$ ||
+        ! "$output_height" =~ ^[1-9][0-9]*$ ||
+        ! "$x" =~ ^-?[0-9]+$ || ! "$y" =~ ^-?[0-9]+$ ||
+        ! "$width" =~ ^[1-9][0-9]*$ || ! "$height" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=malformed-geometry pid=%s line=%s output=%s\n' \
+      "$target_pid" "${geometry_line:-missing}" "${output_line:-missing}"
+    return 1
+  fi
+  point_x=$((x + width / 2))
+  point_y=$((y + height / 2))
+  if (( point_x < 0 || point_x >= output_width ||
+        point_y < 0 || point_y >= output_height )); then
+    printf 'WINDOW_FOCUS_TARGET_FAILED reason=target-center-outside-output pid=%s point=%s,%s output=%sx%s\n' \
+      "$target_pid" "$point_x" "$point_y" "$output_width" "$output_height"
+    return 1
+  fi
+
+  qmp_x="$(qmp_coordinate "$point_x" "$output_width")"
+  qmp_y="$(qmp_coordinate "$point_y" "$output_height")"
+  focus_before="$(grep -Fc "Window focused: pid=$target_pid " "$geometry_log" || true)"
+  button_before="$(grep -Fc 'Pointer button press button=272' "$geometry_log" || true)"
+  printf 'WINDOW_FOCUS_TARGET_READY pid=%s qmp=%s,%s focus_before=%s button_before=%s\n' \
+    "$target_pid" "$qmp_x" "$qmp_y" "$focus_before" "$button_before"
+}
+
 move_baseline() {
   local map_line commit_line output_line pid surface x y width height
   local output_width output_height start_x start_y end_x end_y
   local qmp_start_x qmp_start_y qmp_end_x qmp_end_y
   local end_before button_before alt_before gesture_before classification_before
-  local evdev_button_before evdev_x_before evdev_y_before
   map_line="$(grep -E 'GEOMETRY_EVIDENCE event=map pid=[0-9]+ surface=[0-9]+' \
     "$geometry_log" | tail -n 1 || true)"
   pid="$(field "$map_line" pid || true)"
@@ -1019,16 +1111,10 @@ move_baseline() {
     "$geometry_log" || true)"
   classification_before="$(grep -Fc 'Focused window classification changed to floating' \
     "$geometry_log" || true)"
-  evdev_button_before="$(grep -Ec 'Event: time .*code 272 \(BTN_LEFT\)' \
-    "$evdev_log" || true)"
-  evdev_x_before="$(grep -Ec 'Event: time .*code 0 \(ABS_X\)' \
-    "$evdev_log" || true)"
-  evdev_y_before="$(grep -Ec 'Event: time .*code 1 \(ABS_Y\)' \
-    "$evdev_log" || true)"
-  printf '%s %s %s %s %s %s %s %s %s %s %s\n' \
+  printf '%s %s %s %s %s %s %s %s %s\n' \
     "$pid" "$surface" "$x" "$y" "$end_before" "$button_before" \
-    "$alt_before" "$gesture_before" "$classification_before" "$evdev_button_before" \
-    "$evdev_x_before $evdev_y_before" > /tmp/seyrix-window-move-before
+    "$alt_before" "$gesture_before" "$classification_before" \
+    > /tmp/seyrix-window-move-before
   printf 'WINDOW_MOVE_TARGET_PID=%s\nWINDOW_MOVE_TARGET_SURFACE=%s\n' \
     "$pid" "$surface"
   printf 'WINDOW_MOVE_INITIAL_SCENE=%s,%s SIZE=%sx%s OUTPUT=%sx%s\n' \
@@ -1091,6 +1177,7 @@ case "${1:-}" in
   watch-stop) watch_stop ;;
   move-baseline) move_baseline ;;
   wm-snapshot) shift; wm_snapshot "$@" ;;
+  focus-target) shift; focus_target "$@" ;;
   wm-same-identity) shift; wm_same_identity "$@" ;;
   wm-same-geometry) shift; wm_same_geometry "$@" ;;
   wm-geometry-changed) shift; wm_geometry_changed "$@" ;;

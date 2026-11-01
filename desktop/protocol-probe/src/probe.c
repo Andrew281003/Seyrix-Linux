@@ -43,6 +43,7 @@ struct probe_buffer {
 
 struct probe {
 	struct wl_display *display;
+	struct wl_callback *resize_commit_sync;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
 	struct wl_shm *shm;
@@ -298,6 +299,40 @@ static bool observed_maximized;
 static bool observed_fullscreen;
 static bool observed_state;
 
+static void resize_commit_sync_done(void *data, struct wl_callback *callback,
+		uint32_t serial) {
+	(void)serial;
+	struct probe *probe = data;
+	if (probe->resize_commit_sync == callback) {
+		probe->resize_commit_sync = NULL;
+	}
+	wl_callback_destroy(callback);
+	log_event(probe, "RESIZE_SYNC_BARRIER=passed");
+	bool changed = probe->resize_before_width != probe->toplevel.width ||
+		probe->resize_before_height != probe->toplevel.height;
+	log_event(probe,
+		"RESIZE_GEOMETRY edge=%s before=%dx%d after=%dx%d changed=%d",
+		probe->resize_edge_name, probe->resize_before_width,
+		probe->resize_before_height, probe->toplevel.width,
+		probe->toplevel.height, changed);
+	probe->done = true;
+	if (probe->toplevel.width <= 0 || probe->toplevel.height <= 0 ||
+			(!changed && !probe->min_size_set && !probe->max_size_set)) {
+		log_event(probe,
+			"RESIZE_COMPLETE=failed edge=%s reason=%s",
+			probe->resize_edge_name,
+			changed ? "invalid-committed-geometry" : "geometry-unchanged");
+		probe->failed = true;
+		return;
+	}
+	log_event(probe, "RESIZE_COMPLETE=passed edge=%s",
+		probe->resize_edge_name);
+}
+
+static const struct wl_callback_listener resize_commit_sync_listener = {
+	.done = resize_commit_sync_done,
+};
+
 static void request_rapid_state_transition(struct probe *probe) {
 	struct xdg_toplevel *top = probe->toplevel.toplevel;
 	switch (probe->cycle_step) {
@@ -371,25 +406,21 @@ static void drive_resize_after_configure(struct probe *probe,
 		return;
 	}
 	probe->resize_saw_active = false;
-	bool changed = probe->resize_before_width != probe->toplevel.width ||
-		probe->resize_before_height != probe->toplevel.height;
-	log_event(probe,
-		"RESIZE_GEOMETRY edge=%s before=%dx%d after=%dx%d changed=%d",
-		probe->resize_edge_name, probe->resize_before_width,
-		probe->resize_before_height, probe->toplevel.width,
-		probe->toplevel.height, changed);
-	probe->done = true;
-	if (probe->toplevel.width <= 0 || probe->toplevel.height <= 0 ||
-			(!changed && !probe->min_size_set && !probe->max_size_set)) {
-		log_event(probe,
-			"RESIZE_COMPLETE=failed edge=%s reason=%s",
-			probe->resize_edge_name,
-			changed ? "invalid-committed-geometry" : "geometry-unchanged");
+	/* Wait for the compositor to process the surface commit before reporting
+	 * completion. The sync request is ordered after wl_surface.commit. */
+	probe->resize_commit_sync = wl_display_sync(probe->display);
+	if (probe->resize_commit_sync == NULL ||
+			wl_callback_add_listener(probe->resize_commit_sync,
+				&resize_commit_sync_listener, probe) != 0) {
+		if (probe->resize_commit_sync != NULL) {
+			wl_callback_destroy(probe->resize_commit_sync);
+			probe->resize_commit_sync = NULL;
+		}
+		log_event(probe, "RESIZE_COMPLETE=failed edge=%s reason=sync-barrier",
+			probe->resize_edge_name);
 		probe->failed = true;
-		return;
+		probe->done = true;
 	}
-	log_event(probe, "RESIZE_COMPLETE=passed edge=%s",
-		probe->resize_edge_name);
 }
 
 static void drive_after_configure(struct probe *probe) {
@@ -1242,6 +1273,9 @@ int main(int argc, char **argv) {
 	if (probe.shm != NULL) wl_shm_destroy(probe.shm);
 	if (probe.compositor != NULL) wl_compositor_destroy(probe.compositor);
 	if (probe.registry != NULL) wl_registry_destroy(probe.registry);
+	if (probe.resize_commit_sync != NULL) {
+		wl_callback_destroy(probe.resize_commit_sync);
+	}
 	if (probe.display != NULL) {
 		wl_display_flush(probe.display);
 		wl_display_disconnect(probe.display);

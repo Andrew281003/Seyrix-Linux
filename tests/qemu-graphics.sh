@@ -5,6 +5,10 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
   exec bash "$script_dir/qemu-lock.sh" -- "$script_dir/qemu-graphics.sh" "$@"
 fi
+repo_root="$(cd -- "$script_dir/.." && pwd -P)"
+source "$repo_root/build/retention.sh"
+seyrix_retention_init
+seyrix_retention_acquire_lock
 if (( $# != 1 )); then
   echo "Usage: $0 /path/to/seyrix-development.iso" >&2
   exit 2
@@ -25,6 +29,22 @@ done
 
 qemu_bin="$(command -v qemu-system-x86_64)"
 workflow="${SEYRIX_QEMU_WORKFLOW:-phase2a}"
+resolution_profile="${SEYRIX_QEMU_RESOLUTION_PROFILE:-640x480}"
+case "$resolution_profile" in
+  640x480)
+    vga_device="virtio-vga"
+    expected_output_size="640x480"
+    ;;
+  800x600)
+    vga_device="VGA,edid=on,xres=800,yres=600"
+    expected_output_size="800x600"
+    ;;
+  *)
+    echo "SEYRIX_QEMU_RESOLUTION_PROFILE must be 640x480 or 800x600." >&2
+    exit 2
+    ;;
+esac
+export SEYRIX_QEMU_EXPECTED_OUTPUT_SIZE="$expected_output_size"
 export SEYRIX_QEMU_WORKFLOW="$workflow"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
@@ -68,13 +88,21 @@ fi
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 qemu_name="seyrix-${workflow}-graphics-test-${run_id}"
-run_dir="${SEYRIX_QEMU_GRAPHICS_DIR:-${HOME}/.cache/seyrix-linux/qemu-graphics-${run_id}}"
+run_dir="${SEYRIX_QEMU_GRAPHICS_DIR:-${SEYRIX_ARTIFACT_ROOT}/qemu-graphics-${run_id}}"
+run_dir="$(realpath -m -- "$run_dir")"
+if ! seyrix_retention_is_managed_path "$run_dir" ||
+	! seyrix_retention_is_child "$SEYRIX_ARTIFACT_ROOT" "$run_dir"; then
+	seyrix_retention_error "managed QEMU output must be a direct child of the artifact root: $run_dir"
+	exit 2
+fi
+seyrix_retention_preflight "$SEYRIX_RETENTION_QEMU_RESERVE_BYTES" "$run_dir"
 if [[ -e "$run_dir" ]]; then
   echo "QEMU graphics test directory already exists: $run_dir" >&2
   echo "Set SEYRIX_QEMU_GRAPHICS_DIR to a new, empty path to retry." >&2
   exit 2
 fi
 mkdir -p "$run_dir"
+seyrix_retention_begin "$run_dir" qemu-run
 
 run_started_utc="$(date -u --iso-8601=seconds)"
 monitor_port="${SEYRIX_QEMU_MONITOR_PORT:-$((40000 + RANDOM % 20000))}"
@@ -141,22 +169,48 @@ finish_graphics_run() {
   else
     : > "$run_dir/screenshots.sha256"
   fi
+  local run_result="PASS"
   if (( status != 0 )); then
-    local run_result="FAIL"
-    if [[ ! -f "$run_dir/test.log" ]] || \
-        grep -Eq 'STAGE_RESULT .*result=INCOMPLETE|Timed out|QEMU exited before|Could not connect to QMP' \
-          "$run_dir/test.log"; then
-      run_result="INCOMPLETE"
-    fi
-    {
-      printf 'Run result: %s\nFailure exit status: %s\nFinished UTC: %s\n' \
-        "$run_result" "$status" "$(date -u --iso-8601=seconds)"
-      printf 'Tests after the first failing or interrupted stage may be NOT RUN; '
-      printf 'stage evidence is in test.log and stage-results.log.\n'
-    } > "$run_dir/run-result.txt"
+    run_result="FAIL"
+  fi
+  if [[ -e "$run_dir/.seyrix-failed" ]] || \
+      [[ ! -f "$run_dir/expect-exit-status.txt" ]] || \
+      ! grep -Fxq 'Expect exit status: 0' "$run_dir/expect-exit-status.txt" || \
+      [[ ! -f "$run_dir/qemu-exit-status.txt" ]] || \
+      ! grep -Fxq 'QEMU exit status: 0' "$run_dir/qemu-exit-status.txt" || \
+      grep -q 'still-running-after-test' "$run_dir/qemu-process-state.txt" 2>/dev/null; then
+    run_result="INCOMPLETE"
+  fi
+  if [[ -e "$run_dir/.seyrix-failed" ]] || \
+      [[ ! -f "$run_dir/test.log" ]] || \
+      grep -Eq 'STAGE_RESULT .*result=(FAIL|INCOMPLETE)' "$run_dir/test.log" || \
+      ! awk '/^STAGE_BEGIN / { begun++ } /^STAGE_RESULT .*result=PASS/ { passed++ } END { exit !(begun > 0 && begun == passed) }' "$run_dir/test.log"; then
+    run_result="INCOMPLETE"
+  fi
+  if [[ -f "$run_dir/run-result.txt" ]] && \
+      ! grep -Fxq "Run result: $run_result" "$run_dir/run-result.txt"; then
+    run_result="INCOMPLETE"
+  fi
+  {
+    printf 'Run result: %s\nRun exit status: %s\nFinished UTC: %s\n' \
+      "$run_result" "$status" "$(date -u --iso-8601=seconds)"
+    printf 'Final status requires zero exit, all stages passed, and no failure marker.\n'
+  } > "$run_dir/run-result.txt.tmp"
+  mv -f -- "$run_dir/run-result.txt.tmp" "$run_dir/run-result.txt"
+  if [[ "$run_result" == PASS ]]; then
+    seyrix_retention_finish_qemu_run "$run_dir" "$iso_path" 0 || {
+      seyrix_retention_error "could not retain successful QEMU run at $run_dir."
+      status=1
+    }
   else
-    printf 'Run result: PASS\nFinished UTC: %s\n' \
-      "$(date -u --iso-8601=seconds)" > "$run_dir/run-result.txt"
+    seyrix_retention_finish_qemu_run "$run_dir" "$iso_path" 1 || true
+  fi
+  if [[ -d "$run_dir" ]]; then
+    printf 'QEMU %s graphics test result: %s. Evidence: %s\n' \
+      "$workflow" "$(sed -n 's/^Run result: //p' "$run_dir/run-result.txt" | head -n 1)" "$run_dir"
+  else
+    printf 'QEMU %s graphics test passed. Summary: %s/history/%s.summary\n' \
+      "$workflow" "$SEYRIX_ARTIFACT_ROOT" "$(basename -- "$run_dir")"
   fi
   exit "$status"
 }
@@ -196,14 +250,18 @@ qemu_args+=(
   -drive "if=pflash,format=raw,file=${ovmf_vars}"
   -cdrom "$iso_path"
   -boot order=d,menu=off
-  -device virtio-vga
+  -device "$vga_device"
   -device qemu-xhci
+  -device virtio-serial-pci,id=seyrix_control_bus,max_ports=2
+  -chardev pty,id=seyrix_user_console
+  -device virtserialport,bus=seyrix_control_bus.0,chardev=seyrix_user_console,name=org.seyrix.qemu-control,nr=1
   -device usb-kbd
   -device usb-tablet
   -netdev user,id=net0
   -device virtio-net-pci,netdev=net0
   -display gtk,gl=off,show-cursor=on
-  -serial stdio
+  -chardev file,id=seyrix_console,path=${run_dir}/serial.log
+  -device isa-serial,id=seyrix_uart0,chardev=seyrix_console
   -qmp "tcp:127.0.0.1:${monitor_port},server=on,wait=off"
   -no-reboot
 )
@@ -224,12 +282,15 @@ qemu_args+=(
   printf 'QEMU virtio GPU package: %s\n' "$(pacman -Q qemu-hw-display-virtio-gpu)"
   printf 'QEMU virtio VGA package: %s\n' "$(pacman -Q qemu-hw-display-virtio-vga)"
   printf 'OVMF package: %s\n' "$(pacman -Q edk2-ovmf)"
-  printf 'Display: GTK on WSLg; guest virtio-vga 2D; QEMU TCG\n'
+  printf 'Display: GTK on WSLg; guest %s 2D; QEMU TCG\n' "$vga_device"
+  printf 'Resolution acceptance profile: %s; expected active output: %s\n' "$resolution_profile" "$expected_output_size"
   printf 'RAM: 4 GiB; vCPUs: %s; machine: q35; firmware: OVMF UEFI\n' "$smp_count"
   printf 'TCG thread mode: %s\n' "${tcg_thread:-default}"
   printf 'Input: USB keyboard and USB tablet\n'
   printf 'Storage: read-only ISO only; no physical disk passthrough\n'
   printf 'QMP monitor: localhost TCP port %s\n' "$monitor_port"
+  printf 'Guest serial: explicit ISA 16550A UART on ttyS0, captured to serial.log\n'
+  printf 'Fallback control: named QEMU virtio-serial data port; Seyrix uid 1000 shell; 25-minute maximum; only active when the named device exists\n'
   printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
   printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
   printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
@@ -249,12 +310,26 @@ expect "$script_dir/qemu-graphics.exp" "$run_dir" "$monitor_port" "$qemu_bin" \
 expect_pid=$!
 if wait "$expect_pid"; then
   run_status=0
+  printf 'Expect exit status: 0\n' > "$run_dir/expect-exit-status.txt"
 else
   run_status=$?
+  printf 'Expect exit status: %s\n' "$run_status" > "$run_dir/expect-exit-status.txt"
   tail -n 60 "$run_dir/test.log" >&2
   exit "$run_status"
 fi
+qemu_pid="$(<"$run_dir/qemu.pid")"
+for _ in $(seq 1 60); do
+  [[ ! -r "/proc/$qemu_pid/cmdline" ]] && break
+  sleep 0.25
+done
+if [[ -r "/proc/$qemu_pid/cmdline" ]] && \
+    [[ "$(tr '\0' ' ' < "/proc/$qemu_pid/cmdline")" == *"$qemu_name"* ]]; then
+  printf 'QEMU exit status: unavailable (owned process still running)\n' > "$run_dir/qemu-exit-status.txt"
+  run_status=1
+  echo "Owned QEMU process remained after Expect completed." >&2
+  exit "$run_status"
+fi
+printf 'QEMU exit status: 0\n' > "$run_dir/qemu-exit-status.txt"
 
-grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|PHASE2D2_|PHASE2D3B_|SETTINGS_ENDPOINT_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
+grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|REAL_SERIAL_|SETTINGS_CONFIG_|SETTINGS_ENDPOINT_|PHASE2C_|PHASE2D2_|PHASE2D3B_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
   "$run_dir/test.log"
-printf 'QEMU %s graphics test passed. Evidence: %s\n' "$workflow" "$run_dir"

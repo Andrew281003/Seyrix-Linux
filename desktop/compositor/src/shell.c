@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -21,6 +22,46 @@ static void close_status_channel(struct seyrix_server *server);
 static void hide_overlay(struct seyrix_server *server, bool restore);
 static void disconnect_shell_client(struct seyrix_server *server);
 static void schedule_restart(struct seyrix_server *server);
+
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+static bool consume_qemu_shell_exec_failure_fixture(void) {
+	const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
+	if (runtime_dir == NULL || runtime_dir[0] != '/') {
+		return false;
+	}
+	struct stat runtime_stat;
+	if (lstat(runtime_dir, &runtime_stat) != 0 ||
+			!S_ISDIR(runtime_stat.st_mode) || runtime_stat.st_uid != getuid() ||
+			(runtime_stat.st_mode & 0077) != 0) {
+		return false;
+	}
+	static const char marker_name[] = "/seyrix-qemu-fail-shell-exec-once";
+	size_t marker_length = strlen(runtime_dir) + sizeof(marker_name);
+	char *marker_path = malloc(marker_length);
+	if (marker_path == NULL) {
+		return false;
+	}
+	(void)snprintf(marker_path, marker_length, "%s%s", runtime_dir, marker_name);
+	int marker_fd = open(marker_path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+	if (marker_fd < 0) {
+		free(marker_path);
+		return false;
+	}
+	struct stat marker_stat;
+	bool trusted_marker = fstat(marker_fd, &marker_stat) == 0 &&
+		S_ISREG(marker_stat.st_mode) && marker_stat.st_uid == getuid() &&
+		marker_stat.st_nlink == 1;
+	(void)close(marker_fd);
+	bool consumed = trusted_marker && unlink(marker_path) == 0;
+	free(marker_path);
+	if (consumed) {
+		static const char message[] =
+			"SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed\n";
+		(void)write(STDERR_FILENO, message, sizeof(message) - 1);
+	}
+	return consumed;
+}
+#endif
 
 static uint64_t monotonic_ms(void) {
 	struct timespec now;
@@ -438,6 +479,11 @@ bool seyrix_shell_start(struct seyrix_server *server) {
 		}
 		char descriptor[32];
 		(void)snprintf(descriptor, sizeof(descriptor), "%d", sockets[1]);
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		if (consume_qemu_shell_exec_failure_fixture()) {
+			_exit(127);
+		}
+#endif
 		execl("/usr/bin/seyrix-shell", "seyrix-shell", "--status-fd",
 			descriptor, (char *)NULL);
 		_exit(127);

@@ -234,6 +234,19 @@ static void apply_requested_state(struct seyrix_window *window) {
 	wlr_xdg_toplevel_set_maximized(toplevel, maximized);
 	wlr_xdg_toplevel_set_fullscreen(toplevel, fullscreen);
 	seyrix_wm_set_layout_suspended(window, special || state->minimized);
+	pid_t pid = 0;
+	uint32_t surface_id = 0;
+	if (xdg_surface->resource != NULL) {
+		surface_id = wl_resource_get_id(xdg_surface->resource);
+	}
+	if (xdg_surface->client != NULL && xdg_surface->client->client != NULL) {
+		wl_client_get_credentials(xdg_surface->client->client, &pid, NULL, NULL);
+	}
+	struct wlr_box geometry = xdg_surface->geometry;
+	wlr_log(WLR_INFO,
+		"GEOMETRY_EVIDENCE event=state pid=%ld surface=%u x=%d y=%d width=%d height=%d",
+		(long)pid, surface_id, window->scene_tree->node.x,
+		window->scene_tree->node.y, geometry.width, geometry.height);
 	if (xdg_surface->initialized) {
 		wlr_log(WLR_INFO,
 			"Window state requested: app_id=%s maximized=%d fullscreen=%d minimized=%d",

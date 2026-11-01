@@ -5,6 +5,10 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
   exec bash "$script_dir/qemu-lock.sh" -- "$script_dir/qemu-uefi.sh" "$@"
 fi
+repo_root="$(cd -- "$script_dir/.." && pwd -P)"
+source "$repo_root/build/retention.sh"
+seyrix_retention_init
+seyrix_retention_acquire_lock
 if (( $# != 1 )); then
   echo "Usage: $0 /path/to/seyrix.iso" >&2
   exit 2
@@ -32,13 +36,21 @@ if [[ ! -r "$ovmf_code" || ! -r "$ovmf_vars_template" ]]; then
 fi
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
-run_dir="${SEYRIX_QEMU_TEST_DIR:-${HOME}/.cache/seyrix-linux/qemu-${run_id}}"
+run_dir="${SEYRIX_QEMU_TEST_DIR:-${SEYRIX_ARTIFACT_ROOT}/qemu-${run_id}}"
+run_dir="$(realpath -m -- "$run_dir")"
+if ! seyrix_retention_is_managed_path "$run_dir" ||
+	! seyrix_retention_is_child "$SEYRIX_ARTIFACT_ROOT" "$run_dir"; then
+	seyrix_retention_error "managed QEMU output must be a direct child of the artifact root: $run_dir"
+	exit 2
+fi
+seyrix_retention_preflight "$SEYRIX_RETENTION_QEMU_RESERVE_BYTES" "$run_dir"
 if [[ -e "$run_dir" ]]; then
   echo "QEMU test directory already exists: $run_dir" >&2
   echo "Set SEYRIX_QEMU_TEST_DIR to a new, empty path to retry." >&2
   exit 2
 fi
 mkdir -p "$run_dir"
+seyrix_retention_begin "$run_dir" qemu-run
 run_started_utc="$(date -u --iso-8601=seconds)"
 serial_log="$run_dir/serial.log"
 expect_pid=""
@@ -86,9 +98,48 @@ finish_uefi_run() {
   else
     printf 'QEMU PID was not recorded before test exit.\n' > "$run_dir/qemu-process-state.txt"
   fi
+  local run_result="PASS"
   if (( status != 0 )); then
-    printf 'Failure exit status: %s\nFinished UTC: %s\n' \
-      "$status" "$(date -u --iso-8601=seconds)" > "$run_dir/failure-result.txt"
+    run_result="FAIL"
+  fi
+  if [[ -e "$run_dir/.seyrix-failed" ]] || \
+      [[ ! -f "$run_dir/expect-exit-status.txt" ]] || \
+      ! grep -Fxq 'Expect exit status: 0' "$run_dir/expect-exit-status.txt" || \
+      [[ ! -f "$run_dir/qemu-exit-status.txt" ]] || \
+      ! grep -Fxq 'QEMU exit status: 0' "$run_dir/qemu-exit-status.txt" || \
+      grep -q 'still-running-after-test' "$run_dir/qemu-process-state.txt" 2>/dev/null; then
+    run_result="INCOMPLETE"
+  fi
+  if [[ -e "$run_dir/.seyrix-failed" ]] || \
+      [[ ! -f "$run_dir/test.log" ]] || \
+      grep -Eq 'STAGE_RESULT .*result=(FAIL|INCOMPLETE)' "$run_dir/test.log" || \
+      ! awk '/^STAGE_BEGIN / { begun++ } /^STAGE_RESULT .*result=PASS/ { passed++ } END { exit !(begun > 0 && begun == passed) }' "$run_dir/test.log"; then
+    run_result="INCOMPLETE"
+  fi
+  if [[ -f "$run_dir/run-result.txt" ]] && \
+      ! grep -Fxq "Run result: $run_result" "$run_dir/run-result.txt"; then
+    run_result="INCOMPLETE"
+  fi
+  {
+    printf 'Run result: %s\nRun exit status: %s\nFinished UTC: %s\n' \
+      "$run_result" "$status" "$(date -u --iso-8601=seconds)"
+    printf 'Final status requires zero exit, all stages passed, and no failure marker.\n'
+  } > "$run_dir/run-result.txt.tmp"
+  mv -f -- "$run_dir/run-result.txt.tmp" "$run_dir/run-result.txt"
+  if [[ "$run_result" == PASS ]]; then
+    seyrix_retention_finish_qemu_run "$run_dir" "$iso_path" 0 || {
+      seyrix_retention_error "could not retain successful QEMU run at $run_dir."
+      status=1
+    }
+  else
+    seyrix_retention_finish_qemu_run "$run_dir" "$iso_path" 1 || true
+  fi
+  if [[ -d "$run_dir" ]]; then
+    printf 'QEMU test result: %s. Evidence: %s\n' \
+      "$(sed -n 's/^Run result: //p' "$run_dir/run-result.txt" | head -n 1)" "$run_dir"
+  else
+    printf 'QEMU test passed. Summary: %s/history/%s.summary\n' \
+      "$SEYRIX_ARTIFACT_ROOT" "$(basename -- "$run_dir")"
   fi
   exit "$status"
 }
@@ -155,10 +206,26 @@ qemu_args=(-name "$qemu_name" "${qemu_args[@]}")
 expect "$script_dir/qemu-boot.exp" "$serial_log" "$(command -v qemu-system-x86_64)" \
   "${qemu_args[@]}" > "$run_dir/test.log" 2>&1 &
 expect_pid=$!
-if ! wait "$expect_pid"; then
+if wait "$expect_pid"; then
+  run_status=0
+  printf 'Expect exit status: 0\n' > "$run_dir/expect-exit-status.txt"
+else
+  run_status=$?
+  printf 'Expect exit status: %s\n' "$run_status" > "$run_dir/expect-exit-status.txt"
   tail -n 50 "$run_dir/test.log" >&2
-  exit 1
+  exit "$run_status"
 fi
+qemu_pid="$(<"$run_dir/qemu.pid")"
+for _ in $(seq 1 60); do
+  [[ ! -r "/proc/$qemu_pid/cmdline" ]] && break
+  sleep 0.25
+done
+if [[ -r "/proc/$qemu_pid/cmdline" ]] && \
+    [[ "$(tr '\0' ' ' < "/proc/$qemu_pid/cmdline")" == *"$qemu_name"* ]]; then
+  printf 'QEMU exit status: unavailable (owned process still running)\n' > "$run_dir/qemu-exit-status.txt"
+  run_status=1
+  echo "Owned QEMU process remained after Expect completed." >&2
+  exit "$run_status"
+fi
+printf 'QEMU exit status: 0\n' > "$run_dir/qemu-exit-status.txt"
 grep -E 'BOOT_TO_LOGIN_MS=|CLEAN_SHUTDOWN=' "$run_dir/test.log"
-
-printf 'QEMU test passed. Evidence: %s\n' "$run_dir"

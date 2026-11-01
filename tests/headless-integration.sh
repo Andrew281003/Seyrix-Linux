@@ -2,8 +2,18 @@
 set -Eeuo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$repo_root/build/retention.sh"
+seyrix_retention_init
+seyrix_retention_acquire_lock
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
-run_root="${SEYRIX_HEADLESS_ROOT:-${HOME}/.cache/seyrix-linux/headless-${run_id}}"
+run_root="${SEYRIX_HEADLESS_ROOT:-${SEYRIX_ARTIFACT_ROOT}/headless-${run_id}}"
+run_root="$(realpath -m -- "$run_root")"
+if ! seyrix_retention_is_managed_path "$run_root" ||
+	! seyrix_retention_is_child "$SEYRIX_ARTIFACT_ROOT" "$run_root"; then
+	seyrix_retention_error "managed headless output must be a direct child of the artifact root: $run_root"
+	exit 2
+fi
+seyrix_retention_preflight "$SEYRIX_RETENTION_QEMU_RESERVE_BYTES" "$run_root"
 build_root="$run_root/build"
 stage_root="$run_root/stage"
 runtime_dir="$run_root/runtime"
@@ -96,9 +106,17 @@ cleanup() {
 	fi
 	if (( failures > 0 )); then exit_code=1; fi
 	printf 'RUN_FINISHED_UTC=%s\nEXIT_STATUS=%s\n' "$(date -u --iso-8601=seconds)" "$exit_code" >> "$test_log"
+	seyrix_retention_finish_headless_run "$run_root" "$exit_code" || true
+	if [[ -d "$run_root" ]]; then
+		printf 'EVIDENCE_DIR=%s\nRESULTS=%s\n' "$run_root" "$result_file"
+	else
+		printf 'RUN_SUMMARY=%s/history/%s.summary\n' \
+			"$SEYRIX_ARTIFACT_ROOT" "$(basename -- "$run_root")"
+	fi
 	exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
+seyrix_retention_begin "$run_root" headless-run
 
 wait_for() {
 	local name="$1" seconds="$2" command="$3" started=$SECONDS
@@ -327,5 +345,3 @@ if [[ -n "${SEYRIX_HEADLESS_SANITIZERS:-}" ]]; then
 else
 	record sanitizer_scan NOT_RUN "compositor was built without sanitizer instrumentation"
 fi
-printf 'EVIDENCE_DIR=%s\n' "$run_root"
-printf 'RESULTS=%s\n' "$result_file"

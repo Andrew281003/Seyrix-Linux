@@ -2,6 +2,7 @@
 
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <wlr/util/log.h>
 
@@ -365,7 +366,9 @@ void seyrix_wm_initialize_window(struct seyrix_window *window) {
 		window->classification = classification;
 		window->classification_override = true;
 		window->classification_from_rule = true;
-	} else if (window->xdg_toplevel->parent != NULL) {
+	} else if (window->xdg_toplevel->parent != NULL ||
+			(window->xdg_toplevel->app_id != NULL &&
+			strcmp(window->xdg_toplevel->app_id, "org.seyrix.settings") == 0)) {
 		window->classification = SEYRIX_WINDOW_FLOATING;
 	} else {
 		window->classification = SEYRIX_WINDOW_TILED;

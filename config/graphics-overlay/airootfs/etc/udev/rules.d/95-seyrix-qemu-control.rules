@@ -1,0 +1,1 @@
+SUBSYSTEM=="virtio-ports", KERNEL=="vport*", ATTR{name}=="org.seyrix.qemu-control", OWNER="seyrix", GROUP="seyrix", MODE="0600", SYMLINK+="virtio-ports/org.seyrix.qemu-control", TAG+="systemd", ENV{SYSTEMD_WANTS}+="seyrix-qemu-control.service"
