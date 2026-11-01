@@ -2,9 +2,14 @@
 set -Eeuo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$repo_root/build/retention.sh"
+seyrix_retention_init
+seyrix_retention_acquire_lock
 build_id="$(date -u +%Y%m%dT%H%M%SZ)"
-build_root="${SEYRIX_BUILD_ROOT:-${HOME}/.cache/seyrix-linux/phase1-${build_id}}"
+build_root="${SEYRIX_BUILD_ROOT:-${SEYRIX_ARTIFACT_ROOT}/phase1-${build_id}}"
+build_root="$(realpath -m -- "$build_root")"
 output_dir="${SEYRIX_OUTPUT_DIR:-${build_root}/out}"
+output_dir="$(realpath -m -- "$output_dir")"
 work_dir="${build_root}/work"
 profile_dir="${build_root}/profile"
 metadata_dir="${build_root}/metadata"
@@ -27,12 +32,23 @@ if [[ -e "$build_root" ]]; then
   exit 2
 fi
 
+if ! seyrix_retention_is_managed_path "$build_root" ||
+    ! seyrix_retention_is_child "$SEYRIX_ARTIFACT_ROOT" "$build_root" ||
+    ! seyrix_retention_is_child "$build_root" "$output_dir"; then
+  echo "Build and ISO output paths must be under the external artifact root and outside every Git worktree." >&2
+  exit 2
+fi
+seyrix_retention_preflight "$SEYRIX_RETENTION_BUILD_RESERVE_BYTES" "$build_root"
+
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
 if [[ ! "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]]; then
   echo "SOURCE_DATE_EPOCH must be a non-negative integer." >&2
   exit 2
 fi
 
+mkdir -p "$build_root"
+seyrix_retention_begin "$build_root" build
+trap 'seyrix_retention_finish_build "$build_root" "$?"' EXIT
 mkdir -p "$work_dir" "$output_dir" "$profile_dir" "$metadata_dir"
 if [[ -n "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "ISO output directory must be empty: $output_dir" >&2
