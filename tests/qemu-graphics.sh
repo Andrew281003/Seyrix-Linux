@@ -2,7 +2,14 @@
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ ! -r "$script_dir/qemu-graphics-preflight.sh" ]]; then
+  echo "Required QEMU harness preflight module is missing: $script_dir/qemu-graphics-preflight.sh" >&2
+  exit 2
+fi
+source "$script_dir/qemu-graphics-preflight.sh"
 if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
+  qemu_graphics_validate_support_files "$script_dir" \
+    "${SEYRIX_QEMU_WORKFLOW:-phase2a}" "${SEYRIX_QEMU_SETTINGS_RENDER_TRACE_ONLY:-0}" || exit 2
   exec bash "$script_dir/qemu-lock.sh" -- "$script_dir/qemu-graphics.sh" "$@"
 fi
 if (( $# != 1 )); then
@@ -29,6 +36,9 @@ export SEYRIX_QEMU_WORKFLOW="$workflow"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
 renderer_request="${SEYRIX_QEMU_RENDERER:-}"
+settings_render_trace_only="${SEYRIX_QEMU_SETTINGS_RENDER_TRACE_ONLY:-0}"
+preflight_only="${SEYRIX_QEMU_PREFLIGHT_ONLY:-0}"
+expected_iso_sha256="${SEYRIX_QEMU_EXPECTED_ISO_SHA256:-}"
 if [[ "$workflow" != phase2a && "$workflow" != phase2b && "$workflow" != phase2c && "$workflow" != phase2d2 && "$workflow" != phase2d3b ]]; then
   echo "Unsupported QEMU workflow: $workflow" >&2
   exit 2
@@ -45,6 +55,36 @@ if [[ -n "$renderer_request" && "$renderer_request" != pixman && "$renderer_requ
   echo "SEYRIX_QEMU_RENDERER must be pixman or gles2 when set." >&2
   exit 2
 fi
+if [[ "$settings_render_trace_only" != 0 && "$settings_render_trace_only" != 1 ]]; then
+  echo "SEYRIX_QEMU_SETTINGS_RENDER_TRACE_ONLY must be 0 or 1." >&2
+  exit 2
+fi
+if [[ "$preflight_only" != 0 && "$preflight_only" != 1 ]]; then
+  echo "SEYRIX_QEMU_PREFLIGHT_ONLY must be 0 or 1." >&2
+  exit 2
+fi
+if [[ -n "$expected_iso_sha256" ]]; then
+  if [[ ! "$expected_iso_sha256" =~ ^[[:xdigit:]]{64}$ ]]; then
+    echo "SEYRIX_QEMU_EXPECTED_ISO_SHA256 must be a 64-character hexadecimal SHA-256." >&2
+    exit 2
+  fi
+  actual_iso_sha256="$(sha256sum "$iso_path" | awk '{print $1}')"
+  if [[ "${actual_iso_sha256,,}" != "${expected_iso_sha256,,}" ]]; then
+    printf 'ISO SHA-256 mismatch: expected %s, got %s\n' \
+      "$expected_iso_sha256" "$actual_iso_sha256" >&2
+    exit 2
+  fi
+  printf 'ISO SHA-256 preflight passed: %s\n' "$actual_iso_sha256"
+fi
+if [[ "$settings_render_trace_only" == 1 && "$workflow" != phase2d3b ]]; then
+  echo "The Settings render trace requires SEYRIX_QEMU_WORKFLOW=phase2d3b." >&2
+  exit 2
+fi
+if [[ "$settings_render_trace_only" == 1 ]] && ! command -v python3 >/dev/null 2>&1; then
+  echo "Python 3 is required for the Settings QMP screenshot comparison." >&2
+  exit 2
+fi
+qemu_graphics_validate_support_files "$script_dir" "$workflow" "$settings_render_trace_only" || exit 2
 if ! "$qemu_bin" -display help 2>&1 | grep -q '^gtk$'; then
   echo "QEMU GTK display backend is missing. Install qemu-ui-gtk." >&2
   exit 2
@@ -64,6 +104,14 @@ ovmf_vars_template="${SEYRIX_OVMF_VARS:-${firmware_dir}/OVMF_VARS.4m.fd}"
 if [[ ! -r "$ovmf_code" || ! -r "$ovmf_vars_template" ]]; then
   echo "OVMF firmware not found. Install edk2-ovmf or set SEYRIX_OVMF_CODE and SEYRIX_OVMF_VARS." >&2
   exit 2
+fi
+
+if [[ "$preflight_only" == 1 ]]; then
+  printf 'QEMU_GRAPHICS_PREFLIGHT=PASS workflow=%s settings_trace_only=%s iso=%s\n' \
+    "$workflow" "$settings_render_trace_only" "$iso_path"
+  printf 'QEMU_GRAPHICS_PREFLIGHT_SUPPORT_FILES=PASS\n'
+  printf 'QEMU_GRAPHICS_PREFLIGHT_QEMU_BACKEND=PASS display=gtk device=virtio-vga firmware=OVMF\n'
+  exit 0
 fi
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -104,6 +152,24 @@ finish_graphics_run() {
   } >> "$run_dir/run-metadata.txt"
   if [[ -n "${SEYRIX_QEMU_LOCK_OWNER_FILE:-}" && -r "$SEYRIX_QEMU_LOCK_OWNER_FILE" ]]; then
     cp -- "$SEYRIX_QEMU_LOCK_OWNER_FILE" "$run_dir/qemu-lock-owner.txt"
+  fi
+  extract_serial_block() {
+    local source_log="$1" begin_marker="$2" end_marker="$3" destination="$4"
+    awk -v begin="$begin_marker" -v end="$end_marker" '
+      { sub(/\r$/, "") }
+      !inside && index($0, begin) { inside = 1; next }
+      inside && index($0, end) { found = 1; exit }
+      inside { print }
+      END { if (!found) exit 1 }
+    ' "$source_log" > "$destination"
+  }
+  if [[ -f "$run_dir/test.log" ]]; then
+    extract_serial_block "$run_dir/test.log" \
+      SETTINGS_CLIENT_TRACE_COMPLETE_BEGIN SETTINGS_CLIENT_TRACE_COMPLETE_END \
+      "$run_dir/settings-render.trace" || true
+    extract_serial_block "$run_dir/test.log" \
+      SETTINGS_COMPOSITOR_LOG_COMPLETE_BEGIN SETTINGS_COMPOSITOR_LOG_COMPLETE_END \
+      "$run_dir/seyrix-compositor.log" || true
   fi
   if [[ -f "$run_dir/test.log" ]]; then
     grep -E '^STAGE_BEGIN |^STAGE_RESULT ' "$run_dir/test.log" \
@@ -233,6 +299,7 @@ qemu_args+=(
   printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
   printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
   printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
+  printf 'Settings render trace only: %s\n' "$settings_render_trace_only"
   printf 'QEMU run ID: %s\n' "$run_id"
   printf 'QEMU lock file: %s\n' "${SEYRIX_QEMU_LOCK_FILE:-unavailable}"
   printf 'QEMU lock timeout seconds: %s\n' "${SEYRIX_QEMU_LOCK_TIMEOUT_SEC:-30}"
@@ -251,10 +318,30 @@ if wait "$expect_pid"; then
   run_status=0
 else
   run_status=$?
+fi
+
+if [[ "$settings_render_trace_only" == 1 ]]; then
+  if [[ -f "$run_dir/phase2d3b-appearance-640x480.ppm" && -f "$run_dir/phase2d3b-desktop-dock-640x480.ppm" ]]; then
+    if python3 "$script_dir/settings-render-pixel-compare.py" --before "$run_dir/phase2d3b-appearance-640x480.ppm" --after "$run_dir/phase2d3b-desktop-dock-640x480.ppm" --evidence-log "$run_dir/test.log" >> "$run_dir/test.log" 2>&1; then
+      pixel_status=0
+    else
+      pixel_status=$?
+    fi
+  else
+    printf 'SETTINGS_PIXEL_COMPARISON_INCOMPLETE reason=missing-qmp-screenshots\n' >> "$run_dir/test.log"
+    printf 'STAGE_RESULT name={Settings QMP screenshot content comparison} result=INCOMPLETE reason=missing-qmp-screenshots\n' >> "$run_dir/test.log"
+    pixel_status=2
+  fi
+  if (( run_status == 0 && pixel_status != 0 )); then
+    run_status=$pixel_status
+  fi
+fi
+
+if (( run_status != 0 )); then
   tail -n 60 "$run_dir/test.log" >&2
   exit "$run_status"
 fi
 
-grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|PHASE2D2_|PHASE2D3B_|SETTINGS_ENDPOINT_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
+grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|PHASE2C_|PHASE2D2_|PHASE2D3B_|SETTINGS_ENDPOINT_|SETTINGS_PAGE_INPUT_SEQUENCE=|SETTINGS_INPUT_VERIFICATION_RESULT=|SETTINGS_GTK_PAGE_TRANSITION=|SETTINGS_QMP_.*CAPTURE=|SETTINGS_PIXEL_COMPARISON_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
   "$run_dir/test.log"
 printf 'QEMU %s graphics test passed. Evidence: %s\n' "$workflow" "$run_dir"

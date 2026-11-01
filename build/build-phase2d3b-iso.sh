@@ -19,6 +19,7 @@ output_dir="${SEYRIX_OUTPUT_DIR:-${build_root}/out}"
 work_dir="${build_root}/work"
 profile_dir="${build_root}/profile"
 metadata_dir="${build_root}/metadata"
+resume_build="${SEYRIX_BUILD_RESUME:-0}"
 compositor_build_dir="${build_root}/compositor-build"
 protocol_probe_build_dir="${build_root}/protocol-probe-build"
 shell_build_dir="${build_root}/shell-build"
@@ -57,9 +58,13 @@ if ! pkg-config --exists wlr-protocols ||
   exit 2
 fi
 
-if [[ -e "$build_root" ]]; then
+if [[ "$resume_build" != 0 && "$resume_build" != 1 ]]; then
+  echo "SEYRIX_BUILD_RESUME must be 0 or 1." >&2
+  exit 2
+fi
+if [[ -e "$build_root" && "$resume_build" != 1 ]]; then
   echo "Build directory already exists: $build_root" >&2
-  echo "Set SEYRIX_BUILD_ROOT to a new, empty path to retry." >&2
+  echo "Set SEYRIX_BUILD_ROOT to a new, empty path to start another build." >&2
   exit 2
 fi
 
@@ -75,28 +80,40 @@ if [[ -n "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   exit 2
 fi
 
+meson_setup_or_reconfigure() {
+  local build_dir="$1" source_dir="$2"
+  shift 2
+  if [[ -f "$build_dir/build.ninja" ]]; then
+    meson setup --reconfigure "$build_dir" "$source_dir" "$@"
+  else
+    meson setup "$build_dir" "$source_dir" "$@"
+  fi
+}
+
 compositor_build_args=(--buildtype=release --prefix=/usr --wrap-mode=nofallback)
 if [[ -n "$sanitizers" ]]; then
 	compositor_build_args=(--buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback
 		"-Db_sanitize=$sanitizers")
 fi
-meson setup "$compositor_build_dir" "$repo_root/desktop/compositor" \
-	"${compositor_build_args[@]}"
+meson_setup_or_reconfigure "$compositor_build_dir" \
+	"$repo_root/desktop/compositor" "${compositor_build_args[@]}"
 ninja -C "$compositor_build_dir"
 meson test -C "$compositor_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$compositor_build_dir"
 
-meson setup "$protocol_probe_build_dir" "$repo_root/desktop/protocol-probe" \
+meson_setup_or_reconfigure "$protocol_probe_build_dir" \
+  "$repo_root/desktop/protocol-probe" \
   --buildtype=release --prefix=/usr --wrap-mode=nofallback
 ninja -C "$protocol_probe_build_dir"
 DESTDIR="$staging_dir" meson install -C "$protocol_probe_build_dir"
 
-meson setup "$shell_build_dir" "$repo_root/desktop/shell" \
+meson_setup_or_reconfigure "$shell_build_dir" "$repo_root/desktop/shell" \
   --buildtype=release --prefix=/usr --wrap-mode=nofallback
 ninja -C "$shell_build_dir"
 DESTDIR="$staging_dir" meson install -C "$shell_build_dir"
 
-meson setup "$settings_build_dir" "$repo_root/desktop/settings" \
+meson_setup_or_reconfigure "$settings_build_dir" \
+  "$repo_root/desktop/settings" \
   --buildtype=release --prefix=/usr --wrap-mode=nofallback
 ninja -C "$settings_build_dir"
 meson test -C "$settings_build_dir" --print-errorlogs
@@ -127,6 +144,12 @@ while IFS= read -r -d '' index_entry; do
 	rm -f -- "$profile_path"
 	ln -s -- "$link_target" "$profile_path"
 done < <("${git_command[@]}" ls-files --stage -z)
+serial_getty_rule="$profile_dir/airootfs/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"
+if [[ ! -L "$serial_getty_rule" ]] ||
+    [[ "$(readlink "$serial_getty_rule")" != /usr/lib/systemd/system/serial-getty@.service ]]; then
+  echo "The existing experimental ttyS0 serial-getty enablement rule is missing from the diagnostic profile." >&2
+  exit 1
+fi
 cp -a "$repo_root/config/graphics-overlay/airootfs/." "$profile_dir/airootfs/"
 cp -a "$repo_root/config/compositor-overlay/airootfs/." "$profile_dir/airootfs/"
 # Normalize the sourced login profile from Windows checkouts before it enters the ISO.
@@ -141,6 +164,19 @@ install -D -m 0755 "$staging_dir/usr/bin/seyrix-settings" \
   "$profile_dir/airootfs/usr/bin/seyrix-settings"
 install -D -m 0644 "$staging_dir/usr/share/applications/seyrix-settings.desktop" \
   "$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
+install -D -m 0755 "$repo_root/tests/settings-render-trace-launcher.py" \
+  "$profile_dir/airootfs/usr/local/bin/seyrix-settings-render-trace"
+desktop_entry_path="$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
+sed -i 's/\r$//' "$desktop_entry_path"
+sed -i \
+  -e 's#^Exec=seyrix-settings$#Exec=/usr/local/bin/seyrix-settings-render-trace#' \
+  -e 's#^TryExec=seyrix-settings$#TryExec=/usr/local/bin/seyrix-settings-render-trace#' \
+  "$desktop_entry_path"
+if ! grep -qx 'Exec=/usr/local/bin/seyrix-settings-render-trace' "$desktop_entry_path" || \
+    ! grep -qx 'TryExec=/usr/local/bin/seyrix-settings-render-trace' "$desktop_entry_path"; then
+  echo "Could not route the Settings desktop entry through its diagnostic trace launcher." >&2
+  exit 1
+fi
 install -D -m 0755 "$settings_build_dir/settings-endpoint-probe" \
   "$profile_dir/airootfs/usr/lib/seyrix-tests/settings-endpoint-probe"
 install -D -m 0644 "$staging_dir/usr/share/seyrix/Manual.txt" \
@@ -160,6 +196,8 @@ EOF
 cat "$repo_root/config/graphics-overlay/packages.x86_64" \
   "$repo_root/config/compositor-overlay/packages.x86_64" \
   "$repo_root/config/settings-overlay/packages.x86_64" >> "$profile_dir/packages.x86_64"
+# The diagnostic-only Wayland trace launcher uses Python to timestamp each client protocol line.
+printf 'python\n' >> "$profile_dir/packages.x86_64"
 # Pacman treats CRLF package names as distinct names, so normalize the combined list.
 sed -i 's/\r$//' "$profile_dir/packages.x86_64"
 
@@ -169,6 +207,7 @@ sed -i \
   -e '/^file_permissions=(/a\  ["/usr/lib/seyrix-tests/settings-endpoint-probe"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/share/applications/seyrix-settings.desktop"]="0:0:644"' \
   -e '/^file_permissions=(/a\  ["/usr/share/seyrix/build-info"]="0:0:644"' \
+  -e '/^file_permissions=(/a\  ["/usr/local/bin/seyrix-settings-render-trace"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-settings"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-protocol-probe"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-shell"]="0:0:755"' \

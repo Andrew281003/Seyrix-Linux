@@ -35,6 +35,7 @@ set phase2b 0
 set phase2c 0
 set phase2d2 0
 set phase2d3b 0
+set settings_render_trace_only 0
 set sanitizers_enabled 0
 set renderer_request ""
 set egl_lifecycle_control 0
@@ -60,6 +61,14 @@ if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c"} {
 	set phase2c 1
+}
+if {[info exists env(SEYRIX_QEMU_SETTINGS_RENDER_TRACE_ONLY)] &&
+		$env(SEYRIX_QEMU_SETTINGS_RENDER_TRACE_ONLY) eq "1"} {
+	if {!$phase2d3b} {
+		puts stderr "Settings render trace mode requires the phase2d3b workflow."
+		exit 2
+	}
+	set settings_render_trace_only 1
 }
 if {[info exists env(SEYRIX_QEMU_SANITIZERS)] &&
 		$env(SEYRIX_QEMU_SANITIZERS) eq "1"} {
@@ -200,6 +209,7 @@ proc keycode_for {character} {
         "=" { return [list "equal" 0] }
         "." { return [list "dot" 0] }
         ">" { return [list "dot" 1] }
+        "@" { return [list "2" 1] }
         "\n" { return [list "ret" 0] }
         default { error "Unsupported QEMU key character: $character" }
     }
@@ -294,37 +304,33 @@ proc qmp_mouse_drag {channel x1 y1 x2 y2 button} {
     after 100
 }
 
-proc install_guest_helper {helper_path} {
+proc install_guest_helper {helper_path {guest_path "/tmp/seyrix-qemu-guest-helper.sh"} {result_marker "QEMU_GUEST_HELPER"}} {
     global qemu_spawn_id timeout
     set saved_timeout $timeout
     set timeout 30
+    match_max -i $qemu_spawn_id 2000000
     set channel [open $helper_path r]
     set helper_source [read $channel]
     close $channel
     set helper_source [string map [list "\r" ""] $helper_source]
-    send -i $qemu_spawn_id -- "cat > /tmp/seyrix-qemu-guest-helper.sh <<'SEYRIX_GUEST_HELPER_EOF'\r"
+    send -i $qemu_spawn_id -- "cat > $guest_path <<'SEYRIX_GUEST_HELPER_EOF'\r"
     set helper_payload [string map [list "\n" "\r"] $helper_source]
     send -i $qemu_spawn_id -- $helper_payload
-    send -i $qemu_spawn_id -- "\rSEYRIX_GUEST_HELPER_EOF\rif chmod +x /tmp/seyrix-qemu-guest-helper.sh && bash -n /tmp/seyrix-qemu-guest-helper.sh; then echo QEMU_GUEST_HELPER=installed; else echo QEMU_GUEST_HELPER=failed; fi\r"
-    expect -i $qemu_spawn_id \
-        -re {QEMU_GUEST_HELPER=installed} {} \
-        -re {QEMU_GUEST_HELPER=failed} {
+    send -i $qemu_spawn_id -- "\rSEYRIX_GUEST_HELPER_EOF\rif chmod +x $guest_path && bash -n $guest_path; then echo $result_marker=installed; else echo $result_marker=failed; fi\r"
+    expect -i $qemu_spawn_id         -re "$result_marker=installed" {}         -re "$result_marker=failed" {
             set timeout $saved_timeout
-            puts stderr "The QEMU guest helper failed its shell syntax check."
+            puts stderr "The guest helper failed its shell syntax check: $guest_path"
             exit 1
-        } \
-        timeout {
+        }         timeout {
             set timeout $saved_timeout
-            puts stderr "Timed out installing the QEMU guest helper."
+            puts stderr "Timed out installing the guest helper: $guest_path"
             exit 1
-        } \
-        eof {
-            puts stderr "QEMU exited while installing the guest helper."
+        }         eof {
+            puts stderr "QEMU exited while installing the guest helper: $guest_path"
             exit 1
         }
     set timeout $saved_timeout
 }
-
 proc configure_serial_root_shell {} {
 	global qemu_spawn_id timeout
 	set saved_timeout $timeout
@@ -378,50 +384,8 @@ proc ensure_serial_root_shell {} {
 	set timeout $saved_timeout
 }
 
-proc run_serial_capture {command success_pattern failure_pattern description stage_timeout} {
-    global qemu_spawn_id timeout expect_out
-    set saved_timeout $timeout
-    set timeout $stage_timeout
-    set started_ms [clock milliseconds]
-    set timestamp [clock format [clock seconds] -gmt 1 -format {%Y-%m-%dT%H:%M:%SZ}]
-    puts "STAGE_BEGIN name={$description} utc=$timestamp timeout_s=$timeout"
-	ensure_serial_root_shell
-    send -i $qemu_spawn_id -- "$command\r"
-    set result incomplete
-    set captured {}
-    expect -i $qemu_spawn_id \
-        -re $success_pattern {
-            set result pass
-            for {set index 1} {$index < 20} {incr index} {
-                if {[info exists expect_out($index,string)]} {
-                    lappend captured $expect_out($index,string)
-                }
-            }
-        } \
-        -re $failure_pattern {set result fail} \
-        timeout {set result incomplete} \
-        eof {
-            puts stderr "STAGE_RESULT name={$description} result=INCOMPLETE reason=qemu-eof"
-            puts stderr "QEMU exited during $description."
-            exit 1
-        }
-    expect -i $qemu_spawn_id -re {SEYRIX-ROOT#} {} timeout {
-		puts stderr "The serial root shell did not return after $description."
-		exit 1
-	}
-    set duration_ms [expr {[clock milliseconds] - $started_ms}]
-    if {$result eq "pass"} {
-        puts "STAGE_RESULT name={$description} result=PASS duration_ms=$duration_ms"
-    } elseif {$result eq "fail"} {
-        puts stderr "STAGE_RESULT name={$description} result=FAIL duration_ms=$duration_ms"
-        incr ::acceptance_failures
-    } else {
-        puts stderr "STAGE_RESULT name={$description} result=INCOMPLETE reason=timeout duration_ms=$duration_ms timeout_s=$timeout"
-        incr ::acceptance_failures
-    }
-    set timeout $saved_timeout
-    return [list $result {*}$captured]
-}
+set serial_capture_helper [file join [file dirname [file normalize [info script]]] qemu-graphics-capture.tcl]
+source $serial_capture_helper
 
 proc run_serial_check {command success_pattern failure_pattern description {stage_timeout ""}} {
     global qemu_spawn_id timeout acceptance_failures last_serial_check_result
@@ -498,14 +462,64 @@ puts "QEMU_PCI_INVENTORY=$pci_info"
 
 set login_timeout_saved $timeout
 set timeout 720
+if {$settings_render_trace_only} {
+	set timeout 300
+}
 expect {
     -re {seyrix-dev login:} {
         set login_ms [expr {[clock milliseconds] - $boot_started}]
         puts "BOOT_TO_LOGIN_MS=$login_ms"
     }
     timeout {
-        puts stderr "Timed out waiting for the Seyrix serial login prompt."
-        exit 1
+        if {$settings_render_trace_only} {
+            puts stderr "Timed out waiting for the Seyrix serial login prompt; collecting the one-shot recovery evidence."
+            catch {qmp_hmp $qmp "screendump $run_dir/serial-getty-timeout.ppm"}
+            catch {set chardev_info [qmp_hmp $qmp "info chardev"]}
+            catch {puts "SERIAL_GETTY_RECOVERY_QMP_CHARDEV=$chardev_info"}
+            catch {set qemu_status [qmp_hmp $qmp "info status"]}
+            catch {puts "SERIAL_GETTY_RECOVERY_QEMU_STATUS=$qemu_status"}
+            puts "EXPERIMENTAL_SERIAL_GETTY_RULE=enabled-profile-link-present"
+            puts "SERIAL_GETTY_RECOVERY_BEGIN=tty2-root-console"
+            qmp_hmp $qmp "sendkey ctrl-alt-f2"
+            after 2000
+            catch {qmp_hmp $qmp "screendump $run_dir/tty2-before-root-login.ppm"}
+            qmp_type_slow $qmp "root\n" 120
+            after 2000
+            catch {qmp_hmp $qmp "screendump $run_dir/tty2-after-root-login.ppm"}
+            qmp_type $qmp "mknod /dev/ttyS0 c 4 64"
+            qmp_type $qmp "\n"
+            after 750
+            qmp_type $qmp "udevadm trigger /sys/class/tty/ttyS0"
+            qmp_type $qmp "\n"
+            after 750
+            qmp_type $qmp "systemctl reset-failed dev-ttyS0.device serial-getty@ttyS0.service"
+            qmp_type $qmp "\n"
+            after 750
+            qmp_type $qmp "systemctl start serial-getty@ttyS0.service"
+            qmp_type $qmp "\n"
+            after 2000
+            catch {qmp_hmp $qmp "screendump $run_dir/tty2-after-serial-getty-recovery.ppm"}
+            set recovery_timeout_saved $timeout
+            set timeout 45
+            set serial_getty_recovered 0
+            expect -i $qemu_spawn_id \
+                -re {seyrix-dev login:} {set serial_getty_recovered 1} \
+                timeout {set serial_getty_recovered 0} \
+                eof {set serial_getty_recovered 0}
+            set timeout $recovery_timeout_saved
+            if {!$serial_getty_recovered} {
+                puts stderr "SERIAL_GETTY_RECOVERY_LOGIN=failed"
+                puts stderr "Timed out waiting for the serial login prompt after tty2 recovery."
+                exit 1
+            }
+            set login_ms [expr {[clock milliseconds] - $boot_started}]
+            puts "BOOT_TO_LOGIN_MS=$login_ms"
+            puts "SERIAL_GETTY_RECOVERY_LOGIN=passed"
+        }
+        if {!$settings_render_trace_only} {
+            puts stderr "Timed out waiting for the Seyrix serial login prompt."
+            exit 1
+        }
     }
     eof {
         puts stderr "QEMU exited before the Seyrix serial login prompt."
@@ -698,6 +712,10 @@ if {$phase2b} {
     if {$phase2d2} {
 		set test_app_command {install -d -o 1000 -g 1000 /home/seyrix/.local/share/applications /home/seyrix/.local/bin && printf '%s\n' '#!/usr/bin/env bash' 'cd /tmp/seyrix-second' 'exec /usr/bin/weston-terminal' > /home/seyrix/.local/bin/seyrix-acceptance-terminal-second && chmod 755 /home/seyrix/.local/bin/seyrix-acceptance-terminal-second && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Acceptance Terminal' 'Exec=/usr/bin/weston-terminal' 'TryExec=/usr/bin/weston-terminal' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance.desktop && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Acceptance Terminal Backup' 'Exec=/home/seyrix/.local/bin/seyrix-acceptance-terminal-second' 'TryExec=/home/seyrix/.local/bin/seyrix-acceptance-terminal-second' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance-backup.desktop && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Missing Acceptance App' 'Exec=/usr/bin/seyrix-missing-app' 'TryExec=/usr/bin/seyrix-missing-app' 'Icon=utilities-terminal' 'Categories=Utility;' > /home/seyrix/.local/share/applications/seyrix-acceptance-missing.desktop && chown 1000:1000 /home/seyrix/.local/bin/seyrix-acceptance-terminal-second /home/seyrix/.local/share/applications/seyrix-acceptance.desktop /home/seyrix/.local/share/applications/seyrix-acceptance-backup.desktop /home/seyrix/.local/share/applications/seyrix-acceptance-missing.desktop && echo PHASE2D2_TEST_APPS=installed}
 		run_serial_check $test_app_command {PHASE2D2_TEST_APPS=installed} {PHASE2D2_TEST_APPS=failed} "install two unprivileged temporary XDG launcher entries" 20
+		if {$phase2d3b} {
+			set settings_trace_desktop_command {install -d -o 1000 -g 1000 /home/seyrix/.local/share/applications && printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Settings Diagnostic' 'Exec=/usr/local/bin/seyrix-settings-render-trace' 'TryExec=/usr/local/bin/seyrix-settings-render-trace' 'Icon=preferences-system' 'Categories=System;' > /home/seyrix/.local/share/applications/seyrix-settings-render-trace.desktop && chown 1000:1000 /home/seyrix/.local/share/applications/seyrix-settings-render-trace.desktop && chmod 644 /home/seyrix/.local/share/applications/seyrix-settings-render-trace.desktop && if test -x /usr/local/bin/seyrix-settings-render-trace && grep -Fxq 'Exec=/usr/local/bin/seyrix-settings-render-trace' /home/seyrix/.local/share/applications/seyrix-settings-render-trace.desktop; then echo SETTINGS_DIAGNOSTIC_LAUNCHER_ENTRY=ready; else echo SETTINGS_DIAGNOSTIC_LAUNCHER_ENTRY=failed; fi}
+			run_serial_check $settings_trace_desktop_command {SETTINGS_DIAGNOSTIC_LAUNCHER_ENTRY=ready} {SETTINGS_DIAGNOSTIC_LAUNCHER_ENTRY=failed} "prepare a temporary graphical launcher entry for the diagnostic Settings wrapper" 10
+		}
 	}
     if {$phase2c} {
         set wm_config_home "/tmp/seyrix-wm-config-$qemu_identity"
@@ -768,6 +786,87 @@ if {$phase2b} {
     puts "APPLICATION_LAUNCH=passed"
     set graphics_ms [expr {[clock milliseconds] - $boot_started}]
     puts "GRAPHICAL_BOOT_MS=$graphics_ms"
+	if {$settings_render_trace_only} {
+		set timeout 40
+		set render_session_ready_command {shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); compositor_uid=$(test -n "$compositor_pid" && awk '/^Uid:/ {print $2}' "/proc/$compositor_pid/status"); printf 'RENDER_SESSION_SHELL_PID=%s SHELL_UID=%s COMPOSITOR_PID=%s COMPOSITOR_UID=%s TERMINAL_PID=%s
+' "$shell_pid" "$shell_uid" "$compositor_pid" "$compositor_uid" "$terminal_pid"; printf 'RENDER_SESSION_TTY1_READY='; test -f /home/seyrix/.tty1-ready && echo present || echo missing; printf 'RENDER_SESSION_WAYLAND_SOCKET='; find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit; printf 'EXPERIMENTAL_SERIAL_GETTY_RULE='; systemctl is-enabled serial-getty@ttyS0.service 2>&1 || true; if [[ -n "$shell_pid" && "$shell_uid" == 1000 && -n "$compositor_pid" && "$compositor_uid" == 1000 && -n "$terminal_pid" ]] && test -f /home/seyrix/.tty1-ready && find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit | grep -q .; then echo RENDER_SESSION_READY=passed; else echo RENDER_SESSION_READY=failed; fi}
+		run_serial_check $render_session_ready_command {RENDER_SESSION_READY=passed} {RENDER_SESSION_READY=failed} "verify the real Seyrix user session, compositor, Wayland socket, and experimental serial-getty rule" 30
+		qmp_hmp $qmp "screendump $run_dir/phase2d3b-desktop-before-settings.ppm"
+		set settings_trace_functions [file join [file dirname [file normalize [info script]]] settings-render-trace-functions.sh]
+		install_guest_helper $settings_trace_functions /tmp/settings-render-trace-functions.sh SETTINGS_TRACE_FUNCTIONS
+		set settings_trace_guest_helper [file join [file dirname [file normalize [info script]]] settings-render-trace-guest.sh]
+		install_guest_helper $settings_trace_guest_helper /tmp/seyrix-settings-render-trace-helper.sh SETTINGS_TRACE_HELPER
+		qmp_key_chord $qmp {meta_l} spc
+		after 500
+		qmp_type_slow $qmp "Settings Diagnostic"
+		after 600
+		qmp_hmp $qmp "screendump $run_dir/phase2d3b-trace-launcher-search.ppm"
+		qmp_key_chord $qmp {} ret
+		puts "SETTINGS_WRAPPER_LAUNCH_REQUESTED=passed source=seyrix-shell-launcher utc=[clock format [clock seconds] -gmt 1 -format {%Y-%m-%dT%H:%M:%SZ}]"
+		after 800
+		set settings_launch_result [run_serial_capture {bash /tmp/seyrix-settings-render-trace-helper.sh launch} {SETTINGS_RENDER_TRACE_LAUNCH=passed} {SETTINGS_RENDER_TRACE_LAUNCH=failed} "verify the Settings process launched through the graphical diagnostic wrapper and live endpoint" 60]
+		set settings_launch_status [lindex $settings_launch_result 0]
+		if {$settings_launch_status eq "pass"} {
+			after 700
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-appearance-640x480.ppm"
+			if {[file exists "$run_dir/phase2d3b-appearance-640x480.ppm"] && [file size "$run_dir/phase2d3b-appearance-640x480.ppm"] > 0} {
+				puts "SETTINGS_RENDER_TRACE_SCREENSHOT=phase2d3b-appearance-640x480.ppm"
+				puts "SETTINGS_QMP_BEFORE_CAPTURE=passed"
+			} else {
+				puts stderr "SETTINGS_QMP_BEFORE_CAPTURE=failed"
+			}
+			qmp_mouse_click_pixel $qmp 320 156 640 480
+			puts "SETTINGS_QMP_CLICK_PIXEL=320,156 ABSOLUTE=16409,10671 OUTPUT=640x480"
+			after 200
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-selector-open.ppm"
+			qmp_key_chord $qmp {} home
+			after 100
+			qmp_key_chord $qmp {} down
+			after 100
+			qmp_key_chord $qmp {} ret
+			puts "SETTINGS_QMP_KEYS=Home,Down,Enter"
+			after 1300
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-desktop-dock-640x480.ppm"
+			if {[file exists "$run_dir/phase2d3b-desktop-dock-640x480.ppm"] && [file size "$run_dir/phase2d3b-desktop-dock-640x480.ppm"] > 0} {
+				puts "SETTINGS_RENDER_TRACE_SCREENSHOT=phase2d3b-desktop-dock-640x480.ppm"
+				puts "SETTINGS_QMP_AFTER_SELECTION_CAPTURE=passed"
+			} else {
+				puts stderr "SETTINGS_QMP_AFTER_SELECTION_CAPTURE=failed"
+			}
+		} else {
+			puts stderr "SETTINGS_PAGE_INPUT_SEQUENCE=NOT_RUN reason=traced-wrapper-launch-failed"
+			if {![file exists "$run_dir/phase2d3b-appearance-640x480.ppm"]} {
+				catch {qmp_hmp $qmp "screendump $run_dir/phase2d3b-appearance-640x480.ppm"}
+			}
+			catch {qmp_hmp $qmp "screendump $run_dir/phase2d3b-selection-skipped.ppm"}
+		}
+		match_max -i $qemu_spawn_id 2000000
+		set settings_capture_result [run_serial_capture {bash /tmp/seyrix-settings-render-trace-helper.sh capture} {SETTINGS_PAGE_SELECTION_VERIFIED=passed} {SETTINGS_PAGE_SELECTION_VERIFIED=failed} "capture Settings input, GTK, client, and compositor evidence before guest shutdown" 90]
+		set settings_capture_status [lindex $settings_capture_result 0]
+		set shutdown_command {printf 'DIAGNOSTIC_RENDER_TRACE_END
+'; systemctl poweroff}
+		send -- "$shutdown_command
+"
+		set timeout 90
+		expect {
+			-re {DIAGNOSTIC_RENDER_TRACE_END} {exp_continue}
+			eof {}
+			timeout {puts stderr "Timed out waiting for the diagnostic guest shutdown."; exit 1}
+		}
+		set wait_result [wait]
+		set qemu_exit [lindex $wait_result 3]
+		catch {close $qmp}
+		if {$qemu_exit != 0} {
+			puts stderr "QEMU exited with status $qemu_exit after the diagnostic guest shutdown."
+			exit 1
+		}
+		puts "CONTROLLED_RENDER_TRACE_SHUTDOWN=passed"
+		if {$settings_launch_status eq "pass" && $settings_capture_status eq "pass"} {
+			exit 0
+		}
+		puts stderr "SETTINGS_RENDER_TRACE_RUN=INCOMPLETE; QEMU and guest shutdown completed."
+		exit 1
+	}
 	if {$phase2d2} {
 		set timeout 240
 		set shell_ready_command {mkdir -p /tmp/seyrix-first /tmp/seyrix-second; shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_SHELL_PID=%s\nPHASE2D2_SHELL_UID=%s\n' "$shell_pid" "$shell_uid"; if [[ -n "$shell_pid" && "$shell_uid" == 1000 && -n "$terminal_pid" && -r /usr/share/seyrix/Manual.txt ]]; then echo PHASE2D2_SHELL_READY=passed; else echo PHASE2D2_SHELL_READY=failed; fi}

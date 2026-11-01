@@ -3,7 +3,11 @@
 #include "system-info.h"
 
 #include <gdk/gdkkeysyms.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 enum category_id {
 	CATEGORY_APPEARANCE,
@@ -85,6 +89,81 @@ static const char *const category_selector_names[] = {
 	"Appearance", "Desktop & Dock", "Window Management", "Displays",
 	"Input", "About Seyrix", NULL,
 };
+
+static void settings_trace_event(struct seyrix_settings_window *window,
+		const char *event, const char *page, GtkWidget *widget) {
+	const char *enabled = g_getenv("SEYRIX_SETTINGS_RENDER_TRACE");
+	if (enabled == NULL || strcmp(enabled, "1") != 0) {
+		return;
+	}
+	struct timespec now = {0};
+	(void)clock_gettime(CLOCK_MONOTONIC, &now);
+	uint64_t monotonic_ns = (uint64_t)now.tv_sec * 1000000000ULL +
+		(uint64_t)now.tv_nsec;
+	int x = 0;
+	int y = 0;
+	int width = 0;
+	int height = 0;
+	if (widget != NULL) {
+		width = gtk_widget_get_width(widget);
+		height = gtk_widget_get_height(widget);
+		GtkWidget *parent = gtk_widget_get_parent(widget);
+		graphene_rect_t bounds;
+		if (parent != NULL && gtk_widget_compute_bounds(widget, parent, &bounds)) {
+			x = (int)bounds.origin.x;
+			y = (int)bounds.origin.y;
+			width = (int)bounds.size.width;
+			height = (int)bounds.size.height;
+		}
+	}
+	const char *selected = window != NULL && window->stack != NULL ?
+		gtk_stack_get_visible_child_name(GTK_STACK(window->stack)) : NULL;
+	fprintf(stderr,
+		"SEYRIX_SETTINGS_TRACE monotonic_ns=%llu pid=%ld event=%s page=%s selected=%s mapped=%d visible=%d x=%d y=%d width=%d height=%d\n",
+		(unsigned long long)monotonic_ns, (long)getpid(), event,
+		page != NULL ? page : "none",
+		selected != NULL ? selected : "none",
+		widget != NULL && gtk_widget_get_mapped(widget),
+		widget != NULL && gtk_widget_get_visible(widget),
+		x, y, width, height);
+	fflush(stderr);
+}
+
+static void on_trace_stack_selection(GObject *object, GParamSpec *property,
+		gpointer data) {
+	(void)property;
+	struct seyrix_settings_window *window = data;
+	GtkStack *stack = GTK_STACK(object);
+	const char *page = gtk_stack_get_visible_child_name(stack);
+	GtkWidget *visible_child = gtk_stack_get_visible_child(stack);
+	settings_trace_event(window, "gtk_page_selection", page, visible_child);
+}
+
+static void on_trace_page_map(GtkWidget *widget, gpointer data) {
+	struct seyrix_settings_window *window = data;
+	int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget),
+		"seyrix-trace-page-index")) - 1;
+	if (index >= 0 && index < CATEGORY_COUNT) {
+		settings_trace_event(window, "gtk_page_map", category_ids[index], widget);
+	}
+}
+
+static void on_trace_page_unmap(GtkWidget *widget, gpointer data) {
+	struct seyrix_settings_window *window = data;
+	int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget),
+		"seyrix-trace-page-index")) - 1;
+	if (index >= 0 && index < CATEGORY_COUNT) {
+		settings_trace_event(window, "gtk_page_unmap", category_ids[index], widget);
+	}
+}
+
+static void on_trace_window_map(GtkWidget *widget, gpointer data) {
+	settings_trace_event(data, "gtk_window_map", "window", widget);
+}
+
+static void on_trace_window_unmap(GtkWidget *widget, gpointer data) {
+	settings_trace_event(data, "gtk_window_unmap", "window", widget);
+}
 
 static const struct setting_descriptor setting_descriptors[] = {
 	{CATEGORY_APPEARANCE, "Wallpaper", "Choose the image shown behind desktop windows.", "background image photo picture"},
@@ -796,6 +875,10 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 	gtk_window_set_title(GTK_WINDOW(window->window), "System Settings");
 	gtk_window_set_default_size(GTK_WINDOW(window->window), 720, 560);
 	gtk_window_set_resizable(GTK_WINDOW(window->window), TRUE);
+	g_signal_connect(window->window, "map",
+		G_CALLBACK(on_trace_window_map), window);
+	g_signal_connect(window->window, "unmap",
+		G_CALLBACK(on_trace_window_unmap), window);
 
 	GtkCssProvider *provider = gtk_css_provider_new();
 	gtk_css_provider_load_from_string(provider, css);
@@ -866,6 +949,19 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 
 	add_sidebar_rows(window);
 	build_pages(window);
+	for (int i = 0; i < CATEGORY_COUNT; i++) {
+		GtkWidget *page = gtk_stack_get_child_by_name(
+			GTK_STACK(window->stack), category_ids[i]);
+		if (page != NULL) {
+			g_object_set_data(G_OBJECT(page), "seyrix-trace-page-index",
+				GINT_TO_POINTER(i + 1));
+			g_signal_connect(page, "map", G_CALLBACK(on_trace_page_map), window);
+			g_signal_connect(page, "unmap",
+				G_CALLBACK(on_trace_page_unmap), window);
+		}
+	}
+	g_signal_connect(window->stack, "notify::visible-child-name",
+		G_CALLBACK(on_trace_stack_selection), window);
 	g_signal_connect(window->sidebar, "row-selected",
 		G_CALLBACK(on_sidebar_row_selected), window);
 	g_signal_connect(window->search, "search-changed",

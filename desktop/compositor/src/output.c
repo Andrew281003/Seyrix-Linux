@@ -195,13 +195,82 @@ static void handle_layout_change(struct wl_listener *listener, void *data) {
 	}
 }
 
+static uint64_t settings_trace_monotonic_ns(void) {
+	struct timespec now = {0};
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+		return 0;
+	}
+	return (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+}
+
+static void handle_output_present(struct wl_listener *listener, void *data) {
+	struct seyrix_output *output = wl_container_of(listener, output, present);
+	struct seyrix_server *server = output->server;
+	const struct wlr_output_event_present *event = data;
+	if (!server->settings_trace_wait_present ||
+			server->settings_trace_output != output->wlr_output ||
+			event->commit_seq != server->settings_trace_output_commit_seq) {
+		return;
+	}
+	uint64_t presented_ns = (uint64_t)event->when.tv_sec * 1000000000ULL +
+		(uint64_t)event->when.tv_nsec;
+	wlr_log(WLR_INFO,
+		"SETTINGS_RENDER_TRACE event=output_present monotonic_ns=%llu presented_ns=%llu presented=%d output=%s output_commit_seq=%u commit_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u surface_seq=%u",
+		(unsigned long long)settings_trace_monotonic_ns(),
+		(unsigned long long)presented_ns, event->presented,
+		output->wlr_output->name, event->commit_seq,
+		(unsigned long long)server->settings_trace_commit_ns,
+		(long)server->settings_trace_pid,
+		server->settings_trace_xdg_surface_id,
+		server->settings_trace_wl_surface_id,
+		server->settings_trace_seq);
+	server->settings_trace_wait_present = false;
+}
+
 static void handle_output_frame(struct wl_listener *listener, void *data) {
 	(void)data;
 	struct seyrix_output *output = wl_container_of(listener, output, frame);
+	struct seyrix_server *server = output->server;
+	bool trace_settings_commit = server->settings_trace_pending;
+	uint32_t expected_commit_seq = output->wlr_output->commit_seq + 1;
+	if (trace_settings_commit) {
+		server->settings_trace_pending = false;
+		server->settings_trace_wait_present = true;
+		server->settings_trace_output = output->wlr_output;
+		server->settings_trace_output_commit_seq = expected_commit_seq;
+	}
 	if (!wlr_scene_output_commit(output->scene_output, NULL)) {
+		if (trace_settings_commit) {
+			server->settings_trace_wait_present = false;
+			wlr_log(WLR_ERROR,
+				"SETTINGS_RENDER_TRACE event=output_scene_commit monotonic_ns=%llu result=failed output=%s expected_output_commit_seq=%u commit_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u surface_seq=%u",
+				(unsigned long long)settings_trace_monotonic_ns(),
+				output->wlr_output->name, expected_commit_seq,
+				(unsigned long long)server->settings_trace_commit_ns,
+				(long)server->settings_trace_pid,
+				server->settings_trace_xdg_surface_id,
+				server->settings_trace_wl_surface_id,
+				server->settings_trace_seq);
+		}
 		wlr_log(WLR_ERROR, "Output %s failed to render a frame",
 			output->wlr_output->name);
 		return;
+	}
+	if (trace_settings_commit) {
+		uint32_t output_commit_seq = output->wlr_output->commit_seq;
+		if (server->settings_trace_wait_present &&
+				server->settings_trace_output == output->wlr_output) {
+			server->settings_trace_output_commit_seq = output_commit_seq;
+		}
+		wlr_log(WLR_INFO,
+			"SETTINGS_RENDER_TRACE event=output_scene_commit monotonic_ns=%llu result=success output=%s output_commit_seq=%u commit_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u surface_seq=%u",
+			(unsigned long long)settings_trace_monotonic_ns(),
+			output->wlr_output->name, output_commit_seq,
+			(unsigned long long)server->settings_trace_commit_ns,
+			(long)server->settings_trace_pid,
+			server->settings_trace_xdg_surface_id,
+			server->settings_trace_wl_surface_id,
+			server->settings_trace_seq);
 	}
 	struct timespec now;
 	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
@@ -257,6 +326,7 @@ static void handle_output_destroy(struct wl_listener *listener, void *data) {
 	struct seyrix_output *output = wl_container_of(listener, output, destroy);
 	struct seyrix_server *server = output->server;
 	remove_listener(&output->frame);
+	remove_listener(&output->present);
 	remove_listener(&output->request_state);
 	remove_listener(&output->commit);
 	remove_listener(&output->destroy);
@@ -343,6 +413,8 @@ static void handle_new_output(struct wl_listener *listener, void *data) {
 
 	output->frame.notify = handle_output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
+	output->present.notify = handle_output_present;
+	wl_signal_add(&wlr_output->events.present, &output->present);
 	output->request_state.notify = handle_output_request_state;
 	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
 	output->commit.notify = handle_output_commit;

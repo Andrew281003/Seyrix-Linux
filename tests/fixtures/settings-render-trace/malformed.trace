@@ -1,0 +1,3 @@
+monotonic_ns=1 source=client-stderr pid=500 -> wl_surface#broken.commit()
+monotonic_ns=2 source=client-stderr pid=500 -> wl_surface#14.invalid_request()
+monotonic_ns=3 source=client-stderr pid=500 -> wl_pointer#16.set_cursor()
