@@ -1,0 +1,3 @@
+monotonic_ns=1 source=client-stderr pid=500 [12:00:00.000001] -> wl_surface@12.attach(wl_buffer@21, 0, 0)
+monotonic_ns=2 source=client-stderr pid=500 [12:00:00.000002] -> wl_surface@12.damage(0, 0, 640, 480)
+monotonic_ns=3 source=client-stderr pid=500 [12:00:00.000003] -> wl_surface@12.commit()

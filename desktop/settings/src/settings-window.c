@@ -3,7 +3,9 @@
 #include "system-info.h"
 
 #include <gdk/gdkkeysyms.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 enum category_id {
 	CATEGORY_APPEARANCE,
@@ -67,6 +69,7 @@ struct seyrix_settings_window {
 	bool sidebar_detached;
 	bool compact_window_maximized;
 	bool compact_layout;
+	bool category_sync_active;
 	guint layout_source;
 };
 
@@ -88,6 +91,70 @@ static const char *const category_selector_names[] = {
 	"Appearance", "Desktop & Dock", "Window Management", "Displays",
 	"Input", "About Seyrix", NULL,
 };
+
+static bool settings_render_trace_enabled(void) {
+	const char *enabled = g_getenv("SEYRIX_SETTINGS_RENDER_TRACE");
+	return enabled != NULL && strcmp(enabled, "1") == 0;
+}
+
+static void settings_trace_event(struct seyrix_settings_window *window,
+		const char *event, const char *page, GtkWidget *widget) {
+	if (!settings_render_trace_enabled()) {
+		return;
+	}
+	const char *selected = window->stack != NULL ?
+		gtk_stack_get_visible_child_name(GTK_STACK(window->stack)) : NULL;
+	gint64 monotonic_us = g_get_monotonic_time();
+	uint64_t monotonic_ns = monotonic_us > 0 ?
+		(uint64_t)monotonic_us * 1000ULL : 0;
+	fprintf(stderr,
+		"SEYRIX_SETTINGS_TRACE monotonic_ns=%llu pid=%ld event=%s page=%s selected=%s mapped=%d\n",
+		(unsigned long long)monotonic_ns, (long)getpid(), event,
+		page != NULL ? page : "none",
+		selected != NULL ? selected : "none",
+		widget != NULL && gtk_widget_get_mapped(widget));
+	fflush(stderr);
+}
+
+static const char *settings_trace_page_name(
+		struct seyrix_settings_window *window, GtkWidget *widget) {
+	for (int i = 0; i <= CATEGORY_COUNT; i++) {
+		if (window->pages[i] == widget) {
+			return i == CATEGORY_COUNT ? "search" : category_ids[i];
+		}
+	}
+	return "unknown";
+}
+
+static void on_trace_page_map(GtkWidget *widget, gpointer data) {
+	struct seyrix_settings_window *window = data;
+	const char *page = settings_trace_page_name(window, widget);
+	settings_trace_event(window, "gtk_page_map", page, widget);
+}
+
+static void on_trace_page_unmap(GtkWidget *widget, gpointer data) {
+	struct seyrix_settings_window *window = data;
+	const char *page = settings_trace_page_name(window, widget);
+	settings_trace_event(window, "gtk_page_unmap", page, widget);
+}
+
+static void on_trace_stack_selection(GObject *object, GParamSpec *property,
+		gpointer data) {
+	(void)property;
+	struct seyrix_settings_window *window = data;
+	GtkStack *stack = GTK_STACK(object);
+	const char *page = gtk_stack_get_visible_child_name(stack);
+	settings_trace_event(window, "gtk_page_selection", page,
+		gtk_stack_get_visible_child(stack));
+}
+
+static void on_trace_window_map(GtkWidget *widget, gpointer data) {
+	settings_trace_event(data, "gtk_window_map", "window", widget);
+}
+
+static void on_trace_window_unmap(GtkWidget *widget, gpointer data) {
+	settings_trace_event(data, "gtk_window_unmap", "window", widget);
+}
 
 static const struct setting_descriptor setting_descriptors[] = {
 	{CATEGORY_APPEARANCE, "Wallpaper", "Choose the image shown behind desktop windows.", "background image photo picture"},
@@ -422,10 +489,11 @@ static void set_visible_page(struct seyrix_settings_window *window,
 
 static void select_category(struct seyrix_settings_window *window,
 		enum category_id category) {
-	if (category >= CATEGORY_COUNT) {
+	if (window == NULL || category >= CATEGORY_COUNT) {
 		return;
 	}
 	window->selected_category = category;
+	window->category_sync_active = true;
 	if (gtk_drop_down_get_selected(GTK_DROP_DOWN(window->category_selector)) !=
 			(guint)category) {
 		gtk_drop_down_set_selected(GTK_DROP_DOWN(window->category_selector),
@@ -438,12 +506,16 @@ static void select_category(struct seyrix_settings_window *window,
 			GTK_LIST_BOX(window->sidebar)) != row) {
 		gtk_list_box_select_row(GTK_LIST_BOX(window->sidebar), row);
 	}
+	window->category_sync_active = false;
 }
 
 static void on_category_selector_changed(GObject *object, GParamSpec *property,
 		gpointer data) {
 	(void)property;
 	struct seyrix_settings_window *window = data;
+	if (window == NULL || window->category_sync_active) {
+		return;
+	}
 	guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
 	if (selected < CATEGORY_COUNT) {
 		select_category(window, (enum category_id)selected);
@@ -532,8 +604,14 @@ static void on_sidebar_row_selected(GtkListBox *list, GtkListBoxRow *row,
 		return;
 	}
 	struct seyrix_settings_window *window = data;
-	int category = gtk_list_box_row_get_index(row);
+	if (window == NULL || window->category_sync_active) {
+		return;
+	}
+	int category = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row),
+		"seyrix-category"));
 	if (category >= 0 && category < CATEGORY_COUNT) {
+		settings_trace_event(window, "gtk_sidebar_row_selected",
+			category_ids[category], GTK_WIDGET(row));
 		select_category(window, (enum category_id)category);
 		gtk_editable_set_text(GTK_EDITABLE(window->search), "");
 	}
@@ -832,6 +910,10 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 	gtk_window_set_title(GTK_WINDOW(window->window), "System Settings");
 	gtk_window_set_default_size(GTK_WINDOW(window->window), 720, 560);
 	gtk_window_set_resizable(GTK_WINDOW(window->window), TRUE);
+	g_signal_connect(window->window, "map",
+		G_CALLBACK(on_trace_window_map), window);
+	g_signal_connect(window->window, "unmap",
+		G_CALLBACK(on_trace_window_unmap), window);
 
 	GtkCssProvider *provider = gtk_css_provider_new();
 	gtk_css_provider_load_from_string(provider, css);
@@ -905,6 +987,16 @@ struct seyrix_settings_window *seyrix_settings_window_create(
 
 	add_sidebar_rows(window);
 	build_pages(window);
+	for (int i = 0; i < CATEGORY_COUNT; i++) {
+		if (window->pages[i] != NULL) {
+			g_signal_connect(window->pages[i], "map",
+				G_CALLBACK(on_trace_page_map), window);
+			g_signal_connect(window->pages[i], "unmap",
+				G_CALLBACK(on_trace_page_unmap), window);
+		}
+	}
+	g_signal_connect(window->stack, "notify::visible-child-name",
+		G_CALLBACK(on_trace_stack_selection), window);
 	g_signal_connect(window->sidebar, "row-selected",
 		G_CALLBACK(on_sidebar_row_selected), window);
 	g_signal_connect(window->sidebar, "row-activated",

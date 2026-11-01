@@ -127,8 +127,18 @@ struct seyrix_server {
 	uint32_t consumed_pointer_button;
 	uint32_t next_window_id;
 	uint64_t started_at_ms;
+	uint64_t settings_trace_commit_ns;
+	uint32_t settings_trace_xdg_surface_id;
+	uint32_t settings_trace_wl_surface_id;
+	uint32_t settings_trace_seq;
+	uint32_t settings_trace_output_commit_seq;
+	pid_t settings_trace_pid;
+	struct wlr_output *settings_trace_output;
 	bool backend_started;
 	bool output_manager_applying;
+	bool settings_trace_enabled;
+	bool settings_trace_pending;
+	bool settings_trace_wait_present;
 };
 
 struct seyrix_output {
@@ -138,6 +148,7 @@ struct seyrix_output {
 	struct wlr_scene_output *scene_output;
 	struct wlr_scene_rect *background;
 	struct wl_listener frame;
+	struct wl_listener present;
 	struct wl_listener request_state;
 	struct wl_listener commit;
 	struct wl_listener destroy;

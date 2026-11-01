@@ -12,6 +12,7 @@ project(
 wlroots = dependency('wlroots-0.20', version: ['>=0.20.0', '<0.21.0'])
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
+pixman = dependency('pixman-1')
 wlr_protocols = dependency('wlr-protocols')
 wayland_scanner = find_program('wayland-scanner')
 
@@ -62,7 +63,7 @@ executable(
     '../shell/src/shell-config.c',
   ) + [layer_shell_protocol, output_management_protocol],
   c_args: compositor_c_args,
-  dependencies: [wlroots, wayland_server, xkbcommon],
+  dependencies: [wlroots, wayland_server, xkbcommon, pixman],
   install: true,
   install_dir: get_option('bindir'),
 )

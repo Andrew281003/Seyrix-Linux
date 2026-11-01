@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$script_dir/qemu-graphics-preflight.sh"
 if [[ "${SEYRIX_QEMU_LOCK_HELD:-0}" != 1 ]]; then
   exec bash "$script_dir/qemu-lock.sh" -- "$script_dir/qemu-graphics.sh" "$@"
 fi
@@ -39,8 +40,16 @@ case "$resolution_profile" in
     vga_device="VGA,edid=on,xres=800,yres=600"
     expected_output_size="800x600"
     ;;
+  1280x720)
+    vga_device="VGA,edid=on,xres=1280,yres=720"
+    expected_output_size="1280x720"
+    ;;
+  1920x1080)
+    vga_device="VGA,edid=on,xres=1920,yres=1080"
+    expected_output_size="1920x1080"
+    ;;
   *)
-    echo "SEYRIX_QEMU_RESOLUTION_PROFILE must be 640x480 or 800x600." >&2
+    echo "SEYRIX_QEMU_RESOLUTION_PROFILE must be 640x480, 800x600, 1280x720, or 1920x1080." >&2
     exit 2
     ;;
 esac
@@ -49,10 +58,39 @@ export SEYRIX_QEMU_WORKFLOW="$workflow"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
 renderer_request="${SEYRIX_QEMU_RENDERER:-}"
+readiness_only="${SEYRIX_QEMU_READINESS_ONLY:-0}"
+layout_only="${SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY:-0}"
+settings_ipc_only="${SEYRIX_QEMU_SETTINGS_IPC_ONLY:-0}"
+sanitizer_only="${SEYRIX_QEMU_SANITIZER_ONLY:-0}"
+if [[ "$readiness_only" != 0 && "$readiness_only" != 1 ]] ||
+    [[ "$layout_only" != 0 && "$layout_only" != 1 ]] ||
+    [[ "$settings_ipc_only" != 0 && "$settings_ipc_only" != 1 ]] ||
+    [[ "$sanitizer_only" != 0 && "$sanitizer_only" != 1 ]] ||
+    [[ "$readiness_only" == 1 && ( "$layout_only" == 1 || "$settings_ipc_only" == 1 ) ]] ||
+    [[ "$layout_only" == 1 && "$settings_ipc_only" == 1 ]] ||
+    [[ ( "$readiness_only" == 1 || "$layout_only" == 1 || "$settings_ipc_only" == 1 || "$sanitizer_only" == 1 ) && "$workflow" != phase2d3b ]] ||
+    [[ "$sanitizer_only" == 1 && ( "$readiness_only" == 1 || "$layout_only" == 1 || "$settings_ipc_only" == 1 || "${SEYRIX_QEMU_SANITIZERS:-0}" != 1 ) ]]; then
+  echo "Scoped QEMU modes require phase2d3b; sanitizer-only also requires sanitizers and cannot be combined." >&2
+  exit 2
+fi
+export SEYRIX_QEMU_READINESS_ONLY="$readiness_only"
+export SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY="$layout_only"
+export SEYRIX_QEMU_SETTINGS_IPC_ONLY="$settings_ipc_only"
+export SEYRIX_QEMU_SANITIZER_ONLY="$sanitizer_only"
 if [[ "$workflow" != phase2a && "$workflow" != phase2b && "$workflow" != phase2c && "$workflow" != phase2d2 && "$workflow" != phase2d3b ]]; then
   echo "Unsupported QEMU workflow: $workflow" >&2
   exit 2
 fi
+settings_trace_only="${SEYRIX_QEMU_SETTINGS_RENDER_DIAGNOSTIC:-0}"
+if [[ "$settings_trace_only" != 0 && "$settings_trace_only" != 1 ]]; then
+  echo "SEYRIX_QEMU_SETTINGS_RENDER_DIAGNOSTIC must be 0 or 1." >&2
+  exit 2
+fi
+if [[ "$settings_trace_only" == 1 && "$workflow" != phase2d3b ]]; then
+  echo "Settings render tracing requires the phase2d3b workflow." >&2
+  exit 2
+fi
+qemu_graphics_validate_support_files "$script_dir" "$workflow" "$settings_trace_only"
 if [[ ! "$smp_count" =~ ^[1-9][0-9]*$ ]] || (( smp_count > 64 )); then
   echo "SEYRIX_QEMU_SMP must be an integer from 1 through 64." >&2
   exit 2
@@ -134,7 +172,7 @@ finish_graphics_run() {
     cp -- "$SEYRIX_QEMU_LOCK_OWNER_FILE" "$run_dir/qemu-lock-owner.txt"
   fi
   if [[ -f "$run_dir/test.log" ]]; then
-    grep -E '^STAGE_BEGIN |^STAGE_RESULT ' "$run_dir/test.log" \
+    sed -nE 's/^(SEYRIX-USER# )?(STAGE_BEGIN |STAGE_RESULT )/\2/p' "$run_dir/test.log" \
       > "$run_dir/stage-results.log" || true
   else
     : > "$run_dir/stage-results.log"
@@ -183,8 +221,8 @@ finish_graphics_run() {
   fi
   if [[ -e "$run_dir/.seyrix-failed" ]] || \
       [[ ! -f "$run_dir/test.log" ]] || \
-      grep -Eq 'STAGE_RESULT .*result=(FAIL|INCOMPLETE)' "$run_dir/test.log" || \
-      ! awk '/^STAGE_BEGIN / { begun++ } /^STAGE_RESULT .*result=PASS/ { passed++ } END { exit !(begun > 0 && begun == passed) }' "$run_dir/test.log"; then
+      grep -Eq 'STAGE_RESULT .*result=(FAIL|INCOMPLETE)' "$run_dir/stage-results.log" || \
+      ! awk '/^STAGE_BEGIN / { begun++ } /^STAGE_RESULT .*result=PASS/ { passed++ } END { exit !(begun > 0 && begun == passed) }' "$run_dir/stage-results.log"; then
     run_result="INCOMPLETE"
   fi
   if [[ -f "$run_dir/run-result.txt" ]] && \
@@ -293,6 +331,11 @@ qemu_args+=(
   printf 'Fallback control: named QEMU virtio-serial data port; Seyrix uid 1000 shell; 25-minute maximum; only active when the named device exists\n'
   printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
   printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
+  printf 'Readiness-only mode: %s\n' "$readiness_only"
+  printf 'Settings-layout-only mode: %s\n' "$layout_only"
+  printf 'Settings-IPC-only mode: %s\n' "$settings_ipc_only"
+  printf 'Settings render diagnostic mode: %s\n' "$settings_trace_only"
+  printf 'Sanitizer-only diagnostic mode: %s\n' "$sanitizer_only"
   printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
   printf 'QEMU run ID: %s\n' "$run_id"
   printf 'QEMU lock file: %s\n' "${SEYRIX_QEMU_LOCK_FILE:-unavailable}"
@@ -331,5 +374,5 @@ if [[ -r "/proc/$qemu_pid/cmdline" ]] && \
 fi
 printf 'QEMU exit status: 0\n' > "$run_dir/qemu-exit-status.txt"
 
-grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|STAGE_BEGIN|STAGE_RESULT|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|REAL_SERIAL_|SETTINGS_CONFIG_|SETTINGS_ENDPOINT_|PHASE2C_|PHASE2D2_|PHASE2D3B_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
+grep -E 'BOOT_TO_LOGIN_MS=|GRAPHICAL_BOOT_MS=|GRAPHICAL_READY=|STAGE_BEGIN|STAGE_RESULT|SANITIZER_FINDINGS=|SETTINGS_IPC_|KEYBOARD_INPUT=|POINTER_INPUT=|OUTPUT_CONFIGURATION=|REAL_SERIAL_|SETTINGS_CONFIG_|SETTINGS_ENDPOINT_|PHASE2C_|PHASE2D2_|PHASE2D3B_|PANEL_PIXEL_ASSERTION=|WORKSPACE_|WINDOW_|COMPOSITOR_EXIT=|SESSION_EXIT=|CLEAN_SHUTDOWN=' \
   "$run_dir/test.log"

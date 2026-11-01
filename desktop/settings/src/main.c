@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 	struct settings_application settings = {0};
 	seyrix_settings_client_init(&settings.client, refresh_window, &settings);
 	GtkApplication *application = gtk_application_new("org.seyrix.settings",
-		G_APPLICATION_NON_UNIQUE);
+		G_APPLICATION_DEFAULT_FLAGS);
 	g_signal_connect(application, "activate", G_CALLBACK(on_activate),
 		&settings);
 	int status = g_application_run(G_APPLICATION(application), argc, argv);

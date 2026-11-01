@@ -1,6 +1,9 @@
 #include "seyrix.h"
 
+#include <pixman.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include <wlr/util/log.h>
 
@@ -278,9 +281,65 @@ static void handle_window_unmap(struct wl_listener *listener, void *data) {
 	wlr_log(WLR_INFO, "Window unmapped");
 }
 
+static uint64_t settings_trace_monotonic_ns(void) {
+	struct timespec now = {0};
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+		return 0;
+	}
+	return (uint64_t)now.tv_sec * 1000000000ULL +
+		(uint64_t)now.tv_nsec;
+}
+
+static void log_settings_surface_commit(struct seyrix_window *window) {
+	struct seyrix_server *server = window->server;
+	if (!server->settings_trace_enabled) {
+		return;
+	}
+	const char *app_id = window->xdg_toplevel->app_id;
+	if (app_id == NULL || strcmp(app_id, "org.seyrix.settings") != 0) {
+		return;
+	}
+	struct wlr_surface *surface = window->xdg_toplevel->base->surface;
+	struct wlr_surface_state *current = &surface->current;
+	pid_t pid = 0;
+	uint32_t xdg_surface_id = 0;
+	uint32_t wl_surface_id = 0;
+	window_identity(window, &pid, &xdg_surface_id);
+	if (surface->resource != NULL) {
+		wl_surface_id = wl_resource_get_id(surface->resource);
+	}
+	const pixman_box32_t *surface_damage =
+		pixman_region32_extents(&current->surface_damage);
+	const pixman_box32_t *buffer_damage =
+		pixman_region32_extents(&current->buffer_damage);
+	uint64_t now = settings_trace_monotonic_ns();
+	server->settings_trace_commit_ns = now;
+	server->settings_trace_xdg_surface_id = xdg_surface_id;
+	server->settings_trace_wl_surface_id = wl_surface_id;
+	server->settings_trace_seq = current->seq;
+	server->settings_trace_pid = pid;
+	server->settings_trace_pending = true;
+	server->settings_trace_wait_present = false;
+	wlr_log(WLR_INFO,
+		"SETTINGS_RENDER_TRACE event=surface_commit monotonic_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u seq=%u committed=0x%08x buffer_attached=%d mapped=%d width=%d height=%d surface_damage=%d:%d,%d-%d,%d buffer_damage=%d:%d,%d-%d,%d",
+		(unsigned long long)now, (long)pid, xdg_surface_id,
+		wl_surface_id, current->seq, current->committed,
+		surface->buffer != NULL, surface->mapped, current->width,
+		current->height,
+		surface_damage->x1 < surface_damage->x2 &&
+			surface_damage->y1 < surface_damage->y2,
+		surface_damage->x1, surface_damage->y1,
+		surface_damage->x2, surface_damage->y2,
+		buffer_damage->x1 < buffer_damage->x2 &&
+			buffer_damage->y1 < buffer_damage->y2,
+		buffer_damage->x1, buffer_damage->y1,
+		buffer_damage->x2, buffer_damage->y2);
+}
+
 static void handle_window_commit(struct wl_listener *listener, void *data) {
 	(void)data;
 	struct seyrix_window *window = wl_container_of(listener, window, commit);
+	log_settings_surface_commit(window);
 	if (window->xdg_toplevel->base->initial_commit) {
 		/* A zero configure size lets the client choose its natural size. */
 		wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);

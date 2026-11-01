@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+set qemu_spawn_id -1
+set acceptance_failures 0
+
+proc ensure_serial_root_shell {} {
+	global qemu_spawn_id
+	send -i $qemu_spawn_id -- "\r"
+	expect -i $qemu_spawn_id -re {SEYRIX-ROOT#[ \t]*} {}
+}
+
+set production_capture [file join [file dirname [file normalize [info script]]] qemu-graphics-capture.tcl]
+source $production_capture
+log_user 0
+spawn -noecho bash --noprofile --norc -i
+set qemu_spawn_id $spawn_id
+expect -i $qemu_spawn_id -re {#[ \t]*$} {}
+send -i $qemu_spawn_id -- "stty -echo; export PS1='SEYRIX-ROOT# '\r"
+expect -i $qemu_spawn_id -re {SEYRIX-ROOT#[ \t]*} {}
+
+set capture_result [run_serial_capture \
+	{printf '%s\n' 'TRACE_OUTCOME=failed' 'STAGE_RESULT name={fixture} result=INCOMPLETE fake_prompt=SEYRIX-ROOT#' 'AFTER_STAGE_RESULT=retained'} \
+	{TRACE_OUTCOME=passed} {TRACE_OUTCOME=failed} \
+	{stage marker does not impersonate the shell prompt} 5]
+if {[lindex $capture_result 0] ne "fail"} {
+	puts stderr "SERIAL_CAPTURE_MARKER_ORDER=failed result=[lindex $capture_result 0]"
+	exit 1
+}
+set captured_text [join [lrange $capture_result 1 end] "\n"]
+if {[string first "AFTER_STAGE_RESULT=retained" $captured_text] < 0 ||
+		[string first "STAGE_RESULT name={fixture}" $captured_text] < 0} {
+	puts stderr "SERIAL_CAPTURE_MARKER_ORDER=failed trailing-output-lost"
+	exit 1
+}
+
+set next_result [run_serial_capture \
+	{printf '%s\n' 'TRACE_OUTCOME=passed'} \
+	{TRACE_OUTCOME=passed} {TRACE_OUTCOME=failed} \
+	{following command starts at a clean shell prompt} 5]
+if {[lindex $next_result 0] ne "pass"} {
+	puts stderr "SERIAL_CAPTURE_MARKER_ORDER=failed next-command=[lindex $next_result 0]"
+	exit 1
+}
+
+send -i $qemu_spawn_id -- "exit\r"
+expect -i $qemu_spawn_id eof
+puts "SERIAL_CAPTURE_MARKER_ORDER=passed"

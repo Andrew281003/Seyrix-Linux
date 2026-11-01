@@ -1,0 +1,2 @@
+monotonic_ns=1 source=client-stderr pid=500 -> wl_surface#14.commi
+monotonic_ns=2 source=client-stderr pid=500 -> wl_surface#14.attach(wl_buffer#24, 0, 0

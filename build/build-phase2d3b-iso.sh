@@ -14,6 +14,7 @@ if [[ -f "$repo_root/.git" ]]; then
 	fi
 fi
 source "$repo_root/build/retention.sh"
+source "$repo_root/build/settings-desktop-entry.sh"
 seyrix_retention_init
 seyrix_retention_acquire_lock
 build_id="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -132,6 +133,15 @@ ninja -C "$settings_build_dir"
 meson test -C "$settings_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$settings_build_dir"
 
+bash "$repo_root/tests/settings-desktop-entry-test.sh"
+python3 "$repo_root/tests/qemu-settings-page-check-test.py"
+bash "$repo_root/tests/settings-render-trace-regression.sh"
+python3 "$repo_root/tests/settings-render-pixel-regression.py"
+tclsh "$repo_root/tests/settings-render-trace-tcl-completeness.tcl" \
+	"$repo_root/tests/qemu-graphics.exp" \
+	"$repo_root/tests/qemu-graphics-capture.tcl" \
+	"$repo_root/tests/settings-render-trace-serial-regression.exp"
+
 if [[ "$native_sanitizers" == true ]]; then
 	: > "$metadata_dir/sanitizer-results.txt"
 	for component in compositor settings shell; do
@@ -186,14 +196,33 @@ ln -sfn ../seyrix-qemu-control.service \
 sed -i 's/\r$//' "$profile_dir/airootfs/home/seyrix/.bash_profile"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-compositor" \
   "$profile_dir/airootfs/usr/bin/seyrix-compositor"
+acceptance_hook_marker='SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed'
+packaged_compositor="$profile_dir/airootfs/usr/bin/seyrix-compositor"
+if [[ "$qemu_acceptance_hooks" == true ]]; then
+	if ! grep -aFq -- "$acceptance_hook_marker" "$packaged_compositor"; then
+		echo "QEMU acceptance hooks were requested but are missing from the packaged compositor." >&2
+		exit 1
+	fi
+	acceptance_hook_check='enabled-marker-present'
+else
+	if grep -aFq -- "$acceptance_hook_marker" "$packaged_compositor"; then
+		echo "QEMU acceptance hooks are disabled, but the packaged compositor contains the test hook." >&2
+		exit 1
+	fi
+	acceptance_hook_check='disabled-marker-absent'
+fi
+printf 'Requested hooks: %s\nPackaged compositor check: %s\nMarker: %s\n' \
+	"$qemu_acceptance_hooks" "$acceptance_hook_check" "$acceptance_hook_marker" \
+	> "$metadata_dir/qemu-acceptance-hooks-check.txt"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-protocol-probe" \
   "$profile_dir/airootfs/usr/bin/seyrix-protocol-probe"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-shell" \
   "$profile_dir/airootfs/usr/bin/seyrix-shell"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-settings" \
   "$profile_dir/airootfs/usr/bin/seyrix-settings"
-install -D -m 0644 "$staging_dir/usr/share/applications/seyrix-settings.desktop" \
-  "$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
+seyrix_install_settings_desktop_entry \
+	"$staging_dir/usr/share/applications/seyrix-settings.desktop" \
+	"$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
 install -D -m 0755 "$settings_build_dir/settings-endpoint-probe" \
   "$profile_dir/airootfs/usr/lib/seyrix-tests/settings-endpoint-probe"
 install -D -m 0644 "$staging_dir/usr/share/seyrix/Manual.txt" \
@@ -259,6 +288,7 @@ pacman-conf --repo-list > "$metadata_dir/repositories.txt"
     "${git_command[@]}" status --short >> "$metadata_dir/build-environment.txt"
   fi
   printf 'Compositor sanitizers: %s\n' "${sanitizers:-none}"
+  printf 'QEMU acceptance hooks: %s\n' "$qemu_acceptance_hooks"
   printf 'Base profile source: %s\n' "$repo_root/config/archiso"
   printf 'Graphics overlay source: %s\n' "$repo_root/config/graphics-overlay"
   printf 'Compositor overlay source: %s\n' "$repo_root/config/compositor-overlay"

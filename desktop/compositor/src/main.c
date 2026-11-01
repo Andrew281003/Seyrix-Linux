@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -255,6 +256,12 @@ bool seyrix_spawn_terminal(struct seyrix_server *server) {
 bool seyrix_server_init(struct seyrix_server *server) {
 	server->started_at_ms = monotonic_ms();
 	server->next_window_id = 1;
+	const char *render_trace = getenv("SEYRIX_COMPOSITOR_RENDER_TRACE");
+	server->settings_trace_enabled = render_trace != NULL &&
+		strcmp(render_trace, "1") == 0;
+	if (server->settings_trace_enabled) {
+		wlr_log(WLR_INFO, "Settings render trace enabled");
+	}
 	wl_list_init(&server->outputs);
 	wl_list_init(&server->windows);
 	wl_list_init(&server->keyboards);

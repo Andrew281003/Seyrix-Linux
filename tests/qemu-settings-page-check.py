@@ -57,9 +57,19 @@ def main() -> int:
         if previous_width != output_width:
             raise ValueError(f"screenshot width {previous_width} does not match output {output_width}")
         if output_width < 760:
-            left, top, right, bottom = 10, 185, output_width - 10, min(current_height, 265)
+            window_x, window_y = 0, 0
+            window_width, window_height = output_width, current_height
+            left, top = window_x + 10, window_y + 185
         else:
-            left, top, right, bottom = 210, 145, output_width - 10, min(current_height, 215)
+            # The compositor presents the mapped Settings surface at output
+            # bounds even though the app requests a smaller default size.
+            left, top = 210, 138
+            window_x, window_y = 0, 0
+            window_width, window_height = output_width, current_height
+        right = min(output_width, window_x + window_width - 10)
+        bottom = min(current_height, window_y + window_height - (80 if output_width < 760 else 70))
+        if left >= right or top >= bottom:
+            raise ValueError("Settings content region is outside the screenshot")
         changed_pixels = 0
         total_difference = 0
         for y in range(top, bottom):
@@ -78,7 +88,7 @@ def main() -> int:
         f"SETTINGS_PAGE_DIFF_ROI={left},{top}-{right},{bottom} "
         f"changed_pixels={changed_pixels} total_difference={total_difference}"
     )
-    if changed_pixels >= 80 and total_difference >= 4000:
+    if changed_pixels >= 1000 and total_difference >= 100000:
         print("SETTINGS_PAGE_SETTLE=changed")
         return 0
     print("SETTINGS_PAGE_SETTLE=unchanged")

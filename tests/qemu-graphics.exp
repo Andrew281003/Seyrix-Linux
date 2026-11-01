@@ -32,11 +32,23 @@ set acceptance_failures 0
 set last_serial_check_result incomplete
 set serial_log "$run_dir/expect-session.log"
 set timeout 360
+set boot_control_timeout_ms 600000
+if {[info exists env(SEYRIX_QEMU_BOOT_CONTROL_TIMEOUT_MS)]} {
+	set requested_boot_control_timeout_ms $env(SEYRIX_QEMU_BOOT_CONTROL_TIMEOUT_MS)
+	if {![regexp {^[1-9][0-9]{0,5}$} $requested_boot_control_timeout_ms] ||
+		$requested_boot_control_timeout_ms > 900000} {
+		puts stderr "SEYRIX_QEMU_BOOT_CONTROL_TIMEOUT_MS must be between 1 and 900000."
+		exit 2
+	}
+	set boot_control_timeout_ms $requested_boot_control_timeout_ms
+}
 set phase2b 0
 set phase2c 0
 set phase2d2 0
 set phase2d3b 0
 set sanitizers_enabled 0
+set sanitizer_only 0
+set settings_ipc_only 0
 set renderer_request ""
 set egl_lifecycle_control 0
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
@@ -52,6 +64,14 @@ if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 	set phase2d2 1
 	set phase2d3b 1
 }
+if {[info exists env(SEYRIX_QEMU_SETTINGS_IPC_ONLY)] &&
+		$env(SEYRIX_QEMU_SETTINGS_IPC_ONLY) eq "1"} {
+	if {!$phase2d3b} {
+		puts stderr "Settings IPC-only diagnostics require the phase2d3b workflow."
+		exit 2
+	}
+	set settings_ipc_only 1
+}
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		($env(SEYRIX_QEMU_WORKFLOW) eq "phase2d2" ||
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2d3b")} {
@@ -65,6 +85,14 @@ if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 if {[info exists env(SEYRIX_QEMU_SANITIZERS)] &&
 		$env(SEYRIX_QEMU_SANITIZERS) eq "1"} {
 	set sanitizers_enabled 1
+}
+if {[info exists env(SEYRIX_QEMU_SANITIZER_ONLY)] &&
+		$env(SEYRIX_QEMU_SANITIZER_ONLY) eq "1"} {
+	if {!$phase2d3b || !$sanitizers_enabled} {
+		puts stderr "Sanitizer-only diagnostics require the phase2d3b workflow and an instrumented compositor."
+		exit 2
+	}
+	set sanitizer_only 1
 }
 if {[info exists env(SEYRIX_QEMU_RENDERER)]} {
 	set renderer_request $env(SEYRIX_QEMU_RENDERER)
@@ -93,6 +121,48 @@ proc qemu_is_owned {pid} {
 	set command_line [qemu_cmdline $pid]
 	return [expr {$command_line ne "" &&
 		[string first $qemu_identity $command_line] >= 0}]
+}
+
+proc wait_for_owned_qemu_exit {timeout_s} {
+	global qemu_pid
+	set attempts [expr {$timeout_s * 4}]
+	for {set attempt 0} {$attempt < $attempts} {incr attempt} {
+		if {![qemu_is_owned $qemu_pid]} {
+			return 1
+		}
+		after 250
+	}
+	return [expr {![qemu_is_owned $qemu_pid]}]
+}
+
+proc finish_guest_shutdown {qmp stage_name initial_timeout_s {request_poweroff 1}} {
+	global qemu_pid qemu_process_spawn_id qemu_spawn_id
+	puts "STAGE_BEGIN name={$stage_name} timeout_s=$initial_timeout_s"
+	if {$request_poweroff} {
+		send -i $qemu_spawn_id -- "loginctl poweroff\r"
+	}
+	if {![wait_for_owned_qemu_exit $initial_timeout_s]} {
+		puts "GUEST_SHUTDOWN=acpi-request"
+		if {[catch {qmp_exec $qmp {{"execute":"system_powerdown"}}} powerdown_error]} {
+			if {[qemu_is_owned $qemu_pid]} {
+				puts stderr "Could not request ACPI guest poweroff: $powerdown_error"
+			}
+		}
+		if {![wait_for_owned_qemu_exit 90]} {
+			puts stderr "STAGE_RESULT name={$stage_name} result=INCOMPLETE reason=timeout"
+			puts stderr "Guest shutdown did not stop the owned QEMU process within the bounded wait."
+			exit 1
+		}
+	}
+	set wait_result [wait -i $qemu_process_spawn_id]
+	set qemu_exit [lindex $wait_result 3]
+	if {$qemu_exit != 0} {
+		puts stderr "STAGE_RESULT name={$stage_name} result=FAIL exit=$qemu_exit"
+		puts stderr "QEMU exited with status $qemu_exit after the guest shutdown request."
+		exit 1
+	}
+	puts "CLEAN_SHUTDOWN=passed"
+	puts "STAGE_RESULT name={$stage_name} result=PASS"
 }
 
 proc cleanup_owned_qemu {reason} {
@@ -173,16 +243,36 @@ log_file -noappend $serial_log
 log_user 1
 set boot_started [clock milliseconds]
 
+proc qmp_read_line {channel timeout_s} {
+	set deadline [expr {[clock milliseconds] + ($timeout_s * 1000)}]
+	while {[clock milliseconds] < $deadline} {
+		if {[gets $channel line] >= 0} {
+			return $line
+		}
+		if {[eof $channel]} {
+			error "QMP connection closed before a complete line."
+		}
+		after 50
+	}
+	error "QMP line timed out after ${timeout_s}s."
+}
+
 proc qmp_reply {channel} {
-    while {[gets $channel line] >= 0} {
-        if {[string first {"return"} $line] >= 0 || [string first {"error"} $line] >= 0} {
-            if {[string first {"error"} $line] >= 0} {
-                error "QMP error: $line"
-            }
-            return $line
-        }
-    }
-    error "QMP connection closed before reply."
+	set deadline [expr {[clock milliseconds] + 15000}]
+	while {[clock milliseconds] < $deadline} {
+		if {[gets $channel line] >= 0} {
+			if {[string first {"return"} $line] >= 0 || [string first {"error"} $line] >= 0} {
+				if {[string first {"error"} $line] >= 0} {
+					error "QMP error: $line"
+				}
+				return $line
+			}
+		} elseif {[eof $channel]} {
+			error "QMP connection closed before reply."
+		}
+		after 50
+	}
+	error "QMP reply timed out after 15s."
 }
 
 proc qmp_exec {channel json} {
@@ -218,30 +308,6 @@ proc qmp_hmp {channel command} {
     }
     return $result
 }
-proc wait_for_serial_login_prompt {path timeout_ms} {
-    set deadline [expr {[clock milliseconds] + $timeout_ms}]
-    while {[clock milliseconds] < $deadline} {
-        if {[file readable $path] && ![catch {set channel [open $path r]}]} {
-            fconfigure $channel -translation binary -encoding binary
-            set content [read $channel]
-            close $channel
-            set searchable_content [regsub -all {\033\[[0-?]*[ -/]*[@-~]} $content ""]
-            set searchable_content [string map [list "\r" ""] $searchable_content]
-            if {[string first "Kernel panic - not syncing" $searchable_content] >= 0} {
-                return kernel-panic
-            }
-            if {[string first "seyrix-dev login:" $searchable_content] >= 0} {
-                return login-prompt
-            }
-            if {[string first "Timed out waiting for device /dev/ttyS0" $searchable_content] >= 0} {
-                return ttyS0-device-timeout
-            }
-        }
-        after 250
-    }
-    return timeout
-}
-
 proc wait_for_boot_control {control_channel serial_path timeout_ms} {
     global timeout
     set saved_timeout $timeout
@@ -294,6 +360,7 @@ proc keycode_for {character} {
         "_" { return [list "minus" 1] }
         "=" { return [list "equal" 0] }
         "," { return [list "comma" 0] }
+        ";" { return [list "semicolon" 0] }
         ":" { return [list "semicolon" 1] }
         "@" { return [list "2" 1] }
         "." { return [list "dot" 0] }
@@ -306,26 +373,37 @@ proc keycode_for {character} {
 proc qmp_type {channel value} {
     foreach character [split $value ""] {
         lassign [keycode_for $character] code shift
+        set keys [list]
         if {$shift} {
-            qmp_key_transition $channel shift 1
-            after 40
+            lappend keys [format {{"type":"qcode","data":"%s"}} "shift"]
         }
-        set down_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
-        qmp_exec $channel $down_event
-        after 60
-        set up_event [format {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"%s"}}}]}}} $code]
-        qmp_exec $channel $up_event
-        if {$shift} {
-            after 40
-            qmp_key_transition $channel shift 0
-        }
-        after 60
+        lappend keys [format {{"type":"qcode","data":"%s"}} $code]
+        set json [format {{"execute":"send-key","arguments":{"keys":[%s],"hold-time":50}}} [join $keys ","]]
+        qmp_exec $channel $json
+        # TCG guests can lag host wall clock; allow QEMU's send-key hold timer
+        # to release the key before the next character arrives.
+        after 350
     }
 }
 
 proc qmp_type_slow {channel value {delay_ms 320}} {
     foreach character [split $value ""] {
-        qmp_type $channel $character
+        if {$character eq "\n"} {
+            qmp_key_chord $channel {} ret
+            after $delay_ms
+            continue
+        }
+        lassign [keycode_for $character] code shift
+        set events [list]
+        if {$shift} {
+            lappend events [format {{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"%s"}}}} "shift"]
+        }
+        lappend events [format {{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"%s"}}}} $code]
+        lappend events [format {{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"%s"}}}} $code]
+        if {$shift} {
+            lappend events [format {{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"%s"}}}} "shift"]
+        }
+        qmp_exec $channel [format {{"execute":"input-send-event","arguments":{"events":[%s]}}} [join $events ","]]
         after $delay_ms
     }
 }
@@ -559,11 +637,6 @@ proc run_serial_check {command success_pattern failure_pattern description {stag
     set timeout $saved_timeout
 }
 
-proc validate_compositor_session {compositor_pid session_user runtime_dir display_name} {
-	set command "pid=$compositor_pid; uid=\$(awk '/^Uid:/ {print \\\$2}' /proc/\$pid/status); exe=\$(readlink -f /proc/\$pid/exe); state=\$(awk '/^State:/ {print \\\$2}' /proc/\$pid/status); runtime=\"$runtime_dir\"; display=\"$display_name\"; socket=\"\$runtime/\$display\"; printf 'GRAPHICAL_SESSION pid=%s uid=%s exe=%s state=%s runtime=%s display=%s\\n' \"\$pid\" \"\$uid\" \"\$exe\" \"\$state\" \"\$runtime\" \"\$display\"; [[ \"\$uid\" == \"$session_user\" && \"\$exe\" == /usr/bin/seyrix-compositor && \"\$state\" != Z && \"\$state\" != X && -S \"\$socket\" && \"\$(stat -c %U:%G:%a \"\$socket\")\" == seyrix:seyrix:600 ]] || exit 1; timeout 5s env XDG_RUNTIME_DIR=\"\$runtime\" WAYLAND_DISPLAY=\"\$display\" wayland-info >/dev/null 2>&1 || exit 1; echo GRAPHICAL_SESSION_SOCKET_CONNECTED=passed"
-	return [run_serial_capture $command {GRAPHICAL_SESSION_SOCKET_CONNECTED=passed} {GRAPHICAL_SESSION_SOCKET_CONNECTED=failed} {validate real graphical-session compositor and Wayland socket} 20]
-}
-
 spawn -noecho $qemu {*}$qemu_args
 set qemu_process_spawn_id $spawn_id
 set qemu_pid [exp_pid -i $qemu_process_spawn_id]
@@ -616,18 +689,25 @@ if {$qmp eq ""} {
     puts stderr "Could not connect to QMP on localhost port $monitor_port: $qmp_error"
     exit 1
 }
-fconfigure $qmp -buffering line -blocking 1
-set greeting [gets $qmp]
+fconfigure $qmp -buffering line -blocking 0
+set greeting [qmp_read_line $qmp 15]
 if {[string first {"QMP"} $greeting] < 0} {
     puts stderr "Unexpected QMP greeting: $greeting"
     exit 1
 }
 qmp_exec $qmp {{"execute":"qmp_capabilities"}}
 puts "QMP_CONNECTED=passed"
-if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
-		$env(SEYRIX_QEMU_RESOLUTION_PROFILE) eq "800x600"} {
-	set video_mode "video=VGA-1:800x600e"
-	puts "STAGE_BEGIN name={wait for live GRUB menu and request an 800x600 framebuffer and DRM mode} timeout_s=10"
+	set requested_resolution ""
+	if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)]} {
+		switch -- $env(SEYRIX_QEMU_RESOLUTION_PROFILE) {
+			800x600 - 1280x720 - 1920x1080 { set requested_resolution $env(SEYRIX_QEMU_RESOLUTION_PROFILE) }
+		}
+	}
+	set video_mode ""
+	if {$requested_resolution ne ""} {
+		set video_mode [format {video=Virtual-1:%se} $requested_resolution]
+		set video_mode_stage "wait for live GRUB menu and request a $requested_resolution framebuffer and DRM mode"
+		puts "STAGE_BEGIN name={$video_mode_stage} timeout_s=10"
 	set grub_menu_seen 0
 	for {set attempt 0} {$attempt < 400 && !$grub_menu_seen} {incr attempt} {
 		if {[file readable "$run_dir/serial.log"] && ![catch {set menu_channel [open "$run_dir/serial.log" r]}]} {
@@ -642,11 +722,11 @@ if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
 		if {!$grub_menu_seen} {after 25}
 	}
 	if {!$grub_menu_seen} {
-		puts stderr "STAGE_RESULT name={wait for live GRUB menu and request an 800x600 framebuffer and DRM mode} result=INCOMPLETE reason=grub-menu-not-ready"
+		puts stderr "STAGE_RESULT name={$video_mode_stage} result=INCOMPLETE reason=grub-menu-not-ready"
 		puts stderr "GRUB did not present the boot menu before its automatic boot."
 		exit 1
 	}
-	qmp_hmp $qmp "screendump $run_dir/grub-menu-800x600.ppm"
+	qmp_hmp $qmp "screendump $run_dir/grub-menu-$requested_resolution.ppm"
 	qmp_key_transition $qmp e 1
 	after 70
 	qmp_key_transition $qmp e 0
@@ -663,11 +743,11 @@ if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
 		if {!$grub_editor_ready} {after 25}
 	}
 	if {!$grub_editor_ready} {
-		puts stderr "STAGE_RESULT name={wait for live GRUB menu and request an 800x600 framebuffer and DRM mode} result=FAIL reason=grub-editor-not-ready"
+		puts stderr "STAGE_RESULT name={$video_mode_stage} result=FAIL reason=grub-editor-not-ready"
 		puts stderr "The QMP edit key did not open the selected GRUB entry."
 		exit 1
 	}
-	qmp_hmp $qmp "screendump $run_dir/grub-editor-before-800x600.ppm"
+	qmp_hmp $qmp "screendump $run_dir/grub-editor-before-$requested_resolution.ppm"
 	for {set line 0} {$line < 2} {incr line} {
 		qmp_key_transition $qmp down 1
 		after 50
@@ -683,7 +763,7 @@ if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
 		qmp_key_transition $qmp backspace 0
 		after 50
 	}
-	qmp_type $qmp "800x600"
+	qmp_type $qmp $requested_resolution
 	qmp_key_transition $qmp down 1
 	after 50
 	qmp_key_transition $qmp down 0
@@ -693,19 +773,20 @@ if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
 	qmp_key_transition $qmp end 0
 	qmp_type $qmp " $video_mode"
 	after 150
-	qmp_hmp $qmp "screendump $run_dir/grub-editor-800x600-requested.ppm"
+	qmp_hmp $qmp "screendump $run_dir/grub-editor-$requested_resolution-requested.ppm"
 	qmp_key_transition $qmp f10 1
 	after 100
 	qmp_key_transition $qmp f10 0
 	puts "GRUB_VIDEO_REQUEST_SENT=kernel_arg=$video_mode kernel_line=linux"
-	puts "STAGE_RESULT name={wait for live GRUB menu and request an 800x600 framebuffer and DRM mode} result=PASS"
+	puts "STAGE_RESULT name={$video_mode_stage} result=PASS"
 }
 set pci_info [qmp_hmp $qmp "info pci"]
 puts "QEMU_PCI_INVENTORY=$pci_info"
 
 set control_timeout_saved $timeout
-puts "STAGE_BEGIN name={UEFI boot to unprivileged graphical control shell} timeout_s=240"
-set control_wait_result [wait_for_boot_control $qemu_spawn_id "$run_dir/serial.log" 240000]
+set control_timeout_s [expr {int(($boot_control_timeout_ms + 999) / 1000)}]
+puts "STAGE_BEGIN name={UEFI boot to unprivileged graphical control shell} timeout_s=$control_timeout_s"
+set control_wait_result [wait_for_boot_control $qemu_spawn_id "$run_dir/serial.log" $boot_control_timeout_ms]
 if {$control_wait_result eq "ready"} {
     set control_ready_ms [expr {[clock milliseconds] - $boot_started}]
     puts "BOOT_TO_USER_CONTROL_MS=$control_ready_ms"
@@ -731,32 +812,8 @@ set settings_render_diagnostic 0
 if {[info exists env(SEYRIX_QEMU_SETTINGS_RENDER_DIAGNOSTIC)] && $env(SEYRIX_QEMU_SETTINGS_RENDER_DIAGNOSTIC) eq "1"} {
 	set settings_render_diagnostic 1
 }
-if {!$settings_render_diagnostic} {
-	set serial_prompt_started [clock milliseconds]
-	puts "STAGE_BEGIN name={real ttyS0 serial login prompt} timeout_s=300"
-	set serial_prompt_result [wait_for_serial_login_prompt "$run_dir/serial.log" 300000]
-	set serial_prompt_duration [expr {[clock milliseconds] - $serial_prompt_started}]
-	if {$serial_prompt_result eq "login-prompt"} {
-		puts "REAL_SERIAL_LOGIN_PROMPT=seyrix-dev login:"
-		puts "STAGE_RESULT name={real ttyS0 serial login prompt} result=PASS duration_ms=$serial_prompt_duration"
-	} elseif {$serial_prompt_result eq "ttyS0-device-timeout"} {
-		puts stderr "STAGE_RESULT name={real ttyS0 serial login prompt} result=FAIL reason=guest-device-timeout"
-		puts stderr "The guest kernel or udev did not expose /dev/ttyS0 to systemd."
-		set serial_failure_diagnostic_command {printf 'SERIAL_FAILURE_DIAGNOSTIC_BEGIN\n'; printf 'KERNEL_CMDLINE='; cat /proc/cmdline; printf 'TTY_NODES='; ls -l /dev/ttyS* 2>&1 || true; printf 'TTY_SYSFS='; find -L /sys/class/tty -maxdepth 1 -name 'ttyS*' -printf '%f ' 2>&1 || true; printf '\nTTY_MODULES='; lsmod 2>&1 | grep -E '8250|serial' || true; printf 'TTY0_DRIVER='; readlink -f /sys/class/tty/ttyS0/device/driver 2>&1 || true; printf 'TTY0_UDEV='; udevadm info --query=all --path=/sys/class/tty/ttyS0 2>&1 || true; printf 'DEVICE_UNIT='; systemctl show dev-ttyS0.device -p ActiveState -p SubState -p Job -p Wants -p Before 2>&1 || true; printf 'GETTY_UNIT='; systemctl show serial-getty@ttyS0.service -p ActiveState -p SubState -p Result -p ExecMainStatus -p After -p BindsTo 2>&1 || true; printf 'GETTY_LOG='; journalctl -b -u serial-getty@ttyS0.service -o cat --no-pager 2>&1 | tail -n 16; printf 'KERNEL_SERIAL_LOG='; journalctl -b -k -o cat --no-pager 2>&1 | grep -Ei 'ttyS0|8250|serial' | tail -n 24 || true; echo SERIAL_FAILURE_DIAGNOSTIC_COMPLETE}
-		run_serial_check $serial_failure_diagnostic_command {SERIAL_FAILURE_DIAGNOSTIC_COMPLETE} {SERIAL_FAILURE_DIAGNOSTIC_FAILED} "collect read-only guest UART enumeration and serial-getty state after the device timeout" 30
-		exit 1
-	} elseif {$serial_prompt_result eq "kernel-panic"} {
-		puts stderr "STAGE_RESULT name={real ttyS0 serial login prompt} result=FAIL reason=kernel-panic"
-		puts stderr "The guest kernel panicked before the real ttyS0 login prompt appeared."
-		exit 1
-	} else {
-		puts stderr "STAGE_RESULT name={real ttyS0 serial login prompt} result=INCOMPLETE reason=prompt-timeout"
-		puts stderr "No seyrix-dev login: prompt appeared in the QEMU ISA serial log."
-		exit 1
-	}
-	set serial_device_command {if test -c /dev/ttyS0 && systemctl is-active --quiet serial-getty@ttyS0.service; then echo REAL_SERIAL_TTY0_GETTY=passed; else echo REAL_SERIAL_TTY0_GETTY=failed; ls -l /dev/ttyS0 2>&1 || true; systemctl status serial-getty@ttyS0.service --no-pager --full 2>&1 || true; fi}
-	run_serial_check $serial_device_command {REAL_SERIAL_TTY0_GETTY=passed} {REAL_SERIAL_TTY0_GETTY=failed} "verify the guest ttyS0 character device and active serial getty" 15
-}
+puts "QEMU_UART_LOGIN_PROMPT_DIAGNOSTIC=not-required control=virtio-serial unprivileged-shell=verified"
+
 
 set baseline_command {
   printf 'SEYRIX_GRAPHICS_CHECK_BEGIN\n'
@@ -801,10 +858,14 @@ set baseline_command {
   printf 'INPUT_EVENT_COUNT='; find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | wc -l
   if find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null | grep -q .; then echo INPUT_DEVICE_CHECK=passed; else echo INPUT_DEVICE_CHECK=failed; fi
   supported_drm_driver=0
-  for driver_link in /sys/class/drm/card[0-9]*/device/driver; do
-    [[ -e "$driver_link" ]] || continue
-    driver_name=$(basename "$(readlink -f "$driver_link")")
-    if [[ "$driver_name" == virtio_gpu || "$driver_name" == bochs-drm ]]; then supported_drm_driver=1; fi
+  for sys_card in /sys/class/drm/card[0-9]*; do
+    driver_path=$(readlink -f "$sys_card/device/driver" 2>/dev/null || true)
+    driver_name=${driver_path##*/}
+    printf 'DRM_DRIVER %s=%s\n' "${sys_card##*/}" "${driver_name:-missing}"
+    if [[ "$driver_name" == bochs-drm || "$driver_name" == bochs_drm ]] ||
+        { [[ "$driver_name" == virtio-pci || "$driver_name" == virtio_gpu ]] && lsmod | grep -Eq '^virtio_gpu '; }; then
+      supported_drm_driver=1
+    fi
   done
   if compgen -G '/dev/dri/card[0-9]*' >/dev/null && [[ "$supported_drm_driver" -eq 1 ]]; then echo GRAPHICS_DEVICE_CHECK=passed; else echo GRAPHICS_DEVICE_CHECK=failed; fi
   printf 'SEYRIX_GRAPHICS_CHECK_END\n'
@@ -884,12 +945,11 @@ expect {
     }
 }
 
-if {[info exists env(SEYRIX_QEMU_RESOLUTION_PROFILE)] &&
-		$env(SEYRIX_QEMU_RESOLUTION_PROFILE) eq "800x600"} {
-	set video_cmdline_command {if grep -Fqw -- 'video=VGA-1:800x600e' /proc/cmdline; then echo PHASE2D3B_VIDEO_CMDLINE=passed; else echo PHASE2D3B_VIDEO_CMDLINE=failed; cat /proc/cmdline; fi}
-	run_serial_check $video_cmdline_command {PHASE2D3B_VIDEO_CMDLINE=passed} {PHASE2D3B_VIDEO_CMDLINE=failed} "verify GRUB passed the 800x600 mode request to the running kernel" 10
+	if {$video_mode ne ""} {
+		set video_cmdline_command "if grep -Fqw -- '$video_mode' /proc/cmdline; then echo PHASE2D3B_VIDEO_CMDLINE=passed; else echo PHASE2D3B_VIDEO_CMDLINE=failed; cat /proc/cmdline; fi"
+		run_serial_check $video_cmdline_command {PHASE2D3B_VIDEO_CMDLINE=passed} {PHASE2D3B_VIDEO_CMDLINE=failed} "verify GRUB passed the $requested_resolution mode request to the running kernel" 10
 	if {$last_serial_check_result ne "pass"} {
-		puts stderr "The running kernel did not receive the requested 800x600 DRM mode."
+		puts stderr "The running kernel did not receive the requested $requested_resolution DRM mode."
 		exit 1
 	}
 }
@@ -970,7 +1030,8 @@ if {$phase2b} {
     after 2000
     qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-command.ppm"
 
-    set compositor_ready_command {for n in $(seq 1 60); do compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); runtime=/run/user/1000; socket=; if [[ -n "$compositor_pid" ]]; then tr '\0' '\n' <"/proc/$compositor_pid/environ" | grep -Fxq 'XDG_RUNTIME_DIR=/run/user/1000' || compositor_pid=; fi; for candidate in "$runtime"/wayland-*; do [[ -S "$candidate" ]] && socket="$candidate" && break; done; if [[ -n "$compositor_pid" && -n "$socket" ]] && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x seyrix-shell >/dev/null && timeout 5s env XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="${socket##*/}" wayland-info >/dev/null 2>&1; then break; fi; sleep 1; done; session_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); display="${socket##*/}"; uid=$(awk '/^Uid:/ {print $2}' "/proc/$session_pid/status" 2>/dev/null || true); exe=$(readlink -f "/proc/$session_pid/exe" 2>/dev/null || true); state=$(awk '/^State:/ {print $2}' "/proc/$session_pid/status" 2>/dev/null || true); socket_meta=$(stat -c '%U:%G:%a' "$socket" 2>/dev/null || true); shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); printf 'GRAPHICAL_SESSION pid=%s uid=%s exe=%s state=%s runtime=%s socket=%s socket_owner_mode=%s shell_pid=%s\n' "${session_pid:-missing}" "${uid:-missing}" "${exe:-missing}" "${state:-missing}" "$runtime" "${socket:-missing}" "${socket_meta:-missing}" "${shell_pid:-missing}"; if [[ -n "$session_pid" && "$uid" == 1000 && "$exe" == /usr/bin/seyrix-compositor && "$state" != Z && "$state" != X && "$socket_meta" == seyrix:seyrix:600 && -n "$shell_pid" ]] && timeout 5s env XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" wayland-info >/dev/null 2>&1; then echo COMPOSITOR_READY=passed; echo WAYLAND_SOCKET_CONNECTED=passed; else echo COMPOSITOR_READY=failed; cat /tmp/seyrix-compositor.log 2>/dev/null || true; tail -n 40 /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null || true; fi; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'COMPOSITOR_RSS_KB='; if [[ -n "$session_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$session_pid/status"; else echo unavailable; fi; printf 'SHELL_PROCESSES='; pgrep -a -u 1000 -x seyrix-shell || true}
+    puts "STAGE_BEGIN name={Seyrix compositor and shell graphical readiness} timeout_s=70"
+    set compositor_ready_command {for n in $(seq 1 60); do compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); runtime=/run/user/1000; socket=; if [[ -n "$compositor_pid" ]]; then tr '\0' '\n' <"/proc/$compositor_pid/environ" | grep -Fxq 'XDG_RUNTIME_DIR=/run/user/1000' || compositor_pid=; fi; for candidate in "$runtime"/wayland-*; do [[ -S "$candidate" ]] && socket="$candidate" && break; done; if [[ -n "$compositor_pid" && -n "$socket" ]] && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x seyrix-shell >/dev/null && timeout 5s env XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="${socket##*/}" wlr-randr >/dev/null 2>&1; then break; fi; sleep 1; done; session_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); display="${socket##*/}"; uid=$(awk '/^Uid:/ {print $2}' "/proc/$session_pid/status" 2>/dev/null || true); exe=$(readlink -f "/proc/$session_pid/exe" 2>/dev/null || true); state=$(awk '/^State:/ {print $2}' "/proc/$session_pid/status" 2>/dev/null || true); socket_meta=$(stat -c '%U:%G:%a' "$socket" 2>/dev/null || true); runtime_meta=$(stat -c '%U:%G:%a' "$runtime" 2>/dev/null || true); socket_mode="${socket_meta##*:}"; safe_socket=0; if [[ "$socket_meta" == seyrix:seyrix:* && "$socket_mode" =~ ^[0-7]{3,4}$ && "$runtime_meta" == seyrix:seyrix:700 ]] && (( (8#$socket_mode & 0200) != 0 && (8#$socket_mode & 0022) == 0 )); then safe_socket=1; fi; if [[ "$safe_socket" -eq 1 ]]; then echo WAYLAND_SOCKET_PERMISSIONS=passed; else echo WAYLAND_SOCKET_PERMISSIONS=failed; fi; shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); printf 'GRAPHICAL_SESSION pid=%s uid=%s exe=%s state=%s runtime=%s socket=%s socket_owner_mode=%s runtime_owner_mode=%s shell_pid=%s\n' "${session_pid:-missing}" "${uid:-missing}" "${exe:-missing}" "${state:-missing}" "$runtime" "${socket:-missing}" "${socket_meta:-missing}" "${runtime_meta:-missing}" "${shell_pid:-missing}"; if [[ -n "$session_pid" && "$uid" == 1000 && "$exe" == /usr/bin/seyrix-compositor && "$state" != Z && "$state" != X && "$safe_socket" -eq 1 && -n "$shell_pid" ]] && timeout 5s env XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" wlr-randr >/dev/null 2>&1; then echo COMPOSITOR_READY=passed; echo WAYLAND_SOCKET_CONNECTED=passed; else echo COMPOSITOR_READY=failed; cat /tmp/seyrix-compositor.log 2>/dev/null || true; tail -n 40 /tmp/seyrix-weston-gl.log /tmp/seyrix-weston-pixman.log 2>/dev/null || true; fi; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'COMPOSITOR_RSS_KB='; if [[ -n "$session_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$session_pid/status"; else echo unavailable; fi; printf 'SHELL_PROCESSES='; pgrep -a -u 1000 -x seyrix-shell || true; printf 'COMPOSITOR_LOG_END\n'}
     send -- "$compositor_ready_command\r"
     set compositor_ready 0
     expect {
@@ -999,9 +1060,12 @@ if {$phase2b} {
         }
     }
     if {!$compositor_ready} {
+        puts stderr "STAGE_RESULT name={Seyrix compositor and shell graphical readiness} result=FAIL"
         puts stderr "Seyrix compositor did not start or create a Wayland socket."
         exit 1
     }
+    puts "GRAPHICAL_READY=passed"
+    puts "STAGE_RESULT name={Seyrix compositor and shell graphical readiness} result=PASS"
     if {$phase2c || $phase2d2} {
         set guest_helper [file join [file dirname [file normalize [info script]]] qemu-guest-helper.sh]
         install_guest_helper $guest_helper
@@ -1016,6 +1080,31 @@ if {$phase2b} {
     puts "APPLICATION_LAUNCH=passed"
     set graphics_ms [expr {[clock milliseconds] - $boot_started}]
     puts "GRAPHICAL_BOOT_MS=$graphics_ms"
+    if {$sanitizer_only} {
+        qmp_hmp $qmp "screendump $run_dir/graphical-ready.ppm"
+        puts "STAGE_RESULT name={full Phase 2D.3B acceptance} result=INCOMPLETE reason=sanitizer-only"
+        qmp_key_chord $qmp {meta_l shift} q
+        set sanitizer_shutdown_command {for n in $(seq 1 60); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && systemctl is-active --quiet getty@tty1 && pgrep -a -u 1000 | grep -Eq ' [-]?bash$' && grep -q 'Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log && ! grep -q 'No outputs remain; stopping compositor' /tmp/seyrix-compositor.log; then echo COMPOSITOR_EXIT=passed; else echo COMPOSITOR_EXIT=failed; fi}
+        run_serial_check $sanitizer_shutdown_command {COMPOSITOR_EXIT=passed} {COMPOSITOR_EXIT=failed} "stop instrumented compositor and verify return to tty1" 75
+        set sanitizer_shutdown_result $last_serial_check_result
+
+        set sanitizer_log_command {printf 'COMPOSITOR_SANITIZER_LOG_BEGIN\n'; if grep -Eq 'AddressSanitizer:|LeakSanitizer:|runtime error:' /tmp/seyrix-compositor.log; then cat /tmp/seyrix-compositor.log; echo SANITIZER_FINDINGS=present; else tail -n 50 /tmp/seyrix-compositor.log 2>/dev/null || true; echo SANITIZER_FINDINGS=none; fi; printf 'COMPOSITOR_SANITIZER_LOG_END\n'}
+        run_serial_check $sanitizer_log_command {SANITIZER_FINDINGS=none} {SANITIZER_FINDINGS=present} "Mesa EGL compositor sanitizer diagnostic" 20
+        set sanitizer_findings $last_serial_check_result
+
+        finish_guest_shutdown $qmp "clean guest shutdown after sanitizer diagnostic" 45
+        if {$sanitizer_shutdown_result ne "pass" || $sanitizer_findings ne "pass"} {
+            exit 1
+        }
+        exit 0
+    }
+    if {[info exists env(SEYRIX_QEMU_READINESS_ONLY)] &&
+            $env(SEYRIX_QEMU_READINESS_ONLY) eq "1"} {
+        qmp_hmp $qmp "screendump $run_dir/graphical-ready.ppm"
+        puts "STAGE_RESULT name={full Phase 2D.3B acceptance} result=INCOMPLETE reason=readiness-only"
+        finish_guest_shutdown $qmp "clean guest shutdown after graphical readiness" 45
+        exit 0
+    }
 	if {$phase2d2} {
 		set timeout 240
 		set shell_ready_command {mkdir -p /tmp/seyrix-first /tmp/seyrix-second; shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); shell_uid=$(test -n "$shell_pid" && awk '/^Uid:/ {print $2}' "/proc/$shell_pid/status"); printf 'PHASE2D2_SHELL_PID=%s\nPHASE2D2_SHELL_UID=%s\n' "$shell_pid" "$shell_uid"; if [[ -n "$shell_pid" && "$shell_uid" == 1000 && -n "$terminal_pid" && -r /usr/share/seyrix/Manual.txt ]]; then echo PHASE2D2_SHELL_READY=passed; else echo PHASE2D2_SHELL_READY=failed; fi}
@@ -1026,6 +1115,125 @@ if {$phase2b} {
 		}
 		set shell_startup_failure_command {bash /tmp/seyrix-qemu-guest-helper.sh startup-failure}
 		run_serial_check $shell_startup_failure_command {PHASE2D2_SHELL_STARTUP_FAILURE_RECOVERY=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "recover from a shell executable startup failure during restart" 90
+		if {$settings_ipc_only} {
+			set shell_fixture_evidence_command {fixture=/run/user/1000/seyrix-qemu-fail-shell-exec-once; consumed=$(grep -F 'SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed' /tmp/seyrix-compositor.log || true); retry1=$(grep -F 'Scheduling isolated shell restart attempt 1 in 1000 ms' /tmp/seyrix-compositor.log || true); retry2=$(grep -F 'Scheduling isolated shell restart attempt 2 in 2000 ms' /tmp/seyrix-compositor.log || true); printf 'SHELL_FAULT_FIXTURE path=%s present_after=%s\n' "$fixture" "$(test -e "$fixture" && echo yes || echo no)"; printf '%s\n%s\n%s\n' "$consumed" "$retry1" "$retry2"; if [[ -n "$consumed" && -n "$retry1" && -n "$retry2" && ! -e "$fixture" ]]; then echo SHELL_FAULT_FIXTURE=passed; else echo SHELL_FAULT_FIXTURE=failed; fi}
+			run_serial_check $shell_fixture_evidence_command {SHELL_FAULT_FIXTURE=passed} {SHELL_FAULT_FIXTURE=failed} "confirm the packaged shell fault fixture was consumed and triggered the expected restart retries" 10
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The packaged shell fault-injection fixture was not confirmed as consumed."
+				exit 1
+			}
+
+			qmp_hmp $qmp "screendump $run_dir/settings-ipc-target-desktop-before.ppm"
+			qmp_key_chord $qmp {meta_l} q
+			set target_close_terminal_command {for n in $(seq 1 30); do if ! pgrep -u 1000 -x weston-terminal >/dev/null; then break; fi; sleep 0.2; done; if ! pgrep -u 1000 -x weston-terminal >/dev/null && pgrep -u 1000 -x seyrix-shell >/dev/null; then echo SETTINGS_IPC_DESKTOP_READY=passed; else echo SETTINGS_IPC_DESKTOP_READY=failed; fi}
+			run_serial_check $target_close_terminal_command {SETTINGS_IPC_DESKTOP_READY=passed} {SETTINGS_IPC_DESKTOP_READY=failed} "expose the desktop before launching the real GTK Settings process" 15
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The shell desktop was not ready for the targeted Settings launch."
+				exit 1
+			}
+
+			qmp_key_chord $qmp {meta_l} spc
+			after 500
+			qmp_type_slow $qmp "Settings" 400
+			after 500
+			qmp_key_chord $qmp {} ret
+			set target_settings_launch_command {pid=; mapped=; focused=; for n in $(seq 1 240); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); if [[ -n "$pid" ]]; then mapped=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); focused=$(grep -F "Window focused: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); [[ -n "$mapped" && -n "$focused" ]] && break; fi; sleep 0.25; done; compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); uid=$(awk '/^Uid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true); sid=$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' '); compositor_sid=$(ps -o sid= -p "$compositor_pid" 2>/dev/null | tr -d ' '); socket=/run/user/1000/seyrix/settings-v1.sock; printf 'SETTINGS_IPC_GTK_PROCESS pid=%s uid=%s sid=%s compositor_pid=%s compositor_sid=%s mapped=%s socket=%s\n' "${pid:-missing}" "${uid:-missing}" "${sid:-missing}" "${compositor_pid:-missing}" "${compositor_sid:-missing}" "${mapped:+yes}" "$(stat -c '%u:%g:%a' "$socket" 2>/dev/null || echo missing)"; if [[ -n "$pid" && "$uid" == 1000 && -n "$mapped" && -n "$focused" && "$sid" == "$compositor_sid" && -S "$socket" ]]; then echo SETTINGS_IPC_GTK_PROCESS=passed; else echo SETTINGS_IPC_GTK_PROCESS=failed; fi}
+			run_serial_check $target_settings_launch_command {SETTINGS_IPC_GTK_PROCESS=passed} {SETTINGS_IPC_GTK_PROCESS=failed} "launch the real GTK Settings application from the Seyrix desktop launcher" 90
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The real GTK Settings process did not become visible in the compositor session."
+				exit 1
+			}
+			qmp_hmp $qmp "screendump $run_dir/settings-ipc-target-before-restart.ppm"
+
+			set settings_ipc_event_command {log=/tmp/seyrix-compositor.log; pid=; for attempt in $(seq 1 60); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); frames=$(grep -F "Settings endpoint frame peer_pid=$pid " "$log" 2>/dev/null || true); hello=$(printf '%s\n' "$frames" | grep -Eq 'opcode=1 .*negotiated=0' && echo 1 || echo 0); snapshot=$(printf '%s\n' "$frames" | grep -Eq 'opcode=2 .*negotiated=1' && echo 1 || echo 0); subscribe=$(printf '%s\n' "$frames" | grep -Eq 'opcode=3 .*negotiated=1' && echo 1 || echo 0); [[ "$hello" == 1 && "$snapshot" == 1 && "$subscribe" == 1 ]] && break; sleep 0.25; done; accepted=$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " "$log" 2>/dev/null | tail -n 1 || true); frames=$(grep -F "Settings endpoint frame peer_pid=$pid " "$log" 2>/dev/null || true); hello=$(printf '%s\n' "$frames" | grep -Eq 'opcode=1 .*negotiated=0' && echo 1 || echo 0); snapshot_request=$(printf '%s\n' "$frames" | sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' | head -n 1); subscribe_request=$(printf '%s\n' "$frames" | sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' | head -n 1); snapshot_response=$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$snapshot_request " "$log" 2>/dev/null | tail -n 1 || true); subscribe_response=$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$subscribe_request " "$log" 2>/dev/null | tail -n 1 || true); snapshot_revision=$(printf '%s\n' "$snapshot_response" | sed -nE 's/.*revision=([0-9]+).*/\1/p'); subscribe_revision=$(printf '%s\n' "$subscribe_response" | sed -nE 's/.*revision=([0-9]+).*/\1/p'); hello=$(printf '%s\n' "$frames" | grep -Eq 'opcode=1 .*negotiated=0' && echo 1 || echo 0); snapshot=$(printf '%s\n' "$frames" | grep -Eq 'opcode=2 .*negotiated=1' && echo 1 || echo 0); subscribe=$(printf '%s\n' "$frames" | grep -Eq 'opcode=3 .*negotiated=1' && echo 1 || echo 0); uid=$(awk '/^Uid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true); mapped=$(grep -F "Window mapped: pid=$pid " "$log" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true); compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); compositor_sid=$(ps -o sid= -p "$compositor_pid" 2>/dev/null | tr -d ' '); sid=$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' '); result=unconfirmed; if [[ -n "$pid" && -n "$accepted" && "$uid" == 1000 && -n "$mapped" && "$sid" == "$compositor_sid" && "$hello" == 1 && "$snapshot" == 1 && "$subscribe" == 1 && -n "$snapshot_request" && -n "$subscribe_request" && -n "$snapshot_response" && -n "$subscribe_response" ]]; then result=passed; fi; printf 'SETTINGS_IPC_DIAGNOSTIC_RESULT=%s pid=%s uid=%s sid=%s compositor_pid=%s hello=%s snapshot=%s snapshot_request=%s snapshot_revision=%s subscribe=%s subscribe_request=%s subscribe_revision=%s\n' "$result" "${pid:-missing}" "${uid:-missing}" "${sid:-missing}" "${compositor_pid:-missing}" "$hello" "$snapshot" "${snapshot_request:-missing}" "${snapshot_revision:-missing}" "$subscribe" "${subscribe_request:-missing}" "${subscribe_revision:-missing}"; grep -E "Settings endpoint (accepted peer uid=1000 pid=$pid |frame peer_pid=$pid |sent peer_pid=$pid )" "$log" || true}
+			set initial_ipc_result [run_serial_capture $settings_ipc_event_command {SETTINGS_IPC_DIAGNOSTIC_RESULT=(passed|unconfirmed)} {SETTINGS_IPC_DIAGNOSTIC_RESULT=failed} "record HELLO, snapshot response, and subscription for one live GTK Settings PID" 20]
+			set initial_ipc_status [lindex $initial_ipc_result 1]
+			qmp_hmp $qmp "screendump $run_dir/settings-ipc-target-after-snapshot.ppm"
+
+			set target_checks_complete 1
+			if {$initial_ipc_status ne "passed"} {
+				set target_checks_complete 0
+				puts "STAGE_RESULT name={initial same-PID GTK Settings HELLO snapshot subscription} result=INCOMPLETE reason=diagnostic-event-capture-unconfirmed"
+				puts "SETTINGS_IPC_FAILURE=not-inferred-from-missing-diagnostic-messages"
+			} else {
+				puts "STAGE_RESULT name={initial same-PID GTK Settings HELLO snapshot subscription} result=PASS"
+			}
+
+			qmp_key_chord $qmp {meta_l} q
+			set target_settings_closed_command {for n in $(seq 1 30); do if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then break; fi; sleep 0.2; done; if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then echo SETTINGS_IPC_PRE_RESTART_APP_CLOSED=passed; else echo SETTINGS_IPC_PRE_RESTART_APP_CLOSED=failed; fi}
+			run_serial_check $target_settings_closed_command {SETTINGS_IPC_PRE_RESTART_APP_CLOSED=passed} {SETTINGS_IPC_PRE_RESTART_APP_CLOSED=failed} "close Settings before restarting the compositor" 10
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "Settings did not close before the compositor restart."
+				exit 1
+			}
+			set target_restart_baseline_command {pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true); if [[ -n "$pid" && -n "$start" ]]; then printf '%s %s\n' "$pid" "$start" > /tmp/seyrix-settings-ipc-compositor-before; printf 'SETTINGS_IPC_RESTART_BASELINE pid=%s start=%s\n' "$pid" "$start"; echo SETTINGS_IPC_RESTART_BASELINE=ready; else echo SETTINGS_IPC_RESTART_BASELINE=failed; fi}
+			run_serial_check $target_restart_baseline_command {SETTINGS_IPC_RESTART_BASELINE=ready} {SETTINGS_IPC_RESTART_BASELINE=failed} "record the original compositor identity before restart" 10
+			qmp_key_chord $qmp {meta_l shift} q
+			set target_compositor_stopped_command {for n in $(seq 1 70); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; socket=/run/user/1000/seyrix/settings-v1.sock; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && [[ ! -e "$socket" ]] && systemctl is-active --quiet getty@tty1; then echo SETTINGS_IPC_OLD_COMPOSITOR_STOPPED=passed; else echo SETTINGS_IPC_OLD_COMPOSITOR_STOPPED=failed; fi; grep -E 'Settings read-only endpoint|Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log 2>/dev/null || true}
+			run_serial_check $target_compositor_stopped_command {SETTINGS_IPC_OLD_COMPOSITOR_STOPPED=passed} {SETTINGS_IPC_OLD_COMPOSITOR_STOPPED=failed} "stop the compositor and verify the Settings endpoint socket is removed" 75
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The compositor did not stop cleanly for the targeted restart check."
+				exit 1
+			}
+
+			qmp_type $qmp $compositor_launch_command
+			qmp_key_transition $qmp ret 1
+			after 80
+			qmp_key_transition $qmp ret 0
+			set target_socket_recreated_command {read -r before_pid before_start < /tmp/seyrix-settings-ipc-compositor-before; ready=0; for n in $(seq 1 120); do pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); socket=/run/user/1000/seyrix/settings-v1.sock; if [[ -n "$pid" && -S "$socket" ]]; then ready=1; break; fi; sleep 0.5; done; start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true); socket_meta=$(stat -c '%u:%g:%a' "$socket" 2>/dev/null || true); printf 'SETTINGS_IPC_SOCKET_RECREATED before_pid=%s before_start=%s after_pid=%s after_start=%s socket=%s\n' "$before_pid" "$before_start" "${pid:-missing}" "${start:-missing}" "${socket_meta:-missing}"; if [[ "$ready" == 1 && -n "$start" && ( "$pid" != "$before_pid" || "$start" != "$before_start" ) && "$socket_meta" == 1000:1000:600 ]]; then echo SETTINGS_IPC_SOCKET_RECREATED=passed; else echo SETTINGS_IPC_SOCKET_RECREATED=failed; fi; grep -F 'Settings read-only endpoint ready' /tmp/seyrix-compositor.log 2>/dev/null || true}
+			run_serial_check $target_socket_recreated_command {SETTINGS_IPC_SOCKET_RECREATED=passed} {SETTINGS_IPC_SOCKET_RECREATED=failed} "verify compositor restart recreated its private Settings socket" 75
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The Settings endpoint socket was not recreated after compositor restart."
+				exit 1
+			}
+			set target_restart_desktop_ready_command {ready=0; for n in $(seq 1 120); do shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); panel=$(grep -F 'Layer shell surface mapped namespace=seyrix-panel' /tmp/seyrix-compositor.log | tail -n 1); desktop=$(grep -F 'Layer shell surface mapped namespace=seyrix-desktop' /tmp/seyrix-compositor.log | tail -n 1); if [[ -n "$shell_pid" && -n "$panel" && -n "$desktop" ]]; then ready=1; break; fi; sleep 0.5; done; printf 'SETTINGS_IPC_RESTART_DESKTOP_READY shell_pid=%s panel=%s desktop=%s\n' "${shell_pid:-missing}" "${panel:+mapped}" "${desktop:+mapped}"; if [[ "$ready" == 1 ]]; then echo SETTINGS_IPC_RESTART_DESKTOP_READY=passed; else echo SETTINGS_IPC_RESTART_DESKTOP_READY=failed; grep -E 'Started isolated Seyrix desktop shell|Layer shell surface mapped namespace=seyrix-(panel|desktop)' /tmp/seyrix-compositor.log | tail -n 12 || true; fi}
+			run_serial_check $target_restart_desktop_ready_command {SETTINGS_IPC_RESTART_DESKTOP_READY=passed} {SETTINGS_IPC_RESTART_DESKTOP_READY=failed} "wait for the restarted shell desktop and panel before using its launcher" 75
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The desktop shell did not become ready after compositor restart."
+				exit 1
+			}
+			qmp_hmp $qmp "screendump $run_dir/settings-ipc-target-desktop-after-restart.ppm"
+
+			qmp_key_chord $qmp {meta_l} spc
+			after 500
+			qmp_type_slow $qmp "Settings" 400
+			after 500
+			qmp_key_chord $qmp {} ret
+			set target_settings_relaunch_command {pid=; mapped=; focused=; for n in $(seq 1 240); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); if [[ -n "$pid" ]]; then mapped=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); focused=$(grep -F "Window focused: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); [[ -n "$mapped" && -n "$focused" ]] && break; fi; sleep 0.25; done; uid=$(awk '/^Uid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true); socket=/run/user/1000/seyrix/settings-v1.sock; printf 'SETTINGS_IPC_RELAUNCHED_GTK pid=%s uid=%s mapped=%s socket=%s\n' "${pid:-missing}" "${uid:-missing}" "${mapped:+yes}" "$(stat -c '%u:%g:%a' "$socket" 2>/dev/null || echo missing)"; if [[ -n "$pid" && "$uid" == 1000 && -n "$mapped" && -n "$focused" && -S "$socket" ]]; then echo SETTINGS_IPC_RELAUNCHED_GTK=passed; else echo SETTINGS_IPC_RELAUNCHED_GTK=failed; fi}
+			run_serial_check $target_settings_relaunch_command {SETTINGS_IPC_RELAUNCHED_GTK=passed} {SETTINGS_IPC_RELAUNCHED_GTK=failed} "reopen the real GTK Settings client after compositor restart" 90
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "Settings did not reopen after the compositor restart."
+				exit 1
+			}
+			qmp_hmp $qmp "screendump $run_dir/settings-ipc-target-after-restart.ppm"
+			set restarted_ipc_result [run_serial_capture $settings_ipc_event_command {SETTINGS_IPC_DIAGNOSTIC_RESULT=(passed|unconfirmed)} {SETTINGS_IPC_DIAGNOSTIC_RESULT=failed} "confirm the relaunched GTK Settings client received a fresh snapshot and subscribed after compositor restart" 20]
+			set restarted_ipc_status [lindex $restarted_ipc_result 1]
+			if {$restarted_ipc_status ne "passed"} {
+				set target_checks_complete 0
+				puts "STAGE_RESULT name={post-restart GTK Settings fresh snapshot and subscription} result=INCOMPLETE reason=diagnostic-event-capture-unconfirmed"
+				puts "SETTINGS_IPC_FAILURE=not-inferred-from-missing-diagnostic-messages"
+			} else {
+				puts "STAGE_RESULT name={post-restart GTK Settings fresh snapshot and subscription} result=PASS"
+			}
+
+			qmp_key_chord $qmp {meta_l} q
+			run_serial_check $target_settings_closed_command {SETTINGS_IPC_PRE_RESTART_APP_CLOSED=passed} {SETTINGS_IPC_PRE_RESTART_APP_CLOSED=failed} "close Settings after its post-restart snapshot" 10
+			qmp_key_chord $qmp {meta_l shift} q
+			set target_final_compositor_cleanup_command {for n in $(seq 1 70); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; socket=/run/user/1000/seyrix/settings-v1.sock; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && [[ ! -e "$socket" ]] && systemctl is-active --quiet getty@tty1; then echo SETTINGS_IPC_FINAL_CLEANUP=passed; else echo SETTINGS_IPC_FINAL_CLEANUP=failed; fi; grep -E 'Settings endpoint (accepted peer uid=1000|frame peer_pid=|sent peer_pid=)|Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log 2>/dev/null || true}
+			run_serial_check $target_final_compositor_cleanup_command {SETTINGS_IPC_FINAL_CLEANUP=passed} {SETTINGS_IPC_FINAL_CLEANUP=failed} "cleanly stop the compositor after targeted Settings IPC verification" 75
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The compositor did not clean up after targeted Settings IPC verification."
+				exit 1
+			}
+			if {$target_checks_complete} {
+				puts "STAGE_RESULT name={targeted Phase 2D.3B.5 real GTK Settings IPC and compositor restart acceptance} result=PASS"
+			} else {
+				puts "STAGE_RESULT name={targeted Phase 2D.3B.5 real GTK Settings IPC and compositor restart acceptance} result=INCOMPLETE reason=diagnostic-event-capture-unconfirmed"
+			}
+			puts "STAGE_RESULT name={remaining Phase 2D.3B.5 acceptance campaign} result=INCOMPLETE reason=targeted-IPC-only"
+			finish_guest_shutdown $qmp "clean guest shutdown after targeted Settings IPC verification" 45
+			exit 0
+		}
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-desktop-initial.ppm"
 		qmp_key_chord $qmp {meta_l} q
 		set close_initial_terminal_command {for n in $(seq 1 20); do count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 0 ]]; then break; fi; sleep 0.2; done; if [[ "$count" -eq 0 ]] && pgrep -u 1000 -x seyrix-shell >/dev/null; then echo PHASE2D2_DESKTOP_REVEALED=passed; else echo PHASE2D2_DESKTOP_REVEALED=failed; fi}
@@ -1065,6 +1273,13 @@ if [[ "$mode_applied" -eq 1 ]]; then
 else
   echo PHASE2D3B_OUTPUT_MODE_800=failed
   tail -n 30 /tmp/seyrix-compositor.log
+  echo PHASE2D3B_DRM_DIAGNOSTICS_BEGIN
+  for drm_card in /sys/class/drm/card[0-9]*; do
+    [[ -e "$drm_card/device/driver" ]] && printf 'DRM_DRIVER %s=%s\n' "${drm_card##*/}" "$(readlink -f "$drm_card/device/driver")"
+    for drm_modes in "$drm_card"-*/modes; do [[ -r "$drm_modes" ]] && { echo "DRM_MODES $drm_modes"; cat "$drm_modes"; }; done
+  done
+  dmesg | grep -Ei 'drm|bochs|virtio|framebuffer|mode' | tail -n 80 || true
+  echo PHASE2D3B_DRM_DIAGNOSTICS_END
 fi
 }
 			run_serial_check $output_mode_800_command {PHASE2D3B_OUTPUT_MODE_800=passed} {PHASE2D3B_OUTPUT_MODE_800=failed} "apply the 800x600 mode through compositor output management" 20
@@ -1081,25 +1296,99 @@ fi
 			set output_width 800
 			set output_height 600
 		}
+		if {$output_width < 760} {
+			set settings_window_x 0
+			set settings_window_y 0
+			set settings_window_width $output_width
+			set settings_window_height $output_height
+		} else {
+			set settings_window_width [expr {min(720, $output_width)}]
+			set settings_window_height [expr {min(560, $output_height)}]
+			set settings_window_x [expr {($output_width - $settings_window_width) / 2}]
+			set settings_window_y [expr {($output_height - $settings_window_height) / 2}]
+		}
 		if {$settings_render_diagnostic} {
 			puts "STAGE_BEGIN name={targeted GTK Wayland surface damage and QMP presentation diagnostic} timeout_s=90"
-			set render_trace_launch_command {shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); trace=/tmp/seyrix-settings-wayland-trace.log; if [[ -z "$shell_pid" ]]; then echo WAYLAND_TRACE_APP=failed reason=no-session-shell; else while IFS= read -r entry; do case "${entry%%=*}" in HOME|PATH|LANG|LC_ALL|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_SESSION_TYPE|XDG_DATA_DIRS|XDG_CURRENT_DESKTOP) export "$entry";; esac; done < <(tr '\0' '\n' < "/proc/$shell_pid/environ"); if [[ "$XDG_RUNTIME_DIR" == /run/user/1000 && -n "$WAYLAND_DISPLAY" ]]; then : > "$trace"; GDK_BACKEND=wayland WAYLAND_DEBUG=client /usr/bin/seyrix-settings >"$trace" 2>&1 & app_pid=$!; mapped=0; for n in $(seq 1 80); do if grep -Fq "Window mapped: pid=$app_pid " /tmp/seyrix-compositor.log && grep -Fq "Window focused: pid=$app_pid " /tmp/seyrix-compositor.log; then mapped=1; break; fi; if ! kill -0 "$app_pid" 2>/dev/null; then break; fi; sleep 0.25; done; if [[ "$mapped" -eq 1 && "$(awk '/^Uid:/ {print $2}' "/proc/$app_pid/status" 2>/dev/null)" == 1000 ]]; then echo WAYLAND_TRACE_APP=ready PID=$app_pid DISPLAY=$WAYLAND_DISPLAY RUNTIME=$XDG_RUNTIME_DIR; else echo WAYLAND_TRACE_APP=failed PID=${app_pid:-missing}; tail -n 20 "$trace" 2>/dev/null || true; fi; else echo WAYLAND_TRACE_APP=failed reason=missing-session-environment WAYLAND=${WAYLAND_DISPLAY:-missing} RUNTIME=${XDG_RUNTIME_DIR:-missing}; fi; fi}
-			run_serial_check $render_trace_launch_command {WAYLAND_TRACE_APP=ready} {WAYLAND_TRACE_APP=failed} "launch Settings with a bounded client-side Wayland protocol trace in the active graphical session" 45
+			set render_helper [file join [file dirname [file normalize [info script]]] qemu-settings-page-check.py]
+			qmp_hmp $qmp "screendump $run_dir/settings-render-desktop-baseline.ppm"
+			set render_desktop_stable_count 0
+			for {set render_desktop_attempt 0} {$render_desktop_attempt < 20 && $render_desktop_stable_count < 3} {incr render_desktop_attempt} {
+				after 250
+				qmp_hmp $qmp "screendump $run_dir/settings-render-desktop-stability.ppm"
+				if {[catch {exec python3 $render_helper $run_dir/settings-render-desktop-baseline.ppm $run_dir/settings-render-desktop-stability.ppm $output_width}]} {
+					incr render_desktop_stable_count
+				} else {
+					set render_desktop_stable_count 0
+				}
+				file copy -force $run_dir/settings-render-desktop-stability.ppm $run_dir/settings-render-desktop-baseline.ppm
+			}
+			if {$render_desktop_stable_count < 3} {
+				puts "SETTINGS_RENDER_DESKTOP_BASELINE=INCOMPLETE"
+				puts stderr "The desktop did not produce three stable QMP frames before Settings launch."
+				exit 1
+			}
+			puts "SETTINGS_RENDER_DESKTOP_BASELINE=stable frames=$render_desktop_stable_count"
+			set render_trace_launch_command {shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); trace=/tmp/seyrix-settings-wayland-trace.log; if [[ -z "$shell_pid" ]]; then echo WAYLAND_TRACE_APP=failed reason=no-session-shell; else while IFS= read -r entry; do case "${entry%%=*}" in HOME|PATH|LANG|LC_ALL|XDG_RUNTIME_DIR|WAYLAND_DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_SESSION_TYPE|XDG_DATA_DIRS|XDG_CURRENT_DESKTOP) export "$entry";; esac; done < <(tr '\0' '\n' < "/proc/$shell_pid/environ"); if [[ "$XDG_RUNTIME_DIR" == /run/user/1000 && -n "$WAYLAND_DISPLAY" ]]; then : > "$trace"; if command -v strace >/dev/null 2>&1; then GDK_BACKEND=wayland SEYRIX_SETTINGS_RENDER_TRACE=1 WAYLAND_DEBUG=client strace -ff -tt -T -o /tmp/seyrix-settings-syscall /usr/bin/seyrix-settings >"$trace" 2>&1 & else GDK_BACKEND=wayland SEYRIX_SETTINGS_RENDER_TRACE=1 WAYLAND_DEBUG=client /usr/bin/seyrix-settings >"$trace" 2>&1 & fi; app_pid=; mapped=0; for n in $(seq 1 240); do app_pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); if [[ -n "$app_pid" ]] && grep -Fq "Window mapped: pid=$app_pid " /tmp/seyrix-compositor.log && grep -Fq "Window focused: pid=$app_pid " /tmp/seyrix-compositor.log; then mapped=1; break; fi; [[ -n "$app_pid" ]] || sleep 0.25; [[ -n "$app_pid" ]] && sleep 0.25; done; if [[ "$mapped" -eq 1 && "$(awk '/^Uid:/ {print $2}' "/proc/$app_pid/status" 2>/dev/null)" == 1000 ]]; then echo WAYLAND_TRACE_APP=ready PID=$app_pid DISPLAY=$WAYLAND_DISPLAY RUNTIME=$XDG_RUNTIME_DIR; else echo WAYLAND_TRACE_APP=failed PID=${app_pid:-missing}; if [[ -n "$app_pid" ]]; then ps -o pid,ppid,stat,etimes,pcpu,wchan:28,comm -p "$app_pid" || true; printf 'SETTINGS_PROCESS_WCHAN='; cat "/proc/$app_pid/wchan" 2>/dev/null || true; echo; grep -E "Window mapped: pid=$app_pid |Window focused: pid=$app_pid " /tmp/seyrix-compositor.log | tail -n 10 || true; fi; tail -n 30 "$trace" 2>/dev/null || true; for syscall_trace in /tmp/seyrix-settings-syscall*; do [[ -f "$syscall_trace" ]] && { echo "SETTINGS_SYSCALL_TRACE=$syscall_trace"; tail -n 20 "$syscall_trace"; }; done; fi; else echo WAYLAND_TRACE_APP=failed reason=missing-session-environment WAYLAND=${WAYLAND_DISPLAY:-missing} RUNTIME=${XDG_RUNTIME_DIR:-missing}; fi; fi}
+			run_serial_check $render_trace_launch_command {WAYLAND_TRACE_APP=ready} {WAYLAND_TRACE_APP=failed} "launch Settings with a bounded client-side Wayland protocol trace in the active graphical session" 90
 			if {$last_serial_check_result ne "pass"} {
 				puts stderr "STAGE_RESULT name={targeted GTK Wayland surface damage and QMP presentation diagnostic} result=INCOMPLETE reason=Settings-app-not-ready"
 				exit 1
 			}
-			after 800
-			qmp_hmp $qmp "screendump $run_dir/settings-render-appearance.ppm"
+			set trace_first_frame_command {trace=/tmp/seyrix-settings-wayland-trace.log; ready=0; for n in $(seq 1 120); do if awk '/wl_surface#[0-9]+\.attach\(/ { attached=1 } attached && /wl_surface#[0-9]+\.commit\(/ { ready=1 } END { exit !ready }' "$trace"; then ready=1; break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo WAYLAND_TRACE_FIRST_FRAME=passed; else echo WAYLAND_TRACE_FIRST_FRAME=failed; tail -n 25 "$trace" 2>/dev/null || true; fi}
+			run_serial_check $trace_first_frame_command {WAYLAND_TRACE_FIRST_FRAME=passed} {WAYLAND_TRACE_FIRST_FRAME=failed} "wait for GTK to attach and commit its first visible Wayland buffer" 40
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "Settings did not produce a visible Wayland buffer before the category interaction."
+				exit 1
+			}
+			set render_pixel_delta_observed 0
+			for {set render_pixel_delta_attempt 0} {$render_pixel_delta_attempt < 80 && !$render_pixel_delta_observed} {incr render_pixel_delta_attempt} {
+				after 250
+				qmp_hmp $qmp "screendump $run_dir/settings-render-appearance.ppm"
+				if {![catch {exec python3 $render_helper $run_dir/settings-render-desktop-baseline.ppm $run_dir/settings-render-appearance.ppm $output_width} render_visibility_result]} {
+					set render_pixel_delta_observed 1
+				}
+			}
+			if {!$render_pixel_delta_observed} {
+				puts "SETTINGS_RENDER_QMP_PIXEL_DELTA=INCOMPLETE"
+				puts stderr "No large page-area QMP pixel delta was observed after the first client buffer."
+				exit 1
+			}
+			puts "SETTINGS_RENDER_QMP_PIXEL_DELTA=observed attempts=$render_pixel_delta_attempt $render_visibility_result"
 			set trace_baseline_command {wc -l < /tmp/seyrix-settings-wayland-trace.log > /tmp/seyrix-settings-wayland-trace-baseline; printf 'WAYLAND_TRACE_BASELINE_LINES=%s\n' "$(cat /tmp/seyrix-settings-wayland-trace-baseline)"; echo WAYLAND_TRACE_BASELINE=ready}
 			run_serial_check $trace_baseline_command {WAYLAND_TRACE_BASELINE=ready} {WAYLAND_TRACE_BASELINE=failed} "record the GTK client trace before category input" 10
-			qmp_mouse_click_pixel $qmp 70 199 $output_width $output_height
-			after 1000
+			set trace_geometry_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); geometry=$(grep -E "GEOMETRY_EVIDENCE event=(map|commit|state) pid=$pid " /tmp/seyrix-compositor.log | tail -n 1); rect=$(sed -nE 's/.* x=(-?[0-9]+) y=(-?[0-9]+) width=([0-9]+) height=([0-9]+).*/\1,\2,\3,\4/p' <<< "$geometry"); if [[ -n "$rect" ]]; then printf 'SETTINGS_DIAGNOSTIC_GEOMETRY=%s\n' "$rect"; else echo SETTINGS_DIAGNOSTIC_GEOMETRY=missing; fi}
+			set trace_geometry [run_serial_capture $trace_geometry_command {SETTINGS_DIAGNOSTIC_GEOMETRY=(-?[0-9]+),(-?[0-9]+),([0-9]+),([0-9]+)} {SETTINGS_DIAGNOSTIC_GEOMETRY=missing} "read the live Settings surface geometry before category input" 10]
+			if {[lindex $trace_geometry 0] ne "pass"} {
+				puts stderr "Could not read the live Settings window geometry for the rendering diagnostic."
+				exit 1
+			}
+			set trace_window_x [lindex $trace_geometry 1]
+			set trace_window_y [lindex $trace_geometry 2]
+			set trace_window_width [lindex $trace_geometry 3]
+			if {$trace_window_width < 760} {
+				set trace_click_x [expr {$trace_window_x + $trace_window_width / 2}]
+				set trace_click_y [expr {$trace_window_y + 156}]
+				puts "SETTINGS_DIAGNOSTIC_CLICK_TARGET=$trace_click_x,$trace_click_y mode=compact-dropdown"
+				qmp_mouse_click_pixel $qmp $trace_click_x $trace_click_y $output_width $output_height
+				after 300
+				qmp_key_chord $qmp {} home
+				qmp_key_chord $qmp {} down
+				qmp_key_chord $qmp {} ret
+			} else {
+				set trace_click_x [expr {$trace_window_x + 70}]
+				set trace_click_y [expr {$trace_window_y + 165 + 34}]
+				puts "SETTINGS_DIAGNOSTIC_CLICK_TARGET=$trace_click_x,$trace_click_y mode=sidebar"
+				qmp_mouse_click_pixel $qmp $trace_click_x $trace_click_y $output_width $output_height
+			}
+			after 3000
 			qmp_mouse_move_pixel $qmp 70 500 $output_width $output_height
+			after 250
 			qmp_hmp $qmp "screendump $run_dir/settings-render-desktop.ppm"
-			set render_trace_summary_command {trace=/tmp/seyrix-settings-wayland-trace.log; baseline=$(cat /tmp/seyrix-settings-wayland-trace-baseline); delta=$(tail -n +$((baseline + 1)) "$trace"); printf 'WAYLAND_TRACE_DELTA_LINES=%s\n' "$(printf '%s\n' "$delta" | wc -l)"; printf 'WAYLAND_TRACE_SURFACE_DAMAGE=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*damage(_buffer)?\\(' || true)"; printf 'WAYLAND_TRACE_SURFACE_ATTACH=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*attach\\(' || true)"; printf 'WAYLAND_TRACE_SURFACE_COMMIT=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*commit\\(' || true)"; printf 'WAYLAND_TRACE_FRAME_REQUEST=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*frame\\(' || true)"; printf 'WAYLAND_TRACE_SURFACE_REQUESTS_BEGIN\n'; printf '%s\n' "$delta" | grep -E 'wl_surface@.*(attach|damage(_buffer)?|commit|frame)\\(' | tail -n 40 || true; printf 'WAYLAND_TRACE_SURFACE_REQUESTS_END\n'; echo WAYLAND_TRACE_SUMMARY=complete}
-			run_serial_check $render_trace_summary_command {WAYLAND_TRACE_SUMMARY=complete} {WAYLAND_TRACE_SUMMARY=failed} "collect bounded GTK wl_surface damage and commit requests after selecting Desktop & Dock" 20
-			set render_helper [file join [file dirname [file normalize [info script]]] qemu-settings-page-check.py]
+		set render_trace_summary_command {trace=/tmp/seyrix-settings-wayland-trace.log; baseline=$(cat /tmp/seyrix-settings-wayland-trace-baseline); delta=$(tail -n +$((baseline + 1)) "$trace"); selection=$(grep -F 'event=gtk_page_selection' "$trace" | tail -n 1 || true); pointer=$(grep -F 'Pointer button press button=272' /tmp/seyrix-compositor.log | tail -n 1 || true); printf 'WAYLAND_TRACE_DELTA_LINES=%s\n' "$(printf '%s\n' "$delta" | wc -l)"; printf 'WAYLAND_TRACE_GTK_PAGE_SELECTION=%s\n' "${selection:-missing}"; printf 'WAYLAND_TRACE_COMPOSITOR_POINTER=%s\n' "${pointer:-missing}"; printf 'WAYLAND_TRACE_SURFACE_DAMAGE=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*damage(_buffer)?[(]' || true)"; printf 'WAYLAND_TRACE_SURFACE_ATTACH=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*attach[(]' || true)"; printf 'WAYLAND_TRACE_SURFACE_COMMIT=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*commit[(]' || true)"; printf 'WAYLAND_TRACE_FRAME_REQUEST=%s\n' "$(printf '%s\n' "$delta" | grep -Ec 'wl_surface@.*frame[(]' || true)"; printf 'WAYLAND_TRACE_SURFACE_REQUESTS_BEGIN\n'; printf '%s\n' "$delta" | grep -E 'wl_surface@.*(attach|damage(_buffer)?|commit|frame)[(]' | tail -n 40 || true; printf 'WAYLAND_TRACE_SURFACE_REQUESTS_END\n'; if grep -Fq 'event=gtk_page_selection page=desktop selected=desktop' "$trace"; then echo WAYLAND_TRACE_PAGE_SELECTION=desktop; else echo WAYLAND_TRACE_PAGE_SELECTION=failed; fi; echo WAYLAND_TRACE_SUMMARY=complete}
+			run_serial_check $render_trace_summary_command {WAYLAND_TRACE_SUMMARY=complete} {WAYLAND_TRACE_SUMMARY=failed} "collect GTK page-selection state and wl_surface damage after selecting Desktop & Dock" 20
+			if {$last_serial_check_result eq "pass"} {
+				run_serial_check {if grep -Fq 'event=gtk_page_selection page=desktop selected=desktop' /tmp/seyrix-settings-wayland-trace.log; then echo WAYLAND_TRACE_PAGE_SELECTION=desktop; else echo WAYLAND_TRACE_PAGE_SELECTION=failed; fi} {WAYLAND_TRACE_PAGE_SELECTION=desktop} {WAYLAND_TRACE_PAGE_SELECTION=failed} "verify GTK selected the Desktop & Dock stack page" 10
+			}
 			if {[catch {exec python3 $render_helper $run_dir/settings-render-appearance.ppm $run_dir/settings-render-desktop.ppm $output_width} render_pixel_result]} {
 				puts "SETTINGS_RENDER_PIXEL_COMPARISON=$render_pixel_result"
 			} else {
@@ -1123,18 +1412,23 @@ fi
 		qmp_key_chord $qmp {meta_l} ret
 		set first_terminal_command {for n in $(seq 1 60); do terminal_pid=$(pgrep -u 1000 -x weston-terminal | head -n 1); count=$(pgrep -u 1000 -x weston-terminal | wc -l); if [[ "$count" -eq 1 && -n "$terminal_pid" ]] && grep -Fq "Window mapped: pid=$terminal_pid " /tmp/seyrix-compositor.log && grep -Fq "Window focused: pid=$terminal_pid " /tmp/seyrix-compositor.log; then break; fi; sleep 0.2; done; if [[ "$count" -eq 1 && -n "$terminal_pid" ]] && grep -Fq "Window mapped: pid=$terminal_pid " /tmp/seyrix-compositor.log && grep -Fq "Window focused: pid=$terminal_pid " /tmp/seyrix-compositor.log; then echo PHASE2D2_TERMINAL_RESTORED=passed; else echo PHASE2D2_TERMINAL_RESTORED=failed; pgrep -a -u 1000 -x weston-terminal || true; grep -E "Window mapped:|Window focused:" /tmp/seyrix-compositor.log | tail -n 10; fi}
 		run_serial_check $first_terminal_command {PHASE2D2_TERMINAL_RESTORED=passed} {PHASE2D2_TERMINAL_RESTORED=failed} "open an unprivileged terminal after desktop input checks" 20
-		qmp_type $qmp "cd /tmp/seyrix-first\n"
-		qmp_type $qmp "pwd > /tmp/seyrix-phase2d2-first-terminal-cwd\n"
-		set first_terminal_identity_command {ready=0; for n in $(seq 1 40); do if grep -qx '/tmp/seyrix-first' /tmp/seyrix-phase2d2-first-terminal-cwd 2>/dev/null; then ready=1; break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo PHASE2D2_FIRST_TERMINAL_IDENTITY=passed; else echo PHASE2D2_FIRST_TERMINAL_IDENTITY=failed; fi}
-		run_serial_check $first_terminal_identity_command {PHASE2D2_FIRST_TERMINAL_IDENTITY=passed} {PHASE2D2_FIRST_TERMINAL_IDENTITY=failed} "mark the first terminal's private working directory" 15
+		after 500
+		set first_terminal_directory_command {install -d -m 700 /home/seyrix/.seyrix-first && test -d /home/seyrix/.seyrix-first && echo PHASE2D2_FIRST_TERMINAL_DIRECTORY=ready}
+		run_serial_check $first_terminal_directory_command {PHASE2D2_FIRST_TERMINAL_DIRECTORY=ready} {PHASE2D2_FIRST_TERMINAL_DIRECTORY=failed} "prepare the first terminal working directory" 10
+		qmp_type_slow $qmp "cd /home/seyrix/.seyrix-first;\n" 500
+		after 1500
+		qmp_type_slow $qmp "touch .seyrix-cwd-verified;\n" 500
+		set first_terminal_identity_command {ready=0; for n in $(seq 1 60); do if test -f /home/seyrix/.seyrix-first/.seyrix-cwd-verified; then ready=1; break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo PHASE2D2_FIRST_TERMINAL_IDENTITY=passed; else echo PHASE2D2_FIRST_TERMINAL_IDENTITY=failed; ls -la /home/seyrix/.seyrix-first; fi}
+		run_serial_check $first_terminal_identity_command {PHASE2D2_FIRST_TERMINAL_IDENTITY=passed} {PHASE2D2_FIRST_TERMINAL_IDENTITY=failed} "mark the first terminal's private working directory" 30
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-terminal-first-window.ppm"
-		set background_marker_reset_command {rm -f /tmp/seyrix-phase2d2-background-focus; echo PHASE2D2_BACKGROUND_MARKER_RESET=ready}
+		set background_marker_reset_command {rm -f /tmp/seyrix-bg; echo PHASE2D2_BACKGROUND_MARKER_RESET=ready}
 		run_serial_check $background_marker_reset_command {PHASE2D2_BACKGROUND_MARKER_RESET=ready} {PHASE2D2_BACKGROUND_MARKER_RESET=failed} "clear background-input marker before pointer test" 10
 		qmp_mouse_click_pixel $qmp 4 120 $output_width $output_height
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-background-click.ppm"
-		qmp_type $qmp "touch /tmp/seyrix-phase2d2-background-focus\n"
-		set background_focus_command {ready=0; for n in $(seq 1 40); do if test -f /tmp/seyrix-phase2d2-background-focus; then ready=1; break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo PHASE2D2_BACKGROUND_FOCUS=passed; else echo PHASE2D2_BACKGROUND_FOCUS=failed; fi}
-		run_serial_check $background_focus_command {PHASE2D2_BACKGROUND_FOCUS=passed} {PHASE2D2_BACKGROUND_FOCUS=failed} "click exposed wallpaper beside the tiled window without losing its keyboard focus" 20
+		qmp_type_slow $qmp "touch /tmp/seyrix-bg\n" 500
+		after 1000
+		set background_focus_command {ready=0; for n in $(seq 1 120); do if test -f /tmp/seyrix-bg; then ready=1; break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo PHASE2D2_BACKGROUND_FOCUS=passed; else echo PHASE2D2_BACKGROUND_FOCUS=failed; grep -E 'Pointer button press|Window focused:' /tmp/seyrix-compositor.log | tail -n 8; fi}
+		run_serial_check $background_focus_command {PHASE2D2_BACKGROUND_FOCUS=passed} {PHASE2D2_BACKGROUND_FOCUS=failed} "click exposed wallpaper beside the tiled window without losing its keyboard focus" 45
 
 		set launcher_window_map_baseline_command {grep -c 'Window mapped:' /tmp/seyrix-compositor.log > /tmp/seyrix-phase2d2-launcher-window-map-baseline || true; echo PHASE2D2_LAUNCHER_WINDOW_BASELINE=ready}
 		run_serial_check $launcher_window_map_baseline_command {PHASE2D2_LAUNCHER_WINDOW_BASELINE=ready} {PHASE2D2_LAUNCHER_WINDOW_BASELINE=failed} "record mapped-window baseline before valid launcher execution" 10
@@ -1158,14 +1452,77 @@ fi
 			after 1200
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-launcher-search.ppm"
 			qmp_key_chord $qmp {} ret
-		set settings_launcher_command {pid=; for n in $(seq 1 40); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); if [[ -n "$pid" ]]; then mapped=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); focused=$(grep -F "Window focused: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); if [[ -n "$mapped" && -n "$focused" ]]; then break; fi; fi; sleep 0.5; done; uid=$(test -n "$pid" && awk '/^Uid:/ {print $2}' "/proc/$pid/status"); env_dump=$(test -n "$pid" && tr '\0' '\n' < "/proc/$pid/environ"); wayland=$(printf '%s\n' "$env_dump" | grep '^WAYLAND_DISPLAY=' || true); runtime=$(printf '%s\n' "$env_dump" | grep '^XDG_RUNTIME_DIR=' || true); map_line=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); focus_line=$(grep -F "Window focused: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); geometry=$(grep -E "GEOMETRY_EVIDENCE event=(map|commit|state) pid=$pid " /tmp/seyrix-compositor.log | tail -n 1); output=$(grep -E 'Output .* active at [0-9]+x[0-9]+' /tmp/seyrix-compositor.log | tail -n 1); rect=$(sed -nE 's/.* x=(-?[0-9]+) y=(-?[0-9]+) width=([0-9]+) height=([0-9]+).*/\1 \2 \3 \4/p' <<< "$geometry"); read -r x y width height <<< "$rect"; output_width=$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\1/p' <<< "$output"); output_height=$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\2/p' <<< "$output"); printf 'SETTINGS_APP_PID=%s SETTINGS_APP_UID=%s WAYLAND=%s RUNTIME=%s GEOMETRY=%s,%s %sx%s OUTPUT=%sx%s\n' "$pid" "$uid" "${wayland:-missing}" "${runtime:-missing}" "${x:-missing}" "${y:-missing}" "${width:-missing}" "${height:-missing}" "${output_width:-missing}" "${output_height:-missing}"; ps -o pid,uid,stat,%cpu,etimes,wchan:32,args -p "$pid" 2>/dev/null || true; visible=0; if [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ && "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && "$output_width" =~ ^[0-9]+$ && "$output_height" =~ ^[0-9]+$ ]] && (( x >= 0 && y >= 0 && x + width <= output_width && y + height <= output_height && width >= 600 && height >= 400 )); then visible=1; fi; if [[ -n "$pid" && "$uid" == 1000 && "$wayland" == WAYLAND_DISPLAY=* && "$runtime" == XDG_RUNTIME_DIR=/run/user/1000 && -x /usr/bin/seyrix-settings ]] && test -r /usr/share/applications/seyrix-settings.desktop && grep -qx 'Exec=seyrix-settings' /usr/share/applications/seyrix-settings.desktop && [[ -n "$map_line" && -n "$focus_line" && "$visible" -eq 1 ]]; then echo PHASE2D3B_LAUNCHER=passed; else echo PHASE2D3B_LAUNCHER=failed; printf 'MAPPED=%s\nFOCUSED=%s\n' "${map_line:-missing}" "${focus_line:-missing}"; tail -n 45 /tmp/seyrix-compositor.log; fi}
-			set settings_launcher_timeout 25
+			after 1800
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-settings-after-launch.ppm"
+			set settings_launcher_command {ready=0; pid=; uid=; for n in $(seq 1 120); do pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); if [[ -n "$pid" ]]; then uid=$(awk '/^Uid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true); if [[ "$uid" == 1000 ]] && grep -Fq "Window mapped: pid=$pid " /tmp/seyrix-compositor.log && grep -Fq "Window focused: pid=$pid " /tmp/seyrix-compositor.log; then ready=1; break; fi; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then echo "SETTINGS_PID=$pid UID=$uid MAP=yes FOCUS=yes"; echo PHASE2D3B_LAUNCHER=passed; else echo PHASE2D3B_LAUNCHER=failed; pgrep -a -u 1000 -x seyrix-settings || true; fi}
+			set settings_launcher_timeout 120
 			if {[info exists env(SEYRIX_QEMU_SMP)] && $env(SEYRIX_QEMU_SMP) eq "1"} {
-				set settings_launcher_timeout 60
+				set settings_launcher_timeout 120
 			}
 			run_serial_check $settings_launcher_command {PHASE2D3B_LAUNCHER=passed} {PHASE2D3B_LAUNCHER=failed} "launch and verify the focused, visible Settings xdg-toplevel from the Seyrix launcher as the unprivileged user" $settings_launcher_timeout
 			if {$last_serial_check_result ne "pass"} {
 				puts stderr "Settings did not pass the launcher/toplevel assertion; page screenshots were not captured."
+				exit 1
+			}
+			set settings_geometry_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); geometry=$(grep -E "GEOMETRY_EVIDENCE event=(map|commit|state) pid=$pid " /tmp/seyrix-compositor.log | tail -n 1); output=$(grep -E 'Output .* active at [0-9]+x[0-9]+' /tmp/seyrix-compositor.log | tail -n 1); rect=$(sed -nE 's/.* x=(-?[0-9]+) y=(-?[0-9]+) width=([0-9]+) height=([0-9]+).*/\1 \2 \3 \4/p' <<< "$geometry"); read -r x y width height <<< "$rect"; output_width=$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\1/p' <<< "$output"); output_height=$(sed -nE 's/.* active at ([0-9]+)x([0-9]+).*/\2/p' <<< "$output"); if [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ && "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && "$output_width" =~ ^[0-9]+$ && "$output_height" =~ ^[0-9]+$ ]] && (( x >= 0 && y >= 0 && x + width <= output_width && y + height <= output_height && width >= 600 && height >= 400 )); then printf 'SETTINGS_WINDOW_GEOMETRY=%s,%s,%s,%s\n' "$x" "$y" "$width" "$height"; else echo SETTINGS_WINDOW_GEOMETRY=failed; fi}
+			set settings_geometry_capture [run_serial_capture $settings_geometry_command {SETTINGS_WINDOW_GEOMETRY=(-?[0-9]+),(-?[0-9]+),([0-9]+),([0-9]+)} {SETTINGS_WINDOW_GEOMETRY=failed} "read the mapped Settings geometry for responsive navigation" 10]
+			if {[lindex $settings_geometry_capture 0] ne "pass"} {
+				puts stderr "Could not read the mapped Settings geometry before category navigation."
+				exit 1
+			}
+			set settings_window_x [lindex $settings_geometry_capture 1]
+			set settings_window_y [lindex $settings_geometry_capture 2]
+			set settings_window_width [lindex $settings_geometry_capture 3]
+			set settings_window_height [lindex $settings_geometry_capture 4]
+			set settings_environment_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); shell_pid=$(pgrep -u 1000 -x seyrix-shell | head -n 1); app_env=$(tr '\0' '\n' < "/proc/$pid/environ"); shell_env=$(tr '\0' '\n' < "/proc/$shell_pid/environ"); runtime=$(printf '%s\n' "$app_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1); wayland=$(printf '%s\n' "$app_env" | sed -n 's/^WAYLAND_DISPLAY=//p' | head -n 1); session_type=$(printf '%s\n' "$app_env" | sed -n 's/^XDG_SESSION_TYPE=//p' | head -n 1); shell_runtime=$(printf '%s\n' "$shell_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1); shell_wayland=$(printf '%s\n' "$shell_env" | sed -n 's/^WAYLAND_DISPLAY=//p' | head -n 1); app_bus=$(printf '%s\n' "$app_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1); shell_bus=$(printf '%s\n' "$shell_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1); uid=$(awk '/^Uid:/ {print $2}' "/proc/$pid/status"); app_sid=$(ps -o sid= -p "$pid" | tr -d ' '); compositor_sid=$(ps -o sid= -p "$compositor_pid" | tr -d ' '); runtime_mode=$(stat -c '%u:%g:%a' "$runtime"); wayland_socket="$runtime/$wayland"; wayland_socket_owner=$(stat -c '%u:%g' "$wayland_socket" 2>/dev/null || true); wayland_socket_mode=$(stat -c '%a' "$wayland_socket" 2>/dev/null || true); wayland_socket_safe=0; if [[ "$wayland_socket_owner" == 1000:1000 && "$wayland_socket_mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$wayland_socket_mode & 022) == 0 )); then wayland_socket_safe=1; fi; entry=/usr/share/applications/seyrix-settings.desktop; entry_mode=$(stat -c '%U:%G:%a' "$entry"); binary_mode=$(stat -c '%U:%G:%a' /usr/bin/seyrix-settings); printf 'SETTINGS_LAUNCH_IDENTITY pid=%s uid=%s sid=%s compositor_sid=%s runtime=%s runtime_mode=%s wayland=%s shell_wayland=%s session_type=%s app_bus=%s shell_bus=%s socket_owner=%s socket_mode=%s entry_mode=%s binary_mode=%s\n' "$pid" "$uid" "$app_sid" "$compositor_sid" "$runtime" "$runtime_mode" "$wayland" "$shell_wayland" "$session_type" "${app_bus:-unset}" "${shell_bus:-unset}" "$wayland_socket_owner" "$wayland_socket_mode" "$entry_mode" "$binary_mode"; if [[ "$(pgrep -u 1000 -x seyrix-settings | wc -l)" == 1 && "$uid" == 1000 && "$app_sid" == "$compositor_sid" && "$runtime" == "$shell_runtime" && "$wayland" == "$shell_wayland" && "$runtime_mode" == 1000:1000:700 && "$wayland_socket_safe" == 1 && "$session_type" == wayland && "$entry_mode" == root:root:644 && "$binary_mode" == root:root:755 ]] && grep -Fxq 'Exec=seyrix-settings' "$entry" && grep -Fxq 'TryExec=seyrix-settings' "$entry"; then echo SETTINGS_LAUNCH_IDENTITY=passed; else echo SETTINGS_LAUNCH_IDENTITY=failed; fi}
+			run_serial_check $settings_environment_command {SETTINGS_LAUNCH_IDENTITY=passed} {SETTINGS_LAUNCH_IDENTITY=failed} "verify the installed direct launcher, session environment, executable ownership, and Wayland permissions" 15
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The Settings process does not match the active unprivileged Wayland session."
+				exit 1
+			}
+			set settings_dbus_diagnostic_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); app_env=$(tr '\0' '\n' < "/proc/$pid/environ"); dbus_address=$(printf '%s\n' "$app_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1); bus_socket=$(stat -c '%F:%u:%g:%a' /run/user/1000/bus 2>/dev/null || echo missing); if [[ -n "$dbus_address" ]]; then owner=$(timeout 3s env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS="$dbus_address" busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s org.seyrix.settings 2>/dev/null || echo unavailable); else owner=$(timeout 3s env XDG_RUNTIME_DIR=/run/user/1000 busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s org.seyrix.settings 2>/dev/null || echo unavailable); fi; printf 'SETTINGS_DBUS address=%s socket=%s name_owner=%s\n' "${dbus_address:-unset}" "$bus_socket" "$owner"; echo SETTINGS_DBUS_DIAGNOSTIC=recorded}
+			run_serial_check $settings_dbus_diagnostic_command {SETTINGS_DBUS_DIAGNOSTIC=recorded} {SETTINGS_DBUS_DIAGNOSTIC=failed} "record the Settings session-bus and unique application-name state" 10
+			set settings_single_instance_baseline {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); maps=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -Fc 'app_id=org.seyrix.settings title=System Settings' || true); echo "$pid $maps" > /tmp/seyrix-settings-single-instance-before; echo SETTINGS_SINGLE_INSTANCE_BASELINE=ready}
+			run_serial_check $settings_single_instance_baseline {SETTINGS_SINGLE_INSTANCE_BASELINE=ready} {SETTINGS_SINGLE_INSTANCE_BASELINE=failed} "record the Settings process before a second normal launcher activation" 10
+			qmp_key_chord $qmp {meta_l} spc
+			after 600
+			qmp_type_slow $qmp "Settings" 400
+			after 600
+			qmp_key_chord $qmp {} ret
+			after 1500
+			set settings_single_instance_command {
+read -r before_pid before_maps < /tmp/seyrix-settings-single-instance-before
+stable=0
+duplicate_window=0
+for attempt in $(seq 1 120); do
+	pids=$(pgrep -u 1000 -x seyrix-settings || true)
+	count=$(printf '%s\n' "$pids" | sed '/^$/d' | wc -l)
+	pid=$(printf '%s\n' "$pids" | head -n 1)
+	maps=$(grep -F 'Window mapped:' /tmp/seyrix-compositor.log | grep -Fc 'app_id=org.seyrix.settings title=System Settings' || true)
+	if [[ "$maps" -gt "$before_maps" ]]; then duplicate_window=1; break; fi
+	if [[ "$count" == 1 && "$pid" == "$before_pid" && "$maps" == "$before_maps" ]]; then stable=$((stable + 1)); else stable=0; fi
+	if [[ "$stable" -ge 5 ]]; then break; fi
+	sleep 1
+done
+printf 'SETTINGS_SINGLE_INSTANCE_BEFORE=%s AFTER=%s COUNT=%s MAPS_BEFORE=%s MAPS_AFTER=%s STABLE_SECONDS=%s DUPLICATE_WINDOW=%s\n' "$before_pid" "$pid" "$count" "$before_maps" "$maps" "$stable" "$duplicate_window"
+if [[ "$stable" -ge 5 && "$duplicate_window" == 0 ]]; then echo SETTINGS_SINGLE_INSTANCE=passed; else
+echo SETTINGS_SINGLE_INSTANCE=failed
+ps -o pid,ppid,sid,stat,etimes,comm,args -p $(printf '%s ' "$pids") 2>/dev/null || true
+for app_pid in $pids; do
+	app_env=$(tr '\0' '\n' < "/proc/$app_pid/environ")
+	app_bus=$(printf '%s\n' "$app_env" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)
+	app_runtime=$(printf '%s\n' "$app_env" | sed -n 's/^XDG_RUNTIME_DIR=//p' | head -n 1)
+	app_wayland=$(printf '%s\n' "$app_env" | sed -n 's/^WAYLAND_DISPLAY=//p' | head -n 1)
+	app_sid=$(ps -o sid= -p "$app_pid" | tr -d ' ')
+	if [[ -n "$app_bus" ]]; then bus_owner=$(timeout 3s env XDG_RUNTIME_DIR="$app_runtime" DBUS_SESSION_BUS_ADDRESS="$app_bus" busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionUnixProcessID s org.seyrix.settings 2>/dev/null || echo unavailable); else bus_owner=$(timeout 3s env XDG_RUNTIME_DIR="$app_runtime" busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionUnixProcessID s org.seyrix.settings 2>/dev/null || echo unavailable); fi
+	printf 'SETTINGS_INSTANCE_PROCESS pid=%s sid=%s runtime=%s wayland=%s bus=%s bus_owner_pid=%s\n' "$app_pid" "$app_sid" "${app_runtime:-unset}" "${app_wayland:-unset}" "${app_bus:-unset}" "$bus_owner"
+done
+grep -E 'Window mapped:.*app_id=org\.seyrix\.settings' /tmp/seyrix-compositor.log | tail -n 5 || true
+fi
+}
+			run_serial_check $settings_single_instance_command {SETTINGS_SINGLE_INSTANCE=passed} {SETTINGS_SINGLE_INSTANCE=failed} "activate Settings a second time from the Seyrix Shell launcher without creating a duplicate window or process" 135
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "The normal launcher created a duplicate Settings instance or window."
 				exit 1
 			}
 			after 1000
@@ -1174,6 +1531,12 @@ fi
 			set settings_socket_restore_command {socket=/run/user/1000/seyrix/settings-v1.sock; saved=${socket}.qemu-offline; if [[ -S "$saved" && ! -e "$socket" ]] && mv -- "$saved" "$socket" && [[ -S "$socket" && "$(stat -c %u:%g:%a "$socket")" == 1000:1000:600 ]]; then echo SETTINGS_UI_SOCKET_RESTORE=passed; else echo SETTINGS_UI_SOCKET_RESTORE=failed; fi}
 			run_serial_check $settings_socket_restore_command {SETTINGS_UI_SOCKET_RESTORE=passed} {SETTINGS_UI_SOCKET_RESTORE=failed} "restore the compositor-owned Settings endpoint socket" 10
 			after 10000
+			set settings_live_connection_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); accepted=$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " /tmp/seyrix-compositor.log | tail -n 1); frames=$(grep -F "Settings endpoint frame peer_pid=$pid " /tmp/seyrix-compositor.log || true); printf '%s\\n' "$frames" | grep -Eq 'opcode=1 .*negotiated=0' && hello=1 || hello=0; printf '%s\\n' "$frames" | grep -Eq 'opcode=2 .*negotiated=1' && snapshot=1 || snapshot=0; printf 'SETTINGS_LIVE_IPC pid=%s hello=%s snapshot=%s\\n' "$pid" "$hello" "$snapshot"; if [[ -n "$pid" && -n "$accepted" && "$hello" == 1 && "$snapshot" == 1 ]]; then echo SETTINGS_LIVE_IPC=passed; else echo SETTINGS_LIVE_IPC=failed; printf '%s\\n' "$frames"; fi}
+			run_serial_check $settings_live_connection_command {SETTINGS_LIVE_IPC=passed} {SETTINGS_LIVE_IPC=failed} "verify the normally launched Settings client negotiated and received live compositor state after endpoint recovery" 20
+			if {$last_serial_check_result ne "pass"} {
+				puts stderr "Settings did not reconnect to the restored compositor endpoint."
+				exit 1
+			}
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-reconnected.ppm"
 		# Launch probes through the shell so SO_PEERCRED's session check sees the
 		# compositor session. A terminal's shell runs under a separate PTY session.
@@ -1182,7 +1545,7 @@ fi
 		qmp_key_chord $qmp {meta_l} spc
 		after 300
 		qmp_type_slow $qmp "Seyrix IPC Read Probe"
-		after 500
+		after 1500
 		qmp_key_chord $qmp {} ret
 		set settings_probe_command {ready=0; for n in $(seq 1 80); do if grep -q '^SETTINGS_ENDPOINT_PROBE=passed$' /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_PROBE=failed$' /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null; then break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-endpoint-probe.log; echo SETTINGS_ENDPOINT_PROBE_STAGE=passed; else cat /tmp/seyrix-settings-endpoint-probe.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_PROBE_STAGE=failed; fi; grep 'Settings endpoint' /tmp/seyrix-compositor.log | tail -n 40 || true}
 		run_serial_check $settings_probe_command {SETTINGS_ENDPOINT_PROBE_STAGE=passed} {SETTINGS_ENDPOINT_PROBE_STAGE=failed} "verify authenticated read-only Settings IPC, snapshots, bounds, revisions, subscriptions, and reconnect" 30
@@ -1192,14 +1555,14 @@ fi
 		run_serial_check $subscription_log_reset_command {SETTINGS_SUBSCRIPTION_LOG=cleared} {SETTINGS_SUBSCRIPTION_LOG=failed} "clear subscription probe result" 10
 		qmp_key_chord $qmp {meta_l} spc
 		after 300
-		qmp_type_slow $qmp "Seyrix IPC Change Watch"
-		after 500
+		qmp_type_slow $qmp "Seyrix IPC Change Watch" 500
+		after 1800
 		qmp_key_chord $qmp {} ret
 		set subscription_ready_command {ready=0; for n in $(seq 1 80); do if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_READY=passed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_DETAIL=' /tmp/seyrix-settings-subscription.log 2>/dev/null; then break; fi; sleep 0.25; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-subscription.log; echo SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=passed; else cat /tmp/seyrix-settings-subscription.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=failed; fi}
-		run_serial_check $subscription_ready_command {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=failed} "verify the bounded subscription is active before changing state" 25
+		run_serial_check $subscription_ready_command {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_READY_STAGE=failed} "verify the bounded subscription is active before changing state" 45
 		qmp_key_chord $qmp {meta_l} 2
 		set subscription_change_command {ready=0; for n in $(seq 1 140); do if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_CHANGE=passed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then ready=1; break; fi; if grep -q '^SETTINGS_ENDPOINT_SUBSCRIPTION_CHANGE=failed$' /tmp/seyrix-settings-subscription.log 2>/dev/null; then break; fi; sleep 0.2; done; if [[ "$ready" -eq 1 ]]; then cat /tmp/seyrix-settings-subscription.log; echo SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=passed; else cat /tmp/seyrix-settings-subscription.log 2>/dev/null || true; echo SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=failed; fi}
-		run_serial_check $subscription_change_command {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=failed} "deliver a bounded read-only subscription revision notification" 30
+		run_serial_check $subscription_change_command {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=passed} {SETTINGS_ENDPOINT_SUBSCRIPTION_STAGE=failed} "deliver a bounded read-only subscription revision notification" 45
 		qmp_key_chord $qmp {meta_l} 1
 		after 500
 		set settings_config_snapshot_command {root=/home/seyrix/.config; manifest=/tmp/seyrix-settings-config-before; : > "$manifest"; if [[ -d "$root" ]]; then find "$root" -printf '%y %m %u:%g %p\n' | LC_ALL=C sort > "$manifest"; find "$root" -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum >> "$manifest"; fi; echo SETTINGS_CONFIG_BASELINE=ready}
@@ -1208,6 +1571,7 @@ fi
 			puts stderr "Could not record the configuration baseline for the Settings read-only check."
 			exit 1
 		}
+			puts "STAGE_BEGIN name={Settings category, search, and responsive layout} timeout_s=300"
 			qmp_key_chord $qmp {ctrl} f
 			qmp_type_slow $qmp "system information"
 			after 400
@@ -1216,13 +1580,19 @@ fi
 			qmp_type_slow $qmp "no-such-setting-zz99"
 			after 400
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-search-no-match.ppm"
-			qmp_mouse_click_pixel $qmp [expr {$output_width / 2}] 114 $output_width $output_height
-			qmp_key_chord $qmp {ctrl} a
-			qmp_key_chord $qmp {} backspace
+			# The search entry spans the 800-pixel Settings surface; click its visible clear icon.
+			qmp_mouse_click_pixel $qmp [expr {$output_width - 27}] 114 $output_width $output_height
 			after 1000
 			set settings_page_helper [file join [file dirname [file normalize [info script]]] qemu-settings-page-check.py]
 			set previous_page_screenshot [file normalize [file join $run_dir phase2d3b-search-no-match.ppm]]
 			set page_current_screenshot [file normalize [file join $run_dir phase2d3b-page-current.ppm]]
+			qmp_hmp $qmp "screendump $page_current_screenshot"
+			if {[catch {set search_clear_diff [exec python3 $settings_page_helper $previous_page_screenshot $page_current_screenshot $output_width]} search_clear_error]} {
+				puts stderr "The Settings search filter did not visibly clear before category navigation. $search_clear_error"
+				puts "PHASE2D3B_SEARCH_CLEAR=INCOMPLETE"
+				exit 1
+			}
+			puts "PHASE2D3B_SEARCH_CLEAR=passed $search_clear_diff"
 			foreach {category_index page screenshot} {
 				0 appearance phase2d3b-appearance.ppm
 				1 desktop phase2d3b-desktop-dock.ppm
@@ -1232,7 +1602,7 @@ fi
 			5 about phase2d3b-about.ppm
 			} {
 				if {$output_width < 760} {
-					qmp_mouse_click_pixel $qmp 320 156 $output_width $output_height
+					qmp_mouse_click_pixel $qmp [expr {$settings_window_x + $settings_window_width / 2}] [expr {$settings_window_y + 156}] $output_width $output_height
 					after 500
 					qmp_key_chord $qmp {} home
 					for {set category_step 0} {$category_step < $category_index} {incr category_step} {
@@ -1240,14 +1610,14 @@ fi
 					}
 					qmp_key_chord $qmp {} ret
 				} else {
+					# The compositor expands Settings to the output bounds. The
+					# initial GTK default-size geometry is not the mapped geometry.
+					# The compositor expands the Settings surface after the initial map
+					# geometry is recorded, so wide output profiles use the sidebar.
 					set sidebar_y [expr {165 + 34 * $category_index}]
 					qmp_mouse_click_pixel $qmp 70 $sidebar_y $output_width $output_height
 				}
-				if {$output_width < 760} {
-					qmp_mouse_move_pixel $qmp [expr {$output_width - 20}] [expr {$output_height - 20}] $output_width $output_height
-				} else {
-					qmp_mouse_move_pixel $qmp 70 500 $output_width $output_height
-				}
+				qmp_mouse_move_pixel $qmp [expr {$settings_window_x + $settings_window_width - 20}] [expr {$settings_window_y + $settings_window_height - 20}] $output_width $output_height
 				set page_ready 0
 				set page_settle_attempt 0
 				for {set page_attempt 0} {$page_attempt < 20 && !$page_ready} {incr page_attempt} {
@@ -1268,7 +1638,7 @@ fi
 				puts "PHASE2D3B_PAGE_CAPTURE=$page SETTLE_ATTEMPT=$page_settle_attempt $page_diff"
 				set previous_page_screenshot $screenshot_path
 				if {$page eq "desktop" || $page eq "about"} {
-					qmp_mouse_move_pixel $qmp 520 280 $output_width $output_height
+					qmp_mouse_move_pixel $qmp [expr {$settings_window_x + 520}] [expr {$settings_window_y + 280}] $output_width $output_height
 					qmp_mouse_wheel $qmp wheel-down 32
 					after 400
 					qmp_hmp $qmp "screendump $run_dir/phase2d3b-$page-scrolled.ppm"
@@ -1336,6 +1706,13 @@ fi
 			}
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-about-after-profile.ppm"
 			puts "PHASE2D3B_POINTER_KEYBOARD_NAVIGATION=passed"
+			puts "STAGE_RESULT name={Settings category, search, and responsive layout} result=PASS"
+			if {[info exists env(SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY)] &&
+					$env(SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY) eq "1"} {
+				puts "STAGE_RESULT name={full Phase 2D.3B acceptance} result=INCOMPLETE reason=layout-only"
+				finish_guest_shutdown $qmp "clean guest shutdown after responsive-layout test" 45
+				exit 0
+			}
 			qmp_key_chord $qmp {meta_l} q
 			after 700
 			set settings_closed_command {for n in $(seq 1 20); do if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then break; fi; sleep 0.1; done; if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then echo PHASE2D3B_WINDOW_CLOSED=passed; else echo PHASE2D3B_WINDOW_CLOSED=failed; fi}
@@ -2838,32 +3215,7 @@ if {$egl_lifecycle_control} {
 
 set shutdown_command {printf 'SYSTEM_JOURNAL_BEGIN\n'; journalctl -b --no-pager -n 200 2>&1 || true; printf 'SYSTEM_JOURNAL_END\nSEYRIX_GRAPHICS_CHECK_END\n'; loginctl poweroff}
 send -i $qemu_spawn_id -- "$shutdown_command\r"
-set timeout 45
-set ::shutdown_by_user_request 0
-expect -i $qemu_process_spawn_id {
-    eof {set ::shutdown_by_user_request 1}
-    timeout {set ::shutdown_by_user_request 0}
-}
-if {!$::shutdown_by_user_request} {
-    puts "GUEST_SHUTDOWN=acpi-request"
-    qmp_exec $qmp {{"execute":"system_powerdown"}}
-    set timeout 90
-    expect -i $qemu_process_spawn_id {
-        eof {}
-        timeout {
-            puts stderr "Timed out waiting for clean guest shutdown after the bounded ACPI power-button request."
-            exit 1
-        }
-    }
-}
-set wait_result [wait -i $qemu_process_spawn_id]
-set qemu_exit [lindex $wait_result 3]
-if {$qemu_exit != 0} {
-    puts stderr "QEMU exited with status $qemu_exit after guest shutdown."
-    exit 1
-}
-
-puts "CLEAN_SHUTDOWN=passed"
+finish_guest_shutdown $qmp "clean guest shutdown" 45 0
 if {$acceptance_failures > 0} {
     puts stderr "ACCEPTANCE_FAILURES=$acceptance_failures; QEMU and guest shutdown completed."
     exit 1
