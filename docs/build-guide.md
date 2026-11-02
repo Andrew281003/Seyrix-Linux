@@ -50,12 +50,14 @@ manifest, package license metadata, configuration snapshots, size, and
 SHA-256 under:
 
 ```text
-/root/.cache/seyrix-linux/phase1-<UTC timestamp>/
+/var/tmp/seyrix-linux/phase1-<UTC timestamp>/
 ```
 
 Build outputs stay outside the Git checkout. The script prints the exact ISO
-path when it finishes. You can browse the output from Windows at
-`\\wsl.localhost\archlinux\root\.cache\seyrix-linux\`.
+path when it finishes. In the active `archlinux` WSL distribution, `/var/tmp`
+is stored in `E:\WSL\archlinux\ext4.vhdx`, so large artifacts use E: without
+building on the Windows filesystem. You can browse them at
+`\\wsl.localhost\archlinux\var\tmp\seyrix-linux\`.
 
 To set a fixed timestamp for the ISO's version fields, pass
 `SOURCE_DATE_EPOCH` (seconds since the Unix epoch) to the build process. The
@@ -84,8 +86,9 @@ bash build/build-phase2d2-iso.sh
 ```
 
 Its default work, metadata, and ISO directories are under
-`/var/tmp/seyrix-linux/phase2d2-<UTC timestamp>/`. Set `SEYRIX_BUILD_ROOT` to
-choose another empty location. The script checks the wlroots API version,
+`/var/tmp/seyrix-linux/phase2d2-<UTC timestamp>/`. Set
+`SEYRIX_ARTIFACT_ROOT` to relocate the managed tree; `SEYRIX_BUILD_ROOT` must
+be a new child of that root. The script checks the wlroots API version,
 builds and runs the compositor and shell Meson suites, stages both native
 binaries and the manual, and retains package manifests, build logs, and an ISO
 checksum. A successful native build does not replace the graphical runtime
@@ -101,7 +104,7 @@ Pass the generated ISO to the test workflow:
 
 ```powershell
 wsl -d archlinux -u root -- bash "$repoWsl/tests/qemu-uefi.sh" `
-  /root/.cache/seyrix-linux/phase1-<UTC timestamp>/out/seyrix-<date>-x86_64.iso
+  /var/tmp/seyrix-linux/phase1-<UTC timestamp>/out/seyrix-<date>-x86_64.iso
 ```
 
 The workflow uses QEMU's `q35` machine with two virtual CPUs, 4 GiB of RAM,
@@ -117,12 +120,14 @@ so the test uses QEMU TCG software emulation. Test evidence is saved under a
 fresh directory at:
 
 ```text
-/root/.cache/seyrix-linux/qemu-<UTC timestamp>/
+/var/tmp/seyrix-linux/qemu-<UTC timestamp>/
 ```
 
-It contains `qemu-command.txt`, `run-metadata.txt`, `serial.log`, and
-`test.log`. The serial log is the boot and login evidence; reaching GRUB alone
-does not count as a successful test.
+For a failed or interrupted run, the directory retains `qemu-command.txt`,
+`run-metadata.txt`, `serial.log`, and `test.log`. The serial log is the boot
+and login evidence; reaching GRUB alone does not count as a successful test.
+Successful runs keep a compact summary under
+`/var/tmp/seyrix-linux/history/` and remove their temporary logs.
 
 ## Image contents and access
 
@@ -140,9 +145,41 @@ was not exercised by the QEMU test.
 
 ## Reproduction limits
 
-Arch package state changes over time. For an audit or later comparison, retain
-the whole build directory, especially the package manifests, pacman
-configuration, mirror list, profile hashes, build log, and ISO checksum. The
-QEMU results demonstrate a virtual UEFI boot only; they do not establish
+Arch package state changes over time. For a detailed audit or later
+comparison, set `SEYRIX_RETENTION_KEEP_ARTIFACTS=1` before building to retain
+the package manifests, pacman configuration, mirror list, profile hashes,
+build log, and ISO checksum. The QEMU results demonstrate a virtual UEFI boot only; they do not establish
 physical hardware compatibility, Secure Boot support, installation behavior,
 or performance on real hardware.
+
+## Storage retention
+
+All Archiso builders and QEMU harnesses use the external artifact root
+`/var/tmp/seyrix-linux` by default. One retention lock serializes builds and
+QEMU runs. Before each operation, the scripts check a 40 GiB artifact budget,
+reserve 16 GiB for a build or 4 GiB for a QEMU run, and require at least 30 GiB
+of additional free space. These limits can be set in bytes with
+`SEYRIX_RETENTION_MAX_BYTES`, `SEYRIX_RETENTION_BUILD_RESERVE_BYTES`,
+`SEYRIX_RETENTION_QEMU_RESERVE_BYTES`, and
+`SEYRIX_RETENTION_MIN_FREE_BYTES`.
+
+Build output is marked as managed only after its path is confirmed outside
+every Git worktree. Failed or interrupted builds and tests remain in place.
+After a QEMU harness records `Run result: PASS` and confirms QEMU has exited,
+it keeps the ISO and a small summary under `verified/` and `history/`, then
+removes the marked staging and successful run directories when no process is
+using them. It keeps the newest verified ISO and the verified Phase 2D.2
+recovery ISO. It refuses artifact roots and test outputs outside the active
+Arch filesystem or inside a Git worktree.
+
+For debugging, set `SEYRIX_RETENTION_KEEP_ARTIFACTS=1` to retain successful
+build and test outputs. Set `SEYRIX_RETENTION_KEEP_EVIDENCE=1` to retain
+successful QEMU evidence, including screenshots and serial logs, while removing
+successful build staging. Use `SEYRIX_ARTIFACT_ROOT` to relocate the managed
+tree; keep it on the same Linux filesystem as `/var/tmp` and outside all Git
+worktrees. Build and QEMU output overrides must be new children of that root.
+
+The latest verified ISO is kept at
+`/var/tmp/seyrix-linux/verified/` by default. See
+[`storage-cleanup-retention-report.md`](storage-cleanup-retention-report.md)
+and the linked artifact manifest for the current cleanup record.
