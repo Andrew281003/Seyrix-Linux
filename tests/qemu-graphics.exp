@@ -36,6 +36,7 @@ set phase2c 0
 set sanitizers_enabled 0
 set renderer_request ""
 set egl_lifecycle_control 0
+set lifecycle_only 0
 if {[info exists env(SEYRIX_QEMU_WORKFLOW)] &&
 		($env(SEYRIX_QEMU_WORKFLOW) eq "phase2b" ||
 		$env(SEYRIX_QEMU_WORKFLOW) eq "phase2c")} {
@@ -55,6 +56,10 @@ if {[info exists env(SEYRIX_QEMU_RENDERER)]} {
 if {[info exists env(SEYRIX_QEMU_EGL_LIFECYCLE_CONTROL)] &&
 		$env(SEYRIX_QEMU_EGL_LIFECYCLE_CONTROL) eq "1"} {
 	set egl_lifecycle_control 1
+}
+if {[info exists env(SEYRIX_QEMU_LIFECYCLE_ONLY)] &&
+		$env(SEYRIX_QEMU_LIFECYCLE_ONLY) eq "1"} {
+	set lifecycle_only 1
 }
 
 proc qemu_cmdline {pid} {
@@ -609,16 +614,22 @@ expect {
 }
 if {$phase2b} {
     qmp_hmp $qmp "screendump $run_dir/tty1-before-seyrix.ppm"
+    if {$lifecycle_only} {
+        set controls_mount_command {mkdir -p /mnt/seyrix-controls; mounted=0; for device in /dev/sda1 /dev/sda; do if mount -t vfat -o uid=1000,gid=1000,umask=022 "$device" /mnt/seyrix-controls 2>/dev/null; then mounted=1; break; fi; done; if [[ "$mounted" -eq 1 ]] && test -x /mnt/seyrix-controls/egl-gbm-lifecycle-control && test -x /mnt/seyrix-controls/wlroots-renderer-lifecycle-control; then echo LIFECYCLE_CONTROL_DISK=mounted; else echo LIFECYCLE_CONTROL_DISK=failed; fi}
+        run_serial_check $controls_mount_command {LIFECYCLE_CONTROL_DISK=mounted} {LIFECYCLE_CONTROL_DISK=failed} "mount lifecycle-control binaries" 30
+    }
     if {$phase2c} {
         set wm_config_home "/tmp/seyrix-wm-config-$qemu_identity"
         set wm_probe_config_command "mkdir -p $wm_config_home/seyrix && chmod 755 $wm_config_home $wm_config_home/seyrix && printf 'version=1\\ndefault_mode=hybrid\\napp_id.7365797269782e706861736532632d70726f6265=floating\\n' > $wm_config_home/seyrix/window-management.conf && chmod 644 $wm_config_home/seyrix/window-management.conf && chown 1000:1000 $wm_config_home $wm_config_home/seyrix $wm_config_home/seyrix/window-management.conf && echo WM_TEST_CONFIG=ready"
         run_serial_check $wm_probe_config_command {WM_TEST_CONFIG=ready} {WM_TEST_CONFIG=failed} "prepare explicit floating rule for the Phase 2C state-cycle probe" 20
     }
     set compositor_launch_command "start-seyrix"
-    if {$sanitizers_enabled} {
+    if {$lifecycle_only} {
+        set compositor_launch_command "bash /mnt/seyrix-controls/run.sh"
+    } elseif {$sanitizers_enabled} {
         set compositor_launch_command "ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 start-seyrix"
     }
-    if {$phase2c} {
+    if {$phase2c && !$lifecycle_only} {
         set compositor_launch_command "XDG_CONFIG_HOME=$wm_config_home $compositor_launch_command"
     }
     if {$renderer_request ne ""} {
@@ -632,7 +643,11 @@ if {$phase2b} {
     after 2000
     qmp_hmp $qmp "screendump $run_dir/tty1-after-seyrix-command.ppm"
 
-    set compositor_ready_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null && find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit | grep -q .; then echo COMPOSITOR_READY=passed; else echo COMPOSITOR_READY=failed; fi; printf 'COMPOSITOR_LOG_BEGIN\n'; cat /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_END\n'; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'COMPOSITOR_RSS_KB='; compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); if [[ -n "$compositor_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status"; else echo unavailable; fi; printf 'TERMINAL_PROCESSES='; pgrep -a -u 1000 -x weston-terminal || true}
+    if {$lifecycle_only} {
+        set compositor_ready_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-lifecycle-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-lifecycle-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-lifecycle-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-lifecycle-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null && find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit | grep -q .; then echo COMPOSITOR_READY=passed; else echo COMPOSITOR_READY=failed; fi; printf 'COMPOSITOR_LOG_BEGIN\n'; cat /tmp/seyrix-lifecycle-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_END\n'; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'TERMINAL_PROCESSES='; pgrep -a -u 1000 -x weston-terminal || true}
+    } else {
+        set compositor_ready_command {for n in $(seq 1 60); do if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null; then break; fi; sleep 1; done; if pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && grep -q 'SEYRIX_COMPOSITOR_READY=1' /tmp/seyrix-compositor.log 2>/dev/null && grep -q 'Window mapped:' /tmp/seyrix-compositor.log 2>/dev/null && pgrep -u 1000 -x weston-terminal >/dev/null && find /run/user/1000 -maxdepth 1 -type s -name 'wayland-*' -print -quit | grep -q .; then echo COMPOSITOR_READY=passed; else echo COMPOSITOR_READY=failed; fi; printf 'COMPOSITOR_LOG_BEGIN\n'; cat /tmp/seyrix-compositor.log 2>/dev/null || true; printf 'COMPOSITOR_LOG_END\n'; printf 'WLROOTS_PACKAGE='; pacman -Q wlroots0.20; printf 'COMPOSITOR_PROCESSES='; pgrep -a -u 1000 -f '^/usr/bin/seyrix-compositor$' || true; printf 'COMPOSITOR_RSS_KB='; compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1); if [[ -n "$compositor_pid" ]]; then awk '/VmRSS:/ {print $2}' "/proc/$compositor_pid/status"; else echo unavailable; fi; printf 'TERMINAL_PROCESSES='; pgrep -a -u 1000 -x weston-terminal || true}
+    }
     send -- "$compositor_ready_command\r"
     set compositor_ready 0
     expect {
@@ -663,6 +678,33 @@ if {$phase2b} {
     if {!$compositor_ready} {
         puts stderr "Seyrix compositor did not start or create a Wayland socket."
         exit 1
+    }
+    if {$lifecycle_only} {
+        set lifecycle_signal_command {pid=$(cat /tmp/seyrix-lifecycle-compositor.pid); if kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid" && echo LIFECYCLE_COMPOSITOR_SIGNAL=sent; else echo LIFECYCLE_COMPOSITOR_SIGNAL=failed; fi}
+        run_serial_check $lifecycle_signal_command {LIFECYCLE_COMPOSITOR_SIGNAL=sent} {LIFECYCLE_COMPOSITOR_SIGNAL=failed} "request graceful sanitizer compositor shutdown" 20
+        set lifecycle_done_command {for n in $(seq 1 360); do test -f /tmp/seyrix-lifecycle-controls.done && break; sleep 1; done; if test -f /tmp/seyrix-lifecycle-controls.done; then echo LIFECYCLE_GUEST_RUN=complete; else echo LIFECYCLE_GUEST_RUN=timeout; fi}
+        run_serial_check $lifecycle_done_command {LIFECYCLE_GUEST_RUN=complete} {LIFECYCLE_GUEST_RUN=timeout} "run and preserve lifecycle controls" 370
+        set lifecycle_status_command {status_files_ok=1; printf 'LIFECYCLE_EXIT_CODES_BEGIN\n'; for file in /tmp/seyrix-lifecycle-compositor.exit /mnt/seyrix-controls/evidence/seyrix-compositor.exit /mnt/seyrix-controls/evidence/egl-direct-1.exit /mnt/seyrix-controls/evidence/egl-direct-5.exit /mnt/seyrix-controls/evidence/wlroots-1.exit /mnt/seyrix-controls/evidence/wlroots-5.exit; do if test -s "$file"; then status=$(cat "$file"); else status=missing; status_files_ok=0; fi; printf '%s=%s\n' "$file" "$status"; done; printf 'LIFECYCLE_EXIT_CODES_END\n'; sleep 1; sync; if [[ "$status_files_ok" -eq 1 ]] && umount /mnt/seyrix-controls; then echo LIFECYCLE_CONTROL_DISK=unmounted; else echo LIFECYCLE_CONTROL_DISK=unmount-failed; fi}
+        run_serial_check $lifecycle_status_command {LIFECYCLE_CONTROL_DISK=unmounted} {LIFECYCLE_CONTROL_DISK=unmount-failed} "record process status and flush evidence" 30
+        set lifecycle_shutdown_command {systemctl poweroff}
+        send -- "$lifecycle_shutdown_command\r"
+        set timeout 90
+        expect {
+            eof {}
+            timeout {
+                puts stderr "Timed out waiting for clean lifecycle-only guest shutdown."
+                exit 1
+            }
+        }
+        set lifecycle_wait_result [wait]
+        set lifecycle_qemu_exit [lindex $lifecycle_wait_result 3]
+        if {$lifecycle_qemu_exit != 0} {
+            puts stderr "QEMU exited with status $lifecycle_qemu_exit after lifecycle-only guest shutdown."
+            exit 1
+        }
+        puts "LIFECYCLE_ONLY_RUN=complete"
+        puts "CLEAN_SHUTDOWN=passed"
+        exit 0
     }
     if {$phase2c} {
         set guest_helper [file join [file dirname [file normalize [info script]]] qemu-guest-helper.sh]

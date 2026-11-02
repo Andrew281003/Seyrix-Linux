@@ -29,6 +29,8 @@ export SEYRIX_QEMU_WORKFLOW="$workflow"
 smp_count="${SEYRIX_QEMU_SMP:-2}"
 tcg_thread="${SEYRIX_QEMU_TCG_THREAD:-}"
 renderer_request="${SEYRIX_QEMU_RENDERER:-}"
+lifecycle_only="${SEYRIX_QEMU_LIFECYCLE_ONLY:-0}"
+lifecycle_drive_dir="${SEYRIX_QEMU_LIFECYCLE_DRIVE_DIR:-}"
 if [[ "$workflow" != phase2a && "$workflow" != phase2b && "$workflow" != phase2c ]]; then
   echo "Unsupported QEMU workflow: $workflow" >&2
   exit 2
@@ -44,6 +46,29 @@ fi
 if [[ -n "$renderer_request" && "$renderer_request" != pixman && "$renderer_request" != gles2 ]]; then
   echo "SEYRIX_QEMU_RENDERER must be pixman or gles2 when set." >&2
   exit 2
+fi
+if [[ "$lifecycle_only" != 0 && "$lifecycle_only" != 1 ]]; then
+  echo "SEYRIX_QEMU_LIFECYCLE_ONLY must be 0 or 1." >&2
+  exit 2
+fi
+if [[ "$lifecycle_only" == 1 ]]; then
+  if [[ "$workflow" != phase2c || "${SEYRIX_QEMU_SANITIZERS:-0}" != 1 ]]; then
+    echo "Lifecycle-only controls require SEYRIX_QEMU_WORKFLOW=phase2c and SEYRIX_QEMU_SANITIZERS=1." >&2
+    exit 2
+  fi
+  if [[ -z "$lifecycle_drive_dir" || ! -d "$lifecycle_drive_dir" ]]; then
+    echo "Set SEYRIX_QEMU_LIFECYCLE_DRIVE_DIR to a directory containing both lifecycle-control binaries." >&2
+    exit 2
+  fi
+  lifecycle_drive_dir="$(realpath -- "$lifecycle_drive_dir")"
+  for control_binary in egl-gbm-lifecycle-control wlroots-renderer-lifecycle-control; do
+    if [[ ! -x "$lifecycle_drive_dir/$control_binary" ]]; then
+      echo "Missing executable lifecycle control: $lifecycle_drive_dir/$control_binary" >&2
+      exit 2
+    fi
+  done
+  cp -- "$script_dir/qemu-egl-lifecycle-guest.sh" "$lifecycle_drive_dir/run.sh"
+  mkdir -p "$lifecycle_drive_dir/evidence"
 fi
 if ! "$qemu_bin" -display help 2>&1 | grep -q '^gtk$'; then
   echo "QEMU GTK display backend is missing. Install qemu-ui-gtk." >&2
@@ -207,6 +232,10 @@ qemu_args+=(
   -qmp "tcp:127.0.0.1:${monitor_port},server=on,wait=off"
   -no-reboot
 )
+if [[ "$lifecycle_only" == 1 ]]; then
+  qemu_args+=(-drive "file=fat:rw:${lifecycle_drive_dir},format=raw,if=none,id=seyrix-controls")
+  qemu_args+=(-device usb-storage,drive=seyrix-controls)
+fi
 
 {
   printf '%q' "$qemu_bin"
@@ -233,6 +262,8 @@ qemu_args+=(
   printf 'Compositor stress: %s\n' "${SEYRIX_QEMU_STRESS:-0}"
   printf 'AddressSanitizer/UBSan: %s\n' "${SEYRIX_QEMU_SANITIZERS:-0}"
   printf 'Compositor renderer request: %s\n' "${renderer_request:-automatic}"
+  printf 'Lifecycle-only renderer controls: %s\n' "$lifecycle_only"
+  printf 'Lifecycle control drive directory: %s\n' "${lifecycle_drive_dir:-not-used}"
   printf 'QEMU run ID: %s\n' "$run_id"
   printf 'QEMU lock file: %s\n' "${SEYRIX_QEMU_LOCK_FILE:-unavailable}"
   printf 'QEMU lock timeout seconds: %s\n' "${SEYRIX_QEMU_LOCK_TIMEOUT_SEC:-30}"
