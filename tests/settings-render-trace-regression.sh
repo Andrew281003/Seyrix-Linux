@@ -307,6 +307,13 @@ assert_true "production capture verifies the real page-selection sequence" \
 echo "PASS: production capture preserves client and compositor logs before shutdown"
 
 python3 "$script_dir/settings-render-pixel-regression.py"
+python3 "$script_dir/settings-socket-path-replacement-test.py"
+assert_true "full QEMU acceptance fails closed until GTK Settings reconnect is actually exercised" \
+  grep -Fq 'SETTINGS_GTK_IPC_RECONNECT=INCOMPLETE' "$script_dir/qemu-graphics.exp"
+if grep -Fq 'SETTINGS_LIVE_IPC=passed' "$script_dir/qemu-graphics.exp"; then
+  fail "path rename must not be reported as a live GTK IPC reconnect"
+fi
+echo "PASS: socket-path replacement cannot satisfy the GTK reconnect acceptance gate"
 tclsh "$script_dir/settings-render-trace-tcl-completeness.tcl" \
   "$script_dir/qemu-graphics.exp" \
   "$script_dir/qemu-graphics-capture.tcl" \

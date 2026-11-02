@@ -1,0 +1,310 @@
+diff --git a/desktop/settings/src/settings-window.c b/desktop/settings/src/settings-window.c
+index cbfa03e..0000000 100644
+--- a/desktop/settings/src/settings-window.c
++++ b/desktop/settings/src/settings-window.c
+@@
+ #include <gdk/gdkkeysyms.h>
++#include <stdio.h>
+ #include <string.h>
++#include <unistd.h>
+@@
+ static const char *const category_selector_names[] = {
+ 	"Appearance", "Desktop & Dock", "Window Management", "Displays",
+ 	"Input", "About Seyrix", NULL,
+ };
+ 
++static bool settings_render_trace_enabled(void) {
++	const char *enabled = g_getenv("SEYRIX_SETTINGS_RENDER_TRACE");
++	return enabled != NULL && strcmp(enabled, "1") == 0;
++}
++
++static void settings_trace_event(struct seyrix_settings_window *window,
++		const char *event, const char *page, GtkWidget *widget) {
++	if (!settings_render_trace_enabled()) {
++		return;
++	}
++	const char *selected = window->stack != NULL ?
++		gtk_stack_get_visible_child_name(GTK_STACK(window->stack)) : NULL;
++	gint64 monotonic_us = g_get_monotonic_time();
++	uint64_t monotonic_ns = monotonic_us > 0 ?
++		(uint64_t)monotonic_us * 1000ULL : 0;
++	fprintf(stderr,
++		"SEYRIX_SETTINGS_TRACE monotonic_ns=%llu pid=%ld event=%s page=%s selected=%s mapped=%d\n",
++		(unsigned long long)monotonic_ns, (long)getpid(), event,
++		page != NULL ? page : "none",
++		selected != NULL ? selected : "none",
++		widget != NULL && gtk_widget_get_mapped(widget));
++	fflush(stderr);
++}
++
++static void on_trace_page_map(GtkWidget *widget, gpointer data) {
++	struct seyrix_settings_window *window = data;
++	const char *page = gtk_stack_get_child_name(GTK_STACK(window->stack),
++		widget);
++	settings_trace_event(window, "gtk_page_map", page, widget);
++}
++
++static void on_trace_page_unmap(GtkWidget *widget, gpointer data) {
++	struct seyrix_settings_window *window = data;
++	const char *page = gtk_stack_get_child_name(GTK_STACK(window->stack),
++		widget);
++	settings_trace_event(window, "gtk_page_unmap", page, widget);
++}
++
++static void on_trace_stack_selection(GObject *object, GParamSpec *property,
++		gpointer data) {
++	(void)property;
++	struct seyrix_settings_window *window = data;
++	GtkStack *stack = GTK_STACK(object);
++	const char *page = gtk_stack_get_visible_child_name(stack);
++	settings_trace_event(window, "gtk_page_selection", page,
++		gtk_stack_get_visible_child(stack));
++}
++
++static void on_trace_window_map(GtkWidget *widget, gpointer data) {
++	settings_trace_event(data, "gtk_window_map", "window", widget);
++}
++
++static void on_trace_window_unmap(GtkWidget *widget, gpointer data) {
++	settings_trace_event(data, "gtk_window_unmap", "window", widget);
++}
++
+ static const struct setting_descriptor setting_descriptors[] = {
+@@
+ 	window->window = gtk_application_window_new(application);
+ 	gtk_window_set_title(GTK_WINDOW(window->window), "System Settings");
+ 	gtk_window_set_default_size(GTK_WINDOW(window->window), 720, 560);
+ 	gtk_window_set_resizable(GTK_WINDOW(window->window), TRUE);
++	g_signal_connect(window->window, "map",
++		G_CALLBACK(on_trace_window_map), window);
++	g_signal_connect(window->window, "unmap",
++		G_CALLBACK(on_trace_window_unmap), window);
+@@
+ 	add_sidebar_rows(window);
+ 	build_pages(window);
++	for (int i = 0; i < CATEGORY_COUNT; i++) {
++		if (window->pages[i] != NULL) {
++			g_signal_connect(window->pages[i], "map",
++				G_CALLBACK(on_trace_page_map), window);
++			g_signal_connect(window->pages[i], "unmap",
++				G_CALLBACK(on_trace_page_unmap), window);
++		}
++	}
++	g_signal_connect(window->stack, "notify::visible-child-name",
++		G_CALLBACK(on_trace_stack_selection), window);
+ 	g_signal_connect(window->sidebar, "row-selected",
+*** End Patch
+diff --git a/desktop/compositor/src/seyrix.h b/desktop/compositor/src/seyrix.h
+index 292ab4e..0000000 100644
+--- a/desktop/compositor/src/seyrix.h
++++ b/desktop/compositor/src/seyrix.h
+@@
+ 	uint32_t consumed_pointer_button;
+ 	uint32_t next_window_id;
+ 	uint64_t started_at_ms;
++	uint64_t settings_trace_commit_ns;
++	uint32_t settings_trace_xdg_surface_id;
++	uint32_t settings_trace_wl_surface_id;
++	uint32_t settings_trace_seq;
++	uint32_t settings_trace_output_commit_seq;
++	pid_t settings_trace_pid;
++	struct wlr_output *settings_trace_output;
+ 	bool backend_started;
+ 	bool output_manager_applying;
++	bool settings_trace_enabled;
++	bool settings_trace_pending;
++	bool settings_trace_wait_present;
+ };
+@@
+ 	struct wlr_scene_rect *background;
+ 	struct wl_listener frame;
++	struct wl_listener present;
+ 	struct wl_listener request_state;
+*** End Patch
+diff --git a/desktop/compositor/src/main.c b/desktop/compositor/src/main.c
+index 0d9c4c5..0000000 100644
+--- a/desktop/compositor/src/main.c
++++ b/desktop/compositor/src/main.c
+@@
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+@@
+ bool seyrix_server_init(struct seyrix_server *server) {
+ 	server->started_at_ms = monotonic_ms();
+ 	server->next_window_id = 1;
++	const char *render_trace = getenv("SEYRIX_COMPOSITOR_RENDER_TRACE");
++	server->settings_trace_enabled = render_trace != NULL &&
++		strcmp(render_trace, "1") == 0;
++	if (server->settings_trace_enabled) {
++		wlr_log(WLR_INFO, "Settings render trace enabled");
++	}
+ 	wl_list_init(&server->outputs);
+*** End Patch
+diff --git a/desktop/compositor/src/window.c b/desktop/compositor/src/window.c
+index 7ca6049..0000000 100644
+--- a/desktop/compositor/src/window.c
++++ b/desktop/compositor/src/window.c
+@@
+ #include "seyrix.h"
+ 
+ #include <stdlib.h>
++#include <string.h>
++#include <time.h>
+ 
+ #include <wlr/util/log.h>
+@@
+ static void handle_window_unmap(struct wl_listener *listener, void *data) {
+ 	(void)data;
+ 	struct seyrix_window *window = wl_container_of(listener, window, unmap);
+ 	unmap_window(window);
+ 	wlr_log(WLR_INFO, "Window unmapped");
+ }
+ 
++static uint64_t settings_trace_monotonic_ns(void) {
++	struct timespec now = {0};
++	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
++		return 0;
++	}
++	return (uint64_t)now.tv_sec * 1000000000ULL +
++		(uint64_t)now.tv_nsec;
++}
++
++static void log_settings_surface_commit(struct seyrix_window *window) {
++	struct seyrix_server *server = window->server;
++	if (!server->settings_trace_enabled) {
++		return;
++	}
++	const char *app_id = window->xdg_toplevel->app_id;
++	if (app_id == NULL || strcmp(app_id, "org.seyrix.settings") != 0) {
++		return;
++	}
++	struct wlr_surface *surface = window->xdg_toplevel->base->surface;
++	struct wlr_surface_state *current = &surface->current;
++	pid_t pid = 0;
++	uint32_t xdg_surface_id = 0;
++	uint32_t wl_surface_id = 0;
++	window_identity(window, &pid, &xdg_surface_id);
++	if (surface->resource != NULL) {
++		wl_surface_id = wl_resource_get_id(surface->resource);
++	}
++	uint64_t now = settings_trace_monotonic_ns();
++	server->settings_trace_commit_ns = now;
++	server->settings_trace_xdg_surface_id = xdg_surface_id;
++	server->settings_trace_wl_surface_id = wl_surface_id;
++	server->settings_trace_seq = current->seq;
++	server->settings_trace_pid = pid;
++	server->settings_trace_pending = true;
++	server->settings_trace_wait_present = false;
++	wlr_log(WLR_INFO,
++		"SETTINGS_RENDER_TRACE event=surface_commit monotonic_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u seq=%u committed=0x%08x buffer_attached=%d mapped=%d width=%d height=%d",
++		(unsigned long long)now, (long)pid, xdg_surface_id,
++		wl_surface_id, current->seq, current->committed,
++		surface->buffer != NULL, surface->mapped, current->width,
++		current->height);
++}
++
+ static void handle_window_commit(struct wl_listener *listener, void *data) {
+ 	(void)data;
+ 	struct seyrix_window *window = wl_container_of(listener, window, commit);
++	log_settings_surface_commit(window);
+ 	if (window->xdg_toplevel->base->initial_commit) {
+*** End Patch
+diff --git a/desktop/compositor/src/output.c b/desktop/compositor/src/output.c
+index 6033bec..0000000 100644
+--- a/desktop/compositor/src/output.c
++++ b/desktop/compositor/src/output.c
+@@
+ static void handle_layout_change(struct wl_listener *listener, void *data) {
+@@
+ 	}
+ }
+ 
++static uint64_t settings_trace_monotonic_ns(void) {
++	struct timespec now = {0};
++	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
++		return 0;
++	}
++	return (uint64_t)now.tv_sec * 1000000000ULL +
++		(uint64_t)now.tv_nsec;
++}
++
++static void handle_output_present(struct wl_listener *listener, void *data) {
++	struct seyrix_output *output = wl_container_of(listener, output, present);
++	struct seyrix_server *server = output->server;
++	const struct wlr_output_event_present *event = data;
++	if (!server->settings_trace_wait_present ||
++			server->settings_trace_output != output->wlr_output ||
++			event->commit_seq != server->settings_trace_output_commit_seq) {
++		return;
++	}
++	uint64_t presented_ns = (uint64_t)event->when.tv_sec * 1000000000ULL +
++		(uint64_t)event->when.tv_nsec;
++	wlr_log(WLR_INFO,
++		"SETTINGS_RENDER_TRACE event=output_present monotonic_ns=%llu presented_ns=%llu presented=%d output=%s output_commit_seq=%u commit_ns=%llu pid=%ld xdg_surface=%u wl_surface=%u surface_seq=%u",
++		(unsigned long long)settings_trace_monotonic_ns(),
++		(unsigned long long)presented_ns, event->presented,
++		output->wlr_output->name, event->commit_seq,
++		(unsigned long long)server->settings_trace_commit_ns,
++		(long)server->settings_trace_pid,
++		server->settings_trace_xdg_surface_id,
++		server->settings_trace_wl_surface_id,
++		server->settings_trace_seq);
++	server->settings_trace_wait_present = false;
++}
++
+ static void handle_output_frame(struct wl_listener *listener, void *data) {
+ 	(void)data;
+ 	struct seyrix_output *output = wl_container_of(listener, output, frame);
++	struct seyrix_server *server = output->server;
++	bool trace_settings_commit = server->settings_trace_enabled &&
++		server->settings_trace_pending;
++	if (trace_settings_commit) {
++		server->settings_trace_pending = false;
++		server->settings_trace_wait_present = true;
++		server->settings_trace_output = output->wlr_output;
++		server->settings_trace_output_commit_seq =
++			output->wlr_output->commit_seq + 1;
++	}
+ 	if (!wlr_scene_output_commit(output->scene_output, NULL)) {
++		if (trace_settings_commit) {
++			server->settings_trace_wait_present = false;
++			wlr_log(WLR_ERROR,
++				"SETTINGS_RENDER_TRACE event=output_scene_commit monotonic_ns=%llu result=failed output=%s pid=%ld wl_surface=%u surface_seq=%u",
++				(unsigned long long)settings_trace_monotonic_ns(),
++				output->wlr_output->name,
++				(long)server->settings_trace_pid,
++				server->settings_trace_wl_surface_id,
++				server->settings_trace_seq);
++		}
+ 		wlr_log(WLR_ERROR, "Output %s failed to render a frame",
+ 			output->wlr_output->name);
+ 		return;
+ 	}
++	if (trace_settings_commit) {
++		server->settings_trace_output_commit_seq =
++			output->wlr_output->commit_seq;
++		wlr_log(WLR_INFO,
++			"SETTINGS_RENDER_TRACE event=output_scene_commit monotonic_ns=%llu result=success output=%s output_commit_seq=%u pid=%ld xdg_surface=%u wl_surface=%u surface_seq=%u",
++			(unsigned long long)settings_trace_monotonic_ns(),
++			output->wlr_output->name, output->wlr_output->commit_seq,
++			(long)server->settings_trace_pid,
++			server->settings_trace_xdg_surface_id,
++			server->settings_trace_wl_surface_id,
++			server->settings_trace_seq);
++	}
+ 	struct timespec now;
+@@
+ 	struct seyrix_output *output = wl_container_of(listener, output, destroy);
+ 	struct seyrix_server *server = output->server;
+ 	remove_listener(&output->frame);
++	remove_listener(&output->present);
+ 	remove_listener(&output->request_state);
+@@
+ 	output->frame.notify = handle_output_frame;
+ 	wl_signal_add(&wlr_output->events.frame, &output->frame);
++	if (server->settings_trace_enabled) {
++		output->present.notify = handle_output_present;
++		wl_signal_add(&wlr_output->events.present, &output->present);
++	}
+*** End Patch

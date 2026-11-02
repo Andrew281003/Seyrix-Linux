@@ -149,3 +149,89 @@ The latest full run is `/var/tmp/seyrix-linux/qemu-graphics-20261101T233708Z/`. 
 5. Complete the required full end-to-end acceptance passes and resolve the earlier category-content failure documented above.
 
 No ISO promotion or push is permitted until all mandatory acceptance gates pass.
+
+## Resume audit — 2026-11-02
+
+**Current verdict: INCOMPLETE.** This resume audit supersedes the earlier FAIL decision as the current status. The earlier category captures remain valid evidence against the older `seyrix-phase2d3b5-candidate.iso`; the latest hooks-enabled ISO did not reach category navigation, so the current implementation is not yet accepted or cleared.
+
+### 1. Recovered starting state
+
+- Main checkout: `C:/Users/quake/Desktop/Coding/Seyrix-Linux`, branch `phase2d1-hybrid-window-management`, HEAD `d1873c68a29b24e285e58568551b030985ef8b98`. Its pre-existing modified and untracked files were left untouched.
+- Isolated Phase 2D.3B.5 worktree: `C:/Users/quake/.codex/worktrees/phase2d3b5-system-settings/Seyrix-Linux`, branch `codex/phase2d3b5-system-settings`, HEAD `09d897c3fa5b07a49f7f9e0837b54dac66617324` (also `origin/codex/phase2d3b5-system-settings`). Its tracked files were clean at inspection. The pre-existing untracked `phase2d3b5-trace.patch` was preserved.
+- The diagnostic ISO build metadata records source commit `7bfdc6e5ce889b5a0886737578ba8078dcd5e7ea` and `Source worktree: modified`. The build used the then-current isolated worktree contents, but the metadata has no source-tree digest, so the ISO is not claimed to be commit-exact provenance for `09d897c`.
+- No commit, merge, rebase, reset, clean, push, promotion, or physical-disk operation was performed.
+
+### 2. Acceptance-hook configuration and confirmed root cause
+
+`desktop/compositor/meson_options.txt` defaults `qemu_acceptance_hooks` to `false`. `build/build-phase2d3b-iso.sh` also defaults `SEYRIX_QEMU_ACCEPTANCE_HOOKS` to false and passes the resulting value to Meson. `desktop/compositor/meson.build` adds `-DSEYRIX_QEMU_ACCEPTANCE_HOOKS=1` only when the option is true. The acceptance harness expected the shell fault-injection fixture, so a default build could not emit or consume that diagnostic fixture. Missing hook events therefore did not establish a production IPC defect.
+
+The retained diagnostic build explicitly used `SEYRIX_QEMU_ACCEPTANCE_HOOKS=1`: Meson records `qemu_acceptance_hooks = true`, the packaged compositor contains the fixture marker, and the QEMU run consumed it (`SHELL_FAULT_FIXTURE=passed`). The separate production compositor check records `qemu_acceptance_hooks = false` and has no marker. The compositor, Shell, and Settings binaries in `staging/usr/bin` match the packaged `profile/airootfs/usr/bin` copies by SHA-256:
+
+- `seyrix-compositor`: `d38cbf8bc814aba343e99d410ad4c8fd4459200acaebb59c24624b40dd7fe935`
+- `seyrix-shell`: `e74890e666a54db4dda8d3f3acfd586deec91b7f61faec94b1e78175e21d60e4`
+- `seyrix-settings`: `8eb41012470bebb100804b0c9892727bff9efd5012898c759e5528047c0f9b3d`
+
+### 3. Resume changes
+
+Only test infrastructure changed: `tests/qemu-graphics.exp` now clears search with Ctrl+A/Backspace and navigates categories with keyboard focus and selection keys, avoiding guessed icon/sidebar coordinates. I also corrected its socket-path fixture: it no longer treats a listener-path rename plus historical log entries as proof of a same-process GTK reconnect. The full harness now records that required gate as `INCOMPLETE` and stops cleanly until a test actually restarts the listener and closes the existing stream. A dedicated Unix-socket regression demonstrates that renaming/restoring a path preserves an accepted stream. No production behavior changed. The revised harness passed offline regressions but has **not** been exercised in QEMU because retention preflight blocked another run.
+
+### 4. Native and offline regression results
+
+The preserved resume log is `docs/evidence/phase2d3b5-resume-native-tests.log` (ignored by the repository's `*.log` rule). Direct execution of the existing release test binaries on 2026-11-02 passed all 11 binaries: compositor 3/3, Shell 5/5, Settings 3/3. No release binaries were rebuilt in this resume.
+
+The 2026-11-02 offline harness checks also passed: Bash syntax; Tcl source completeness; 20 screenshot-helper cases at 640×480, 800×600, 1280×720, and 1920×1080; pixel-comparison regressions; Unix socket-path replacement behavior; desktop-entry LF/CRLF checks; render-trace regressions; and all 14 retention-validation cases. The desktop-entry checker emitted its existing multiple-category hint while both line-ending cases passed.
+
+Previously retained sanitizer logs are not a fresh run against this resume. They record compositor 3/3 PASS, Settings 3/3 PASS, and Shell 4/5 PASS. Shell UI reports a Fontconfig/Pango leak of 140,884 bytes across 4,817 allocations; it remains unsuppressed. The retained compositor investigation also records a Mesa EGL leak of 31,259 bytes across 154 allocations. These are unresolved sanitizer findings, not clean sanitizer acceptance.
+
+### 5. QEMU and graphical acceptance
+
+The readiness evidence at `/var/tmp/seyrix-linux/evidence/phase2d3b5-readiness-20261101T112057Z/campaign.tsv` contains 10/10 cold boots reaching graphical readiness at 640×480. A raw inventory found 51 `qemu-graphics-20261101T*` run directories; every `run-result.txt` says `INCOMPLETE` (5 driver exit status 0, 44 status 1, and 2 status 129). Those are diagnostic/retry runs, not 51 acceptance passes. This inventory does not validate the full matrix.
+
+The latest full run, `/var/tmp/seyrix-linux/qemu-graphics-20261101T233708Z/`, used the hooks-enabled ISO at 800×600. Shell fault recovery, normal launcher identity, singleton behavior (PID 2326 stayed the sole process/window for five seconds), wrong-session rejection, live GTK HELLO/snapshot, and probe subscriptions passed. The socket test only moved and restored the pathname; because it did not restart the listener or close the existing stream, its historical-log search did not prove a GTK reconnect. The run then stopped at search clearing before category navigation: the old hardcoded clear-icon click produced zero content pixels changed. The first-terminal marker check also failed because the injected command text contained extra `x` characters. The keyboard-based harness fix has not been rerun.
+
+Older captures from the non-diagnostic candidate still show apparent selected-row/content mismatches at 800×600 and 1280×720. A later GTK trace showed the Desktop page selected and mapped while an earlier narrow screenshot ROI reported no pixel delta, proving that some prior pixel failures were detector false negatives. Because the newer hooks-enabled run stopped before pages, category identity/rendering remains unresolved.
+
+- The required two complete graphical end-to-end sessions: NOT RUN.
+- Complete category and search acceptance at all four resolutions: NOT RUN on the current hooks-enabled ISO; 1920×1080 graphical acceptance remains NOT RUN.
+- Same-Settings-process GUI IPC disconnect/reconnect: NOT VERIFIED. The older 800×600 log recorded PID 2326 before and after pathname restoration, but the fixture did not disconnect the accepted stream and the old command scanned pre-trigger HELLO/snapshot history. The corrected full harness now fails closed as `INCOMPLETE` at this gate until a real listener restart/client disconnect can be exercised.
+- A full compositor restart while that GTK Settings process remains alive: NOT VERIFIED. The 640×480 diagnostic run closed Settings PID 2091 before restarting compositor PID 626; after socket recreation as `1000:1000:600`, it relaunched Settings as PID 2800 and HELLO/snapshot/subscription passed. This is not same-process compositor-restart evidence.
+- Weston/TTY recovery, complete window interaction and responsive-layout matrix, duplicate-subscription/resource-growth checks, and complete shutdown acceptance: NOT COMPLETED as a full matrix.
+
+### 6. ISO artifacts and reproducible commands
+
+All three retained ISO candidates are 1,122,795,520 bytes and remain unpromoted:
+
+| ISO | SHA-256 |
+|---|---|
+| `/var/tmp/seyrix-linux/candidates/seyrix-phase2d3b5-candidate.iso` | `82809c2dbe747ec34a8e0dd210193a4e6ea874b75f14f52079dc11a814b1fd65` |
+| `/var/tmp/seyrix-linux/candidates/seyrix-phase2d3b5-navigation-fix.iso` | `c99f41f87794179a0b01a75dae67ac648fb9f0e8b43ff1e1129898b444c2175b` |
+| `/var/tmp/seyrix-linux/candidates/seyrix-phase2d3b5-hooks-diagnostic-20261101T200918Z.iso` | `5ad1d9d280bf2f13b16cbb91cc4d5f0fceb467d4ec490ec3ebf1de7c00914a09` |
+
+Build a fresh diagnostic candidate from the isolated worktree with an unused build directory:
+
+```bash
+cd /mnt/c/Users/quake/.codex/worktrees/phase2d3b5-system-settings/Seyrix-Linux
+sudo env \
+  SEYRIX_ARTIFACT_ROOT=/var/tmp/seyrix-linux \
+  SEYRIX_BUILD_ROOT=/var/tmp/seyrix-linux/phase2d3b5-resume-<new-UTC-id> \
+  SEYRIX_QEMU_ACCEPTANCE_HOOKS=1 \
+  ./build/build-phase2d3b-iso.sh
+```
+
+Run the full QEMU driver against a candidate with a new graphics directory; repeat at each required resolution:
+
+```bash
+SEYRIX_QEMU_WORKFLOW=phase2d3b \
+SEYRIX_QEMU_RESOLUTION_PROFILE=800x600 \
+SEYRIX_QEMU_GRAPHICS_DIR=/var/tmp/seyrix-linux/qemu-graphics-<new-UTC-id> \
+./tests/qemu-graphics.sh \
+  /var/tmp/seyrix-linux/candidates/seyrix-phase2d3b5-hooks-diagnostic-20261101T200918Z.iso
+```
+
+The complete QEMU invocation and serial/session traces are preserved in each run's `qemu-command.txt`, `run-metadata.txt`, `expect-session.log`, `serial.log`, `test.log`, and `stage-results.log`. The diagnostic IPC run is `/var/tmp/seyrix-linux/qemu-graphics-20261101T202710Z`; its logs correlate Settings PID 2091 with compositor PID 626, then compositor PID 2750 and relaunch PID 2800.
+
+### 7. Storage gate and remaining work
+
+The existing managed artifact limit is 42,949,672,960 bytes (40 GiB), with the default QEMU reserve of 4,294,967,296 bytes (4 GiB). The attempted fresh run's retention preflight recorded 41,786,777,600 bytes already stored and stopped before launching QEMU. No reserve override or artifact deletion was used. Candidate ISOs, run logs, existing worktrees, and the untracked trace patch remain preserved; no physical disk, Windows boot configuration, or WSL storage location was changed.
+
+Remaining work is to rerun the corrected harness when the existing managed artifact budget permits, verify all six categories and all four layouts on the current hooks-enabled ISO, complete two end-to-end sessions and a same-process compositor restart check, finish the lifecycle/recovery matrix, and resolve or explicitly assess the retained sanitizer findings. Until then, the Phase 2D.3B.5 result is **INCOMPLETE**; no ISO promotion, merge, or push is authorized by this report.

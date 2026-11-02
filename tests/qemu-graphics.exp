@@ -1444,8 +1444,8 @@ fi
 		run_serial_check $launcher_launch_command {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=passed} {PHASE2D2_LAUNCHER_SEARCH_LAUNCH=failed} "search and launch a valid XDG desktop entry with keyboard navigation" 30
 		qmp_hmp $qmp "screendump $run_dir/phase2d2-after-launch.ppm"
 		if {$phase2d3b} {
-			set settings_socket_offline_command {socket=/run/user/1000/seyrix/settings-v1.sock; saved=${socket}.qemu-offline; if [[ -S "$socket" && ! -e "$saved" ]] && mv -- "$socket" "$saved" && [[ -S "$saved" && ! -e "$socket" ]]; then echo SETTINGS_UI_OFFLINE_FIXTURE=passed; else echo SETTINGS_UI_OFFLINE_FIXTURE=failed; fi}
-			run_serial_check $settings_socket_offline_command {SETTINGS_UI_OFFLINE_FIXTURE=passed} {SETTINGS_UI_OFFLINE_FIXTURE=failed} "temporarily remove the Settings endpoint path to exercise offline UI presentation" 10
+			set settings_socket_offline_command {socket=/run/user/1000/seyrix/settings-v1.sock; saved=${socket}.qemu-offline; pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); marker=/tmp/seyrix-settings-ui-path-test-pid; if [[ -S "$socket" && ! -e "$saved" && -n "$pid" ]] && printf '%s\n' "$pid" > "$marker" && mv -- "$socket" "$saved" && [[ -S "$saved" && ! -e "$socket" ]]; then echo SETTINGS_UI_SOCKET_PATH_MOVED=passed; else if [[ -S "$saved" && ! -e "$socket" ]]; then mv -- "$saved" "$socket"; fi; rm -f -- "$marker"; echo SETTINGS_UI_SOCKET_PATH_MOVED=failed; fi}
+			run_serial_check $settings_socket_offline_command {SETTINGS_UI_SOCKET_PATH_MOVED=passed} {SETTINGS_UI_SOCKET_PATH_MOVED=failed} "move the Settings socket pathname while preserving the compositor and existing client streams" 10
 			qmp_key_chord $qmp {meta_l} spc
 			after 700
 			qmp_type_slow $qmp "Settings" 400
@@ -1527,17 +1527,25 @@ fi
 			}
 			after 1000
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-appearance.ppm"
-			qmp_hmp $qmp "screendump $run_dir/phase2d3b-offline.ppm"
-			set settings_socket_restore_command {socket=/run/user/1000/seyrix/settings-v1.sock; saved=${socket}.qemu-offline; if [[ -S "$saved" && ! -e "$socket" ]] && mv -- "$saved" "$socket" && [[ -S "$socket" && "$(stat -c %u:%g:%a "$socket")" == 1000:1000:600 ]]; then echo SETTINGS_UI_SOCKET_RESTORE=passed; else echo SETTINGS_UI_SOCKET_RESTORE=failed; fi}
-			run_serial_check $settings_socket_restore_command {SETTINGS_UI_SOCKET_RESTORE=passed} {SETTINGS_UI_SOCKET_RESTORE=failed} "restore the compositor-owned Settings endpoint socket" 10
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-socket-path-moved.ppm"
+			set settings_socket_restore_command {socket=/run/user/1000/seyrix/settings-v1.sock; saved=${socket}.qemu-offline; if [[ -S "$saved" && ! -e "$socket" ]] && mv -- "$saved" "$socket" && [[ "$(stat -c %u:%g:%a "$socket")" == 1000:1000:600 ]]; then echo SETTINGS_UI_SOCKET_PATH_RESTORED=passed; else echo SETTINGS_UI_SOCKET_PATH_RESTORED=failed; fi}
+			run_serial_check $settings_socket_restore_command {SETTINGS_UI_SOCKET_PATH_RESTORED=passed} {SETTINGS_UI_SOCKET_PATH_RESTORED=failed} "restore the Settings socket pathname with its expected ownership and mode" 10
 			after 10000
-			set settings_live_connection_command {pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); accepted=$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " /tmp/seyrix-compositor.log | tail -n 1); frames=$(grep -F "Settings endpoint frame peer_pid=$pid " /tmp/seyrix-compositor.log || true); printf '%s\\n' "$frames" | grep -Eq 'opcode=1 .*negotiated=0' && hello=1 || hello=0; printf '%s\\n' "$frames" | grep -Eq 'opcode=2 .*negotiated=1' && snapshot=1 || snapshot=0; printf 'SETTINGS_LIVE_IPC pid=%s hello=%s snapshot=%s\\n' "$pid" "$hello" "$snapshot"; if [[ -n "$pid" && -n "$accepted" && "$hello" == 1 && "$snapshot" == 1 ]]; then echo SETTINGS_LIVE_IPC=passed; else echo SETTINGS_LIVE_IPC=failed; printf '%s\\n' "$frames"; fi}
-			run_serial_check $settings_live_connection_command {SETTINGS_LIVE_IPC=passed} {SETTINGS_LIVE_IPC=failed} "verify the normally launched Settings client negotiated and received live compositor state after endpoint recovery" 20
+			set settings_path_restore_check_command {expected_pid=$(cat /tmp/seyrix-settings-ui-path-test-pid 2>/dev/null || true); pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1); count=$(pgrep -u 1000 -x seyrix-settings | wc -l); uid=$(test -n "$pid" && awk '/^Uid:/ {print $2}' "/proc/$pid/status" 2>/dev/null); mapped=$(grep -F "Window mapped: pid=$pid " /tmp/seyrix-compositor.log | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1); socket=/run/user/1000/seyrix/settings-v1.sock; socket_identity=$(stat -c '%u:%g:%a' "$socket" 2>/dev/null || true); printf 'SETTINGS_UI_PATH_ONLY pid=%s expected_pid=%s count=%s uid=%s socket=%s mapped=%s\\n' "${pid:-missing}" "${expected_pid:-missing}" "$count" "${uid:-missing}" "${socket_identity:-missing}" "${mapped:+yes}"; if [[ -n "$expected_pid" && "$pid" == "$expected_pid" && "$count" == 1 && "$uid" == 1000 && -n "$mapped" && "$socket_identity" == 1000:1000:600 ]]; then echo SETTINGS_UI_PATH_ONLY_CHECK=passed; else echo SETTINGS_UI_PATH_ONLY_CHECK=failed; fi}
+			run_serial_check $settings_path_restore_check_command {SETTINGS_UI_PATH_ONLY_CHECK=passed} {SETTINGS_UI_PATH_ONLY_CHECK=failed} "verify the same Settings process stays mapped after socket-path restoration" 20
 			if {$last_serial_check_result ne "pass"} {
-				puts stderr "Settings did not reconnect to the restored compositor endpoint."
+				puts stderr "Settings did not remain mapped with the restored socket pathname."
 				exit 1
 			}
-			qmp_hmp $qmp "screendump $run_dir/phase2d3b-reconnected.ppm"
+			qmp_hmp $qmp "screendump $run_dir/phase2d3b-socket-path-restored.ppm"
+			if {![info exists env(SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY)] || $env(SEYRIX_QEMU_SETTINGS_LAYOUT_ONLY) ne "1"} {
+				puts "STAGE_BEGIN name={same-process GTK Settings IPC disconnect and reconnect} timeout_s=0"
+				puts stderr "SETTINGS_GTK_IPC_RECONNECT=INCOMPLETE reason=socket-path-rename-does-not-close-listener-or-existing-stream"
+				puts "STAGE_RESULT name={same-process GTK Settings IPC disconnect and reconnect} result=INCOMPLETE reason=the-fixture-does-not-restart-the-listener-or-close-the-client-stream"
+				incr acceptance_failures
+				finish_guest_shutdown $qmp "clean guest shutdown after incomplete GTK Settings reconnect check" 45
+				exit 1
+			}
 		# Launch probes through the shell so SO_PEERCRED's session check sees the
 		# compositor session. A terminal's shell runs under a separate PTY session.
 		set settings_probe_launch_command {rm -f /tmp/seyrix-settings-endpoint-probe.log; echo SETTINGS_PROBE_LOG=cleared; ps -eo pid,ppid,sid,pgid,uid,comm,args | awk 'NR == 1 || /seyrix-compositor|seyrix-shell|seyrix-settings/ { print }'}
@@ -1580,8 +1588,11 @@ fi
 			qmp_type_slow $qmp "no-such-setting-zz99"
 			after 400
 			qmp_hmp $qmp "screendump $run_dir/phase2d3b-search-no-match.ppm"
-			# The search entry spans the 800-pixel Settings surface; click its visible clear icon.
-			qmp_mouse_click_pixel $qmp [expr {$output_width - 27}] 114 $output_width $output_height
+			# Ctrl+F and the query input leave focus in GtkSearchEntry. Clear it with
+			# the standard text-editing sequence instead of guessing the clear icon's
+			# screen position or relying on Escape propagation through GTK widgets.
+			qmp_key_chord $qmp {ctrl} a
+			qmp_key_chord $qmp {} backspace
 			after 1000
 			set settings_page_helper [file join [file dirname [file normalize [info script]]] qemu-settings-page-check.py]
 			set previous_page_screenshot [file normalize [file join $run_dir phase2d3b-search-no-match.ppm]]
@@ -1601,21 +1612,20 @@ fi
 				4 input phase2d3b-input.ppm
 			5 about phase2d3b-about.ppm
 			} {
-				if {$output_width < 760} {
-					qmp_mouse_click_pixel $qmp [expr {$settings_window_x + $settings_window_width / 2}] [expr {$settings_window_y + 156}] $output_width $output_height
-					after 500
-					qmp_key_chord $qmp {} home
-					for {set category_step 0} {$category_step < $category_index} {incr category_step} {
-						qmp_key_chord $qmp {} down
-					}
+				if {$category_index == 0} {
+					# Ctrl+A/Backspace cleared the search and kept focus in the
+					# entry. Tab moves into the compact selector or wide sidebar.
+					qmp_key_chord $qmp {} tab
+				} elseif {$output_width < 760} {
+					# The compact GTK category selector is already focused.
+					qmp_key_chord $qmp {} spc
+					qmp_key_chord $qmp {} down
 					qmp_key_chord $qmp {} ret
 				} else {
-					# The compositor expands Settings to the output bounds. The
-					# initial GTK default-size geometry is not the mapped geometry.
-					# The compositor expands the Settings surface after the initial map
-					# geometry is recorded, so wide output profiles use the sidebar.
-					set sidebar_y [expr {165 + 34 * $category_index}]
-					qmp_mouse_click_pixel $qmp 70 $sidebar_y $output_width $output_height
+					# The wide GTK sidebar keeps focus. Arrow navigation selects the
+					# next row without assuming a window position or row height.
+					qmp_key_chord $qmp {} down
+					qmp_key_chord $qmp {} ret
 				}
 				qmp_mouse_move_pixel $qmp [expr {$settings_window_x + $settings_window_width - 20}] [expr {$settings_window_y + $settings_window_height - 20}] $output_width $output_height
 				set page_ready 0
