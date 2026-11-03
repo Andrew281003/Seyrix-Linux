@@ -308,6 +308,7 @@ void seyrix_window_state_minimize(struct seyrix_window *window) {
 		seyrix_focus_window(server,
 			seyrix_workspace_focus_candidate(server, window));
 	}
+	seyrix_shell_window_changed(window);
 	wlr_log(WLR_INFO, "Window minimized into compositor hidden state");
 }
 
@@ -326,6 +327,7 @@ static void handle_request_minimize(struct wl_listener *listener, void *data) {
 		if (seyrix_workspace_window_is_visible(state->window)) {
 			seyrix_focus_window(state->window->server, state->window);
 		}
+		seyrix_shell_window_changed(state->window);
 	}
 }
 
@@ -416,17 +418,31 @@ bool seyrix_window_state_restore_minimized(struct seyrix_server *server) {
 					&server->workspaces[server->active_workspace_index]) {
 			continue;
 		}
-		window->minimized = false;
-		window->window_state->minimized = false;
-		seyrix_wm_set_layout_suspended(window,
-			window->window_state->desired_maximized ||
-			window->window_state->desired_fullscreen);
-		wlr_scene_node_set_enabled(&window->scene_tree->node, true);
-		seyrix_focus_window(server, window);
+		if (!seyrix_window_state_restore_minimized_window(window)) {
+			continue;
+		}
 		wlr_log(WLR_INFO, "Restored minimized window");
 		return true;
 	}
 	return false;
+}
+
+bool seyrix_window_state_restore_minimized_window(struct seyrix_window *window) {
+	if (window == NULL || window->window_state == NULL || !window->mapped ||
+			!window->minimized) {
+		return false;
+	}
+	window->minimized = false;
+	window->window_state->minimized = false;
+	seyrix_wm_set_layout_suspended(window,
+		window->window_state->desired_maximized ||
+		window->window_state->desired_fullscreen);
+	wlr_scene_node_set_enabled(&window->scene_tree->node, true);
+	if (seyrix_workspace_window_is_visible(window)) {
+		seyrix_focus_window(window->server, window);
+	}
+	seyrix_shell_window_changed(window);
+	return true;
 }
 
 void seyrix_window_state_destroy(struct seyrix_window *window) {

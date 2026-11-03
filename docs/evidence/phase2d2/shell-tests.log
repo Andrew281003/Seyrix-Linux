@@ -1,0 +1,17 @@
+ninja: no work to do.
+ninja: Entering directory `/out/shell-clean-build'
+ninja: no work to do.
+1/5 shell state model              OK              0.01s
+2/5 shell application catalog      OK              0.01s
+3/5 shell configuration            OK              0.02s
+4/5 shell user interface rendering OK              0.04s
+5/5 session lock lifecycle         OK              0.04s
+
+Ok:                 5   
+Expected Fail:      0   
+Fail:               0   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /out/shell-clean-build/meson-logs/testlog.txt

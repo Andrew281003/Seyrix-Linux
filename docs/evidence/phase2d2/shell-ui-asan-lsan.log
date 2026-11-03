@@ -1,0 +1,68 @@
+ninja: no work to do.
+ninja: Entering directory `/out/shell-asan-build'
+ninja: no work to do.
+1/1 shell user interface rendering FAIL            0.20s   exit status 1
+>>> MALLOC_PERTURB_=52 /out/shell-asan-build/seyrix-shell-ui-test
+――――――――――――――――――――――――――――――――――――― ✀  ―――――――――――――――――――――――――――――――――――――
+stdout:
+# random seed: R02S33a1b0661e1047eb64ec54118588f015
+1..2
+# Start of shell tests
+# Start of ui tests
+ok 1 /shell/ui/desktop-manual-and-wallpaper-fallback
+ok 2 /shell/ui/resize-and-switcher-selection-visibility
+# End of ui tests
+# End of shell tests
+stderr:
+
+=================================================================
+==31==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 17920 byte(s) in 28 object(s) allocated from:
+    #0 0x7f7b642648d5 in __interceptor_realloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:85
+    #1 0x7f7b631204d8  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x234d8)
+
+Direct leak of 256 byte(s) in 1 object(s) allocated from:
+    #0 0x7f7b642659cf in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69
+    #1 0x7f7b63120431  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x23431)
+
+Indirect leak of 42112 byte(s) in 1316 object(s) allocated from:
+    #0 0x7f7b642659cf in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69
+    #1 0x7f7b6310a9af  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0xd9af)
+
+Indirect leak of 23647 byte(s) in 1595 object(s) allocated from:
+    #0 0x7f7b6421d77b in __interceptor_strdup ../../../../src/libsanitizer/asan/asan_interceptors.cpp:439
+    #1 0x7f7b6311fcd7 in FcValueSave (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x22cd7)
+
+Indirect leak of 16384 byte(s) in 512 object(s) allocated from:
+    #0 0x7f7b642653b7 in __interceptor_calloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:77
+    #1 0x7f7b63120bfc  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x23bfc)
+
+Indirect leak of 11200 byte(s) in 350 object(s) allocated from:
+    #0 0x7f7b642653b7 in __interceptor_calloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:77
+    #1 0x7f7b6312002a  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x2302a)
+
+Indirect leak of 2688 byte(s) in 84 object(s) allocated from:
+    #0 0x7f7b642653b7 in __interceptor_calloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:77
+    #1 0x7f7b6311fee7  (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x22ee7)
+
+Indirect leak of 672 byte(s) in 14 object(s) allocated from:
+    #0 0x7f7b642659cf in __interceptor_malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69
+    #1 0x7f7b631196db in FcLangSetCopy (/lib/x86_64-linux-gnu/libfontconfig.so.1+0x1c6db)
+
+SUMMARY: AddressSanitizer: 114879 byte(s) leaked in 3900 allocation(s).
+――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+
+Summary of Failures:
+
+1/1 shell user interface rendering FAIL            0.20s   exit status 1
+
+Ok:                 0   
+Expected Fail:      0   
+Fail:               1   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /out/shell-asan-build/meson-logs/testlog.txt

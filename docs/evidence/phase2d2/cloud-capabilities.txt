@@ -1,0 +1,23 @@
+Cloud task host:
+  Linux x86_64 kernel 6.18.55
+  qemu-system-x86_64: unavailable
+  /dev/dri: unavailable
+  /dev/kvm: unavailable
+
+Disposable build/test container:
+  Debian GNU/Linux 12 (bookworm), linux/amd64
+  GCC 12.2.0
+  Meson 1.0.1
+  wayland-client 1.21.0
+  wayland-protocols 1.31
+  wlr-protocols metadata version 1 (staged protocol XML)
+  gio-unix-2.0 2.74.6
+  cairo 1.16.0
+  pango / pangocairo 1.50.12
+  gdk-pixbuf-2.0 2.42.10
+  xkbcommon 1.5.0
+  wlroots-0.20 pkg-config: unavailable
+  wlroots pkg-config: unavailable
+  QEMU: unavailable
+  /dev/dri: unavailable
+  /dev/kvm: unavailable

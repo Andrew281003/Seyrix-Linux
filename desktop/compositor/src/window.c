@@ -80,6 +80,7 @@ void seyrix_focus_window(struct seyrix_server *server,
 		server->focused_window = NULL;
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
 		wlr_seat_pointer_notify_clear_focus(server->seat);
+		seyrix_shell_window_changed(previous_window);
 		return;
 	}
 
@@ -98,6 +99,8 @@ void seyrix_focus_window(struct seyrix_server *server,
 		wlr_seat_keyboard_notify_enter(server->seat, surface,
 			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
+	seyrix_shell_window_changed(previous_window);
+	seyrix_shell_window_changed(window);
 }
 
 void seyrix_focus_next_window(struct seyrix_server *server,
@@ -243,6 +246,7 @@ static void unmap_window(struct seyrix_window *window) {
 		window->mapped = false;
 		wl_list_remove(&window->link);
 		wl_list_init(&window->link);
+		seyrix_shell_window_removed(window->server, window->shell_id);
 	}
 	seyrix_workspace_window_unmapped(window);
 	if (server->focused_window == window) {
@@ -280,6 +284,19 @@ static void handle_window_commit(struct wl_listener *listener, void *data) {
 	}
 	seyrix_window_state_commit(window);
 	seyrix_wm_window_committed(window);
+	seyrix_shell_window_changed(window);
+}
+
+static void handle_window_title(struct wl_listener *listener, void *data) {
+	(void)data;
+	struct seyrix_window *window = wl_container_of(listener, window, set_title);
+	seyrix_shell_window_changed(window);
+}
+
+static void handle_window_app_id(struct wl_listener *listener, void *data) {
+	(void)data;
+	struct seyrix_window *window = wl_container_of(listener, window, set_app_id);
+	seyrix_shell_window_changed(window);
 }
 
 static void handle_window_move(struct wl_listener *listener, void *data) {
@@ -307,11 +324,14 @@ static void handle_window_destroy(struct wl_listener *listener, void *data) {
 	struct seyrix_window *window = wl_container_of(listener, window, destroy);
 	seyrix_popup_dismiss_window(window);
 	unmap_window(window);
+	seyrix_shell_window_removed(window->server, window->shell_id);
 	seyrix_wm_window_destroyed(window);
 
 	remove_listener(&window->map);
 	remove_listener(&window->unmap);
 	remove_listener(&window->commit);
+	remove_listener(&window->set_title);
+	remove_listener(&window->set_app_id);
 	remove_listener(&window->destroy);
 	remove_listener(&window->request_move);
 	remove_listener(&window->request_resize);
@@ -338,8 +358,15 @@ static void handle_new_toplevel(struct wl_listener *listener, void *data) {
 		wlr_xdg_toplevel_send_close(xdg_toplevel);
 		return;
 	}
+	if (server->next_window_id == 0) {
+		wlr_log(WLR_ERROR, "Exhausted shell window identifiers; closing new toplevel");
+		wlr_xdg_toplevel_send_close(xdg_toplevel);
+		free(window);
+		return;
+	}
 	window->server = server;
 	window->xdg_toplevel = xdg_toplevel;
+	window->shell_id = server->next_window_id++;
 	struct wlr_scene_tree *workspace_tree =
 		seyrix_workspace_attach_window(server, window);
 	if (workspace_tree == NULL) {
@@ -384,6 +411,10 @@ static void handle_new_toplevel(struct wl_listener *listener, void *data) {
 	wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &window->unmap);
 	window->commit.notify = handle_window_commit;
 	wl_signal_add(&xdg_toplevel->base->surface->events.commit, &window->commit);
+	window->set_title.notify = handle_window_title;
+	wl_signal_add(&xdg_toplevel->events.set_title, &window->set_title);
+	window->set_app_id.notify = handle_window_app_id;
+	wl_signal_add(&xdg_toplevel->events.set_app_id, &window->set_app_id);
 	window->destroy.notify = handle_window_destroy;
 	wl_signal_add(&xdg_toplevel->events.destroy, &window->destroy);
 	window->request_move.notify = handle_window_move;

@@ -67,6 +67,30 @@ was used.
 The build procedure is repeatable, but byte-for-byte reproducibility has not
 been established.
 
+## Build the Phase 2D.2 native shell image
+
+The Phase 2D.2 profile builds the compositor against wlroots 0.20, then builds
+the Wayland shell client and installs its read-only `Manual.txt` resource. The
+Arch build host needs `mkarchiso`, `meson`, `ninja`, `pkgconf`, `wayland-scanner`,
+`git`, and the repository's `wlroots0.20`, `wlr-protocols`, and
+`wayland-protocols` packages. The profile adds the shell's GLib, GDK-Pixbuf,
+Cairo, and Pango runtime packages to the image.
+
+Run the Phase 2D.2 build script from the repository as root in that Arch
+environment:
+
+```sh
+bash build/build-phase2d2-iso.sh
+```
+
+Its default work, metadata, and ISO directories are under
+`/var/tmp/seyrix-linux/phase2d2-<UTC timestamp>/`. Set `SEYRIX_BUILD_ROOT` to
+choose another empty location. The script checks the wlroots API version,
+builds and runs the compositor and shell Meson suites, stages both native
+binaries and the manual, and retains package manifests, build logs, and an ISO
+checksum. A successful native build does not replace the graphical runtime
+acceptance run described below.
+
 If a build fails, inspect `build.log` and the files under `metadata/`. Each
 default build directory is unique and is deliberately not reused. Start a new
 run rather than mixing a failed work tree with a later package state.

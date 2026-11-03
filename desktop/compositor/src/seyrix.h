@@ -25,6 +25,7 @@
 
 #include "layout-engine.h"
 #include "wm-config.h"
+#include "../../shell/src/shell-config.h"
 
 enum seyrix_cursor_mode {
 	SEYRIX_CURSOR_PASSTHROUGH,
@@ -80,10 +81,12 @@ struct seyrix_server {
 	struct wl_list windows;
 	struct wl_list keyboards;
 	struct wl_list children;
+	pid_t session_process_group;
 	struct wl_list layer_surfaces;
 	struct wl_list popups;
 	struct seyrix_workspace workspaces[SEYRIX_WORKSPACE_COUNT];
 	struct seyrix_wm_config wm_config;
+	struct seyrix_shell_config shell_config;
 
 	struct wl_listener new_output;
 	struct wl_listener output_layout_change;
@@ -120,6 +123,7 @@ struct seyrix_server {
 	int grab_titlebar_height;
 	uint32_t resize_edges;
 	uint32_t consumed_pointer_button;
+	uint32_t next_window_id;
 	uint64_t started_at_ms;
 	bool backend_started;
 	bool output_manager_applying;
@@ -147,6 +151,7 @@ struct seyrix_window {
 	struct seyrix_server *server;
 	struct seyrix_workspace *workspace;
 	struct wlr_xdg_toplevel *xdg_toplevel;
+	uint32_t shell_id;
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_tree *surface_tree;
 	struct seyrix_window_state *window_state;
@@ -155,6 +160,8 @@ struct seyrix_window {
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
+	struct wl_listener set_title;
+	struct wl_listener set_app_id;
 	struct wl_listener destroy;
 	struct wl_listener request_move;
 	struct wl_listener request_resize;
@@ -184,11 +191,13 @@ struct seyrix_keyboard {
 	struct wl_listener destroy;
 	uint32_t consumed_keycodes[8];
 	size_t consumed_keycode_count;
+	uint32_t last_modifiers;
 };
 
 struct seyrix_child {
 	struct wl_list link;
 	pid_t pid;
+	pid_t process_group;
 };
 
 bool seyrix_server_init(struct seyrix_server *server);
@@ -292,6 +301,15 @@ void seyrix_shell_child_exited(struct seyrix_server *server, pid_t pid);
 void seyrix_shell_finish(struct seyrix_server *server);
 void seyrix_shell_outputs_changed(struct seyrix_server *server);
 void seyrix_shell_update_active_workspace(struct seyrix_server *server);
+void seyrix_shell_window_changed(struct seyrix_window *window);
+void seyrix_shell_window_removed(struct seyrix_server *server, uint32_t id);
+bool seyrix_shell_toggle_launcher(struct seyrix_server *server);
+bool seyrix_shell_toggle_switcher(struct seyrix_server *server);
+void seyrix_shell_commit_switcher(struct seyrix_server *server);
+bool seyrix_shell_is_client(struct seyrix_server *server, pid_t pid);
+bool seyrix_shell_overlay_matches(struct seyrix_server *server,
+	pid_t pid, const char *namespace_name);
+void seyrix_shell_overlay_destroyed(struct seyrix_server *server);
 
 bool seyrix_layer_shell_init(struct seyrix_server *server);
 void seyrix_layer_shell_finish(struct seyrix_server *server);
