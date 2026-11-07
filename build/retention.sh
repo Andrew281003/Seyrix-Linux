@@ -3,7 +3,7 @@
 
 SEYRIX_RETENTION_REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 : "${SEYRIX_ARTIFACT_ROOT:=/var/tmp/seyrix-linux}"
-: "${SEYRIX_RETENTION_MAX_BYTES:=42949672960}"          # 40 GiB
+: "${SEYRIX_RETENTION_MAX_BYTES:=161061273600}"         # 150 GiB
 : "${SEYRIX_RETENTION_MIN_FREE_BYTES:=32212254720}"      # 30 GiB
 : "${SEYRIX_RETENTION_BUILD_RESERVE_BYTES:=17179869184}" # 16 GiB
 : "${SEYRIX_RETENTION_QEMU_RESERVE_BYTES:=4294967296}"   # 4 GiB
@@ -373,7 +373,7 @@ seyrix_retention_promote_iso() {
 }
 
 seyrix_retention_finish_qemu_run() {
-	local run_dir="$1" iso_path="$2" status="$3" result=''
+	local run_dir="$1" iso_path="$2" status="$3" result='' workflow=''
 	local managed_run=0 build_root=''
 	if [[ -f "$run_dir/.seyrix-managed" &&
 		! -L "$run_dir/.seyrix-managed" ]] &&
@@ -384,6 +384,9 @@ seyrix_retention_finish_qemu_run() {
 	fi
 	if [[ -f "$run_dir/run-result.txt" ]]; then
 		result="$(sed -n 's/^Run result: //p' "$run_dir/run-result.txt" | head -n 1)"
+	fi
+	if [[ -f "$run_dir/run-metadata.txt" && ! -L "$run_dir/run-metadata.txt" ]]; then
+		workflow="$(sed -n 's/^Workflow: //p' "$run_dir/run-metadata.txt" | head -n 1)"
 	fi
 	if (( status != 0 )) || [[ "$result" != PASS ]] || \
 		grep -q 'still-running-after-test' "$run_dir/qemu-process-state.txt" 2>/dev/null; then
@@ -396,7 +399,12 @@ seyrix_retention_finish_qemu_run() {
 		fi
 		return 0
 	fi
-	if [[ -n "$iso_path" && -f "$iso_path" ]] &&
+	if [[ "$workflow" == phase2d3b ]] &&
+		! grep -Fxq 'FULL_GRAPHICAL_ACCEPTANCE=PASS' "$run_dir/test.log" 2>/dev/null; then
+		if (( managed_run )); then
+			seyrix_retention_write_summary "$run_dir" "$iso_path"
+		fi
+	elif [[ -n "$iso_path" && -f "$iso_path" ]] &&
 		build_root="$(seyrix_retention_find_build_root "$iso_path" || true)" &&
 		[[ -n "$build_root" && -f "$build_root/.seyrix-build-complete" &&
 			! -L "$build_root/.seyrix-build-complete" ]]; then

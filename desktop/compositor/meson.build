@@ -13,6 +13,7 @@ wlroots = dependency('wlroots-0.20', version: ['>=0.20.0', '<0.21.0'])
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
 pixman = dependency('pixman-1')
+egl = dependency('egl')
 wlr_protocols = dependency('wlr-protocols')
 wayland_scanner = find_program('wayland-scanner')
 
@@ -63,7 +64,7 @@ executable(
     '../shell/src/shell-config.c',
   ) + [layer_shell_protocol, output_management_protocol],
   c_args: compositor_c_args,
-  dependencies: [wlroots, wayland_server, xkbcommon, pixman],
+  dependencies: [wlroots, wayland_server, xkbcommon, pixman, egl],
   install: true,
   install_dir: get_option('bindir'),
 )
@@ -74,6 +75,18 @@ geometry_test = executable(
   dependencies: [wlroots, wayland_server],
 )
 test('compositor geometry', geometry_test)
+
+egl_lifecycle_test = executable(
+  'compositor-egl-lifecycle-test',
+  '../../tests/compositor-egl-lifecycle-test.c',
+  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
+  dependencies: [wlroots, wayland_server, egl],
+)
+test(
+  'compositor EGL lifecycle',
+  egl_lifecycle_test,
+  env: ['LIBGL_ALWAYS_SOFTWARE=1', 'WLR_RENDERER_ALLOW_SOFTWARE=1'],
+)
 
 window_management_test = executable(
   'compositor-window-management-test',

@@ -121,11 +121,43 @@ static void test_output_resize_and_switcher_scroll_window(void) {
 	cairo_surface_destroy(image);
 }
 
+static void test_font_map_reset_and_reuse(void) {
+	struct seyrix_shell_config config;
+	seyrix_shell_config_defaults(&config);
+	struct seyrix_shell_state state;
+	seyrix_shell_state_init(&state);
+	struct seyrix_shell_view view = {
+		.kind = SEYRIX_SHELL_VIEW_PANEL,
+		.width = 320,
+		.height = 48,
+		.scale = 1,
+		.config = &config,
+		.state = &state,
+	};
+	struct seyrix_shell_hit_area hits[SEYRIX_SHELL_HIT_MAX];
+	size_t count = 0;
+	for (int cycle = 0; cycle < 2; cycle++) {
+		cairo_surface_t *image = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+			view.width, view.height);
+		cairo_t *cr = cairo_create(image);
+		seyrix_shell_ui_draw(&view, cr, hits, G_N_ELEMENTS(hits), &count);
+		g_assert_cmpint(cairo_status(cr), ==, CAIRO_STATUS_SUCCESS);
+		g_assert_cmpuint(count, >, 0);
+		cairo_destroy(cr);
+		cairo_surface_destroy(image);
+		seyrix_shell_ui_finish();
+	}
+}
+
 int main(int argc, char **argv) {
 	g_test_init(&argc, &argv, NULL);
 	g_test_add_func("/shell/ui/desktop-manual-and-wallpaper-fallback",
 		test_desktop_manual_item_and_wallpaper_fallback);
 	g_test_add_func("/shell/ui/resize-and-switcher-selection-visibility",
 		test_output_resize_and_switcher_scroll_window);
-	return g_test_run();
+	g_test_add_func("/shell/ui/font-map-reset-and-reuse",
+		test_font_map_reset_and_reuse);
+	int result = g_test_run();
+	seyrix_shell_ui_finish();
+	return result;
 }

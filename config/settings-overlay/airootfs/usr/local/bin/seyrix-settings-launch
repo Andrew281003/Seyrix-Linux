@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+set -Eeuo pipefail
+
+exec /usr/bin/seyrix-session-supervisor --open

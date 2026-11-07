@@ -1279,6 +1279,7 @@ cleanup:
 	if (client->catalog != NULL) seyrix_app_catalog_free(client->catalog);
 	free(client->manual_text);
 	if (client->display != NULL) wl_display_disconnect(client->display);
+	seyrix_shell_ui_finish();
 	return 1;
 
 normal_exit:
@@ -1299,6 +1300,7 @@ normal_exit:
 	if (client->catalog != NULL) seyrix_app_catalog_free(client->catalog);
 	free(client->manual_text);
 	wl_display_disconnect(client->display);
+	seyrix_shell_ui_finish();
 	return 0;
 }
 

@@ -5,6 +5,8 @@
 #include "../desktop/settings/src/settings-client.h"
 
 #include <errno.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <glib.h>
 #include <poll.h>
 #include <pthread.h>
@@ -36,7 +38,20 @@ struct client_fixture {
 	volatile gint connections;
 	volatile gint close_first_connection;
 	volatile gint stop_server;
+	size_t connected_fd_count;
 };
+
+static size_t open_fd_count(void) {
+	DIR *directory = opendir("/proc/self/fd");
+	g_assert_nonnull(directory);
+	size_t count = 0;
+	struct dirent *entry;
+	while ((entry = readdir(directory)) != NULL) {
+		if (entry->d_name[0] != '.') count++;
+	}
+	g_assert_cmpint(closedir(directory), ==, 0);
+	return count;
+}
 
 static void add_tlv(uint8_t *buffer, size_t capacity, size_t *used,
 		uint16_t type, const uint8_t *value, size_t length) {
@@ -234,7 +249,8 @@ static gboolean observe_reconnect(gpointer data) {
 	int connections = g_atomic_int_get(&fixture->connections);
 	if (connections == 1 &&
 			fixture->client.state == SEYRIX_SETTINGS_CLIENT_CONNECTED &&
-			fixture->client.has_snapshot) {
+			fixture->client.has_snapshot && fixture->client.subscribed) {
+		fixture->connected_fd_count = open_fd_count();
 		g_atomic_int_set(&fixture->close_first_connection, 1);
 	}
 	if (connections >= 1 &&
@@ -243,7 +259,7 @@ static gboolean observe_reconnect(gpointer data) {
 	}
 	if (connections >= 2 && fixture->saw_disconnect &&
 			fixture->client.state == SEYRIX_SETTINGS_CLIENT_CONNECTED &&
-			fixture->client.has_snapshot) {
+			fixture->client.has_snapshot && fixture->client.subscribed) {
 		g_main_loop_quit(fixture->loop);
 		fixture->timer_source = 0;
 		return G_SOURCE_REMOVE;
@@ -298,18 +314,33 @@ static void test_client_reconnects_and_keeps_snapshot(void) {
 	g_assert_false(fixture.timed_out);
 	g_assert_true(fixture.saw_disconnect);
 	g_assert_cmpint(g_atomic_int_get(&fixture.connections), ==, 2);
+	g_assert_cmpuint(fixture.client.connection_attempts, ==, 2);
 	g_assert_cmpint(fixture.client.state, ==,
 		SEYRIX_SETTINGS_CLIENT_CONNECTED);
 	g_assert_true(fixture.client.has_snapshot);
+	g_assert_true(fixture.client.subscribed);
 	g_assert_cmpuint(fixture.client.snapshot.workspace_count, ==, 4);
+	g_assert_cmpuint(open_fd_count(), ==, fixture.connected_fd_count);
 	g_assert_cmpstr(fixture.client.status, ==,
 		"Connected to Seyrix compositor; read-only mode");
+	int client_fd = fixture.client.fd;
+	g_assert_cmpint(client_fd, >=, 0);
 	seyrix_settings_client_finish(&fixture.client);
+	g_assert_cmpint(fixture.client.fd, ==, -1);
+	g_assert_cmpuint(fixture.client.io_source, ==, 0);
+	g_assert_cmpuint(fixture.client.retry_source, ==, 0);
+	errno = 0;
+	int closed_fd_result = fcntl(client_fd, F_GETFD);
+	int closed_fd_errno = errno;
+	g_assert_cmpint(closed_fd_result, ==, -1);
+	g_assert_cmpint(closed_fd_errno, ==, EBADF);
+	g_assert_cmpuint(open_fd_count(), <, fixture.connected_fd_count);
 	g_atomic_int_set(&fixture.stop_server, 1);
 	shutdown(fixture.listener_fd, SHUT_RDWR);
 	close(fixture.listener_fd);
 	pthread_join(fixture.server_thread, NULL);
 	g_assert_cmpint(fixture.server_error, ==, 0);
+	g_assert_cmpuint(open_fd_count(), <, fixture.connected_fd_count);
 	g_main_loop_unref(fixture.loop);
 	unlink(fixture.socket_path);
 	rmdir(fixture.private_directory);

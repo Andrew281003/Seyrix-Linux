@@ -3,6 +3,17 @@
 set timeout 10
 set qemu_spawn_id -1
 set acceptance_failures 0
+proc cleanup_test_files {} {
+	global pid_file_path
+	if {[info exists pid_file_path] && [file exists $pid_file_path]} {
+		file delete -force $pid_file_path
+	}
+}
+rename exit expect_exit
+proc exit {{status 0}} {
+	cleanup_test_files
+	expect_exit $status
+}
 
 proc ensure_serial_root_shell {} {
 	global qemu_spawn_id
@@ -42,6 +53,57 @@ if {[lindex $next_result 0] ne "pass"} {
 	puts stderr "SERIAL_CAPTURE_MARKER_ORDER=failed next-command=[lindex $next_result 0]"
 	exit 1
 }
+
+set production_harness [open [file join [file dirname [file normalize [info script]]] qemu-graphics.exp] r]
+set production_source [read $production_harness]
+close $production_harness
+if {![regexp -line {^[\t ]*set traced_app_exit_command \{(.*)\}$} $production_source -> traced_app_exit_command]} {
+	puts stderr "TRACED_APP_EXIT_COMMAND=INCOMPLETE reason=production-command-not-found"
+	exit 1
+}
+set pid_file [file tempfile pid_file_path]
+close $pid_file
+set traced_app_exit_command [string map [list /tmp/seyrix-settings-trace-pid $pid_file_path] $traced_app_exit_command]
+set pid_file [open $pid_file_path w]
+puts $pid_file 99999999
+close $pid_file
+set traced_exit_result [run_serial_capture $traced_app_exit_command \
+	{WAYLAND_TRACE_APP_EXIT=passed} {WAYLAND_TRACE_APP_EXIT=failed} \
+	{traced Settings exit preserves the guest control shell} 40]
+if {[lindex $traced_exit_result 0] ne "pass"} {
+	puts stderr "TRACED_APP_EXIT_COMMAND=FAIL result=[lindex $traced_exit_result 0]"
+	exit 1
+}
+set survived_result [run_serial_capture \
+	{printf '%s\n' 'CONTROL_SHELL_SURVIVED=passed'} \
+	{CONTROL_SHELL_SURVIVED=passed} {CONTROL_SHELL_SURVIVED=failed} \
+	{guest control shell accepts a following command} 5]
+if {[lindex $survived_result 0] ne "pass"} {
+	puts stderr "CONTROL_SHELL_SURVIVAL=FAIL result=[lindex $survived_result 0]"
+	exit 1
+}
+
+set pid_file [open $pid_file_path w]
+puts $pid_file [exp_pid -i $qemu_spawn_id]
+close $pid_file
+set prior_failures $acceptance_failures
+set traced_failure_result [run_serial_capture $traced_app_exit_command \
+	{WAYLAND_TRACE_APP_EXIT=passed} {WAYLAND_TRACE_APP_EXIT=failed} \
+	{traced Settings exit reports a still-running process} 40]
+if {[lindex $traced_failure_result 0] ne "fail" || $acceptance_failures != $prior_failures + 1} {
+	puts stderr "TRACED_APP_EXIT_FAILURE_REPORTING=FAIL result=[lindex $traced_failure_result 0] failures=$acceptance_failures"
+	exit 1
+}
+set survived_failure_result [run_serial_capture \
+	{printf '%s\n' 'CONTROL_SHELL_SURVIVED_AFTER_FAILURE=passed'} \
+	{CONTROL_SHELL_SURVIVED_AFTER_FAILURE=passed} {CONTROL_SHELL_SURVIVED_AFTER_FAILURE=failed} \
+	{guest control shell survives a reported application-exit failure} 5]
+if {[lindex $survived_failure_result 0] ne "pass"} {
+	puts stderr "CONTROL_SHELL_SURVIVAL_AFTER_FAILURE=FAIL result=[lindex $survived_failure_result 0]"
+	exit 1
+}
+file delete -force $pid_file_path
+puts "TRACED_APP_EXIT_COMMAND=PASS control-shell-survival=PASS failure-reporting=PASS cleanup=PASS"
 
 send -i $qemu_spawn_id -- "exit\r"
 expect -i $qemu_spawn_id eof

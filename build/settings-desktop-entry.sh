@@ -19,9 +19,9 @@ seyrix_install_settings_desktop_entry() {
 	fi
 	for field in Exec TryExec; do
 		lines="$(LC_ALL=C grep -c "^${field}=" "$target" || true)"
-		count="$(LC_ALL=C grep -Fxc "${field}=seyrix-settings" "$target" || true)"
+		count="$(LC_ALL=C grep -Fxc "${field}=seyrix-settings-launch" "$target" || true)"
 		if [[ "$lines" != 1 || "$count" != 1 ]]; then
-			printf 'Settings desktop entry must contain exactly one direct %s=seyrix-settings line.\n' "$field" >&2
+			printf 'Settings desktop entry must contain exactly one %s=seyrix-settings-launch line.\n' "$field" >&2
 			return 1
 		fi
 	done

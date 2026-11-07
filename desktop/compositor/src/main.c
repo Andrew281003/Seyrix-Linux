@@ -14,8 +14,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <EGL/egl.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/render/egl.h>
+#include <wlr/render/gles2.h>
 #include <wlr/util/log.h>
 
 #include "decoration.h"
@@ -30,6 +33,35 @@ static uint64_t monotonic_ms(void) {
 		return 0;
 	}
 	return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+}
+
+static bool has_extension(const char *extensions, const char *wanted) {
+	if (extensions == NULL || wanted == NULL || wanted[0] == '\0') {
+		return false;
+	}
+	size_t length = strlen(wanted);
+	for (const char *match = extensions;
+			(match = strstr(match, wanted)) != NULL; match += length) {
+		if ((match == extensions || match[-1] == ' ') &&
+				(match[length] == '\0' || match[length] == ' ')) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static EGLDisplay egl_display_needing_termination(struct wlr_renderer *renderer) {
+	if (renderer == NULL || !wlr_renderer_is_gles2(renderer)) {
+		return EGL_NO_DISPLAY;
+	}
+	struct wlr_egl *wlr_egl = wlr_gles2_renderer_get_egl(renderer);
+	EGLDisplay display = wlr_egl != NULL ? wlr_egl_get_display(wlr_egl) : EGL_NO_DISPLAY;
+	const char *client_extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+	if (display == EGL_NO_DISPLAY || client_extensions == NULL ||
+			has_extension(client_extensions, "EGL_KHR_display_reference")) {
+		return EGL_NO_DISPLAY;
+	}
+	return display;
 }
 
 static bool runtime_directory_is_safe(void) {
@@ -411,6 +443,7 @@ void seyrix_server_run(struct seyrix_server *server) {
 }
 
 void seyrix_server_finish(struct seyrix_server *server) {
+	EGLDisplay display_needing_termination = EGL_NO_DISPLAY;
 	seyrix_settings_control_finish(server);
 	if (server->display != NULL) {
 		wl_display_destroy_clients(server->display);
@@ -463,6 +496,10 @@ void seyrix_server_finish(struct seyrix_server *server) {
 		server->allocator = NULL;
 	}
 	if (server->renderer != NULL) {
+		/* wlroots handles termination with EGL_KHR_display_reference; Seyrix is
+		 * the sole in-process EGL user when that extension is absent. */
+		display_needing_termination =
+			egl_display_needing_termination(server->renderer);
 		wlr_renderer_destroy(server->renderer);
 		server->renderer = NULL;
 	}
@@ -474,6 +511,14 @@ void seyrix_server_finish(struct seyrix_server *server) {
 	if (server->display != NULL) {
 		wl_display_destroy(server->display);
 		server->display = NULL;
+	}
+	if (display_needing_termination != EGL_NO_DISPLAY &&
+			eglQueryString(display_needing_termination, EGL_VERSION) != NULL) {
+		if (eglTerminate(display_needing_termination) != EGL_TRUE) {
+			wlr_log(WLR_ERROR, "Cannot terminate the Mesa EGL display after renderer cleanup");
+		} else {
+			wlr_log(WLR_DEBUG, "Terminated the EGL display retained by wlroots cleanup");
+		}
 	}
 	wlr_log(WLR_INFO, "Seyrix compositor stopped cleanly");
 }

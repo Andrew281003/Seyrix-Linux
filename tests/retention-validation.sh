@@ -33,18 +33,22 @@ make_build() {
 }
 
 make_pass_run() {
-	local name="$1" iso_path="$2" path="$fixture_root/$1"
+	local name="$1" iso_path="$2" workflow="${3:-phase2d2}" acceptance="${4:-0}" path="$fixture_root/$1"
 	mkdir -p "$path"
 	seyrix_retention_begin "$path" qemu-run
 	printf 'Run result: PASS\n' > "$path/run-result.txt"
 	printf 'fixture graphical acceptance evidence\n' > "$path/test.log"
+	if [[ "$acceptance" == 1 ]]; then
+		printf 'FULL_GRAPHICAL_ACCEPTANCE=PASS\n' >> "$path/test.log"
+	fi
+	printf 'Workflow: %s\n' "$workflow" > "$path/run-metadata.txt"
 	printf 'STAGE_RESULT fixture result=PASS\n' > "$path/stage-results.log"
 	seyrix_retention_finish_qemu_run "$path" "$iso_path" 0
 }
 
 if [[ "$SEYRIX_RETENTION_BUILD_RESERVE_BYTES" != 17179869184 ||
 		"$SEYRIX_RETENTION_QEMU_RESERVE_BYTES" != 4294967296 ||
-		"$SEYRIX_RETENTION_MAX_BYTES" != 42949672960 ||
+		"$SEYRIX_RETENTION_MAX_BYTES" != 161061273600 ||
 		"$SEYRIX_RETENTION_MIN_FREE_BYTES" != 32212254720 ]]; then
 	record_check configured-default-limits 0
 else
@@ -162,8 +166,27 @@ else
 	record_check failed-run-evidence-and-latest-pointer-retained 0
 fi
 
+diagnostic_iso="$(make_build targeted-diagnostic)"
+diagnostic_run="$fixture_root/targeted-diagnostic-run"
+mkdir -p "$diagnostic_run"
+seyrix_retention_begin "$diagnostic_run" qemu-run
+printf 'Run result: PASS\n' > "$diagnostic_run/run-result.txt"
+printf 'FULL_GRAPHICAL_ACCEPTANCE=NOT_RUN reason=targeted-diagnostic-only\n' > "$diagnostic_run/test.log"
+printf 'Workflow: phase2d3b\n' > "$diagnostic_run/run-metadata.txt"
+printf 'STAGE_RESULT fixture result=PASS\n' > "$diagnostic_run/stage-results.log"
+latest_before_diagnostic="$(cat "$verified_dir/latest.txt")"
+seyrix_retention_finish_qemu_run "$diagnostic_run" "$diagnostic_iso" 0
+if [[ -f "$fixture_root/targeted-diagnostic/.seyrix-build-complete" &&
+		"$(cat "$verified_dir/latest.txt")" == "$latest_before_diagnostic" &&
+		! -e "$verified_dir/seyrix-targeted-diagnostic.iso" &&
+		-f "$fixture_root/history/targeted-diagnostic-run.summary" ]]; then
+	record_check phase2d3b-diagnostic-does-not-promote-or-clean-build 1
+else
+	record_check phase2d3b-diagnostic-does-not-promote-or-clean-build 0
+fi
+
 successful_iso="$(make_build successful-verification)"
-make_pass_run successful-verification-run "$successful_iso"
+make_pass_run successful-verification-run "$successful_iso" phase2d3b 1
 if [[ ! -e "$fixture_root/successful-verification" &&
 		! -e "$fixture_root/successful-verification-run" &&
 		-f "$baseline_iso" && -f "$baseline_iso.sha256" &&

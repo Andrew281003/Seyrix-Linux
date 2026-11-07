@@ -1166,6 +1166,695 @@ popup_process_alive() {
   return 1
 }
 
+settings_manager_pid() {
+  local pid_file="$runtime_dir/seyrix-settings-supervisor.pid"
+  [[ -r "$pid_file" ]] || return 1
+  cat "$pid_file"
+}
+
+settings_category_id() {
+  case "$1" in
+    0|appearance) echo appearance ;;
+    1|desktop) echo desktop ;;
+    2|windows) echo windows ;;
+    3|displays) echo displays ;;
+    4|input) echo input ;;
+    5|about) echo about ;;
+    *) return 1 ;;
+  esac
+}
+
+settings_boolean() {
+  case "${1,,}" in
+    1|true|yes) echo 1 ;;
+    0|false|no) echo 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+settings_recovery_baseline() {
+  local pid start manager manager_start manager_exe manager_args manager_sid manager_pgid
+  local compositor compositor_start compositor_sid compositor_pgid parent process_count marker state_saved_marker state_evidence log_lines
+  local state_file state_section category width height maximized paned_position saved_category state_saved_original_marker
+  local diagnostic_saved_category diagnostic_saved_width diagnostic_saved_height diagnostic_saved_maximized diagnostic_saved_paned
+  local diagnostic_marker_category diagnostic_marker_width diagnostic_marker_height diagnostic_marker_maximized diagnostic_marker_paned
+  manager="$(settings_manager_pid)"
+  compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+  compositor_start="$(awk '{print $22}' "/proc/$compositor/stat" 2>/dev/null || true)"
+  pid="$(pgrep -u 1000 -x seyrix-settings | head -n 1 || true)"
+  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  start="$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)"
+  manager_start="$(awk '{print $22}' "/proc/$manager/stat" 2>/dev/null || true)"
+  manager_exe="$(readlink -f "/proc/$manager/exe" 2>/dev/null || true)"
+  manager_args="$(tr '\0' ' ' <"/proc/$manager/cmdline" 2>/dev/null || true)"
+  manager_sid="$(ps -o sid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  manager_pgid="$(ps -o pgid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  compositor_sid="$(ps -o sid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  compositor_pgid="$(ps -o pgid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  parent="$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+  marker="$(grep -F "SEYRIX_SETTINGS event=start pid=$pid " "$compositor_log" 2>/dev/null | tail -n 1 || true)"
+  [[ "$pid" =~ ^[1-9][0-9]*$ && "$start" =~ ^[0-9]+$ &&
+     "$manager" =~ ^[1-9][0-9]*$ && "$manager_start" =~ ^[0-9]+$ &&
+     "$manager_exe" == /usr/bin/seyrix-session-supervisor &&
+     "$manager_args" == *--serve* && "$manager_sid" == "$compositor_sid" &&
+     "$manager_pgid" == "$manager" && "$compositor_pgid" =~ ^[0-9]+$ && "$manager_pgid" != "$compositor_pgid" &&
+     "$parent" == "$manager" && "$process_count" == 1 && -n "$marker" ]] ||
+    fail "settings-supervisor-baseline-invalid-settings-$pid-manager-$manager-count-$process_count"
+  state_file="${XDG_STATE_HOME:-/home/seyrix/.local/state}/seyrix/settings.ini"
+  [[ -s "$state_file" ]] || fail "settings-state-file-missing-or-empty"
+  for _ in $(seq 1 40); do
+    state_section="$(sed -n '/^\[window\][[:space:]]*$/,/^\[/ { /^\[/d; p; }' "$state_file")"
+    category="$(sed -n 's/^[[:space:]]*category[[:space:]]*=[[:space:]]*//p' <<<"$state_section" | tail -n 1 | tr -d '\r')"
+    width="$(sed -n 's/^[[:space:]]*width[[:space:]]*=[[:space:]]*//p' <<<"$state_section" | tail -n 1 | tr -d '\r')"
+    height="$(sed -n 's/^[[:space:]]*height[[:space:]]*=[[:space:]]*//p' <<<"$state_section" | tail -n 1 | tr -d '\r')"
+    maximized="$(sed -n 's/^[[:space:]]*maximized[[:space:]]*=[[:space:]]*//p' <<<"$state_section" | tail -n 1 | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+    paned_position="$(sed -n 's/^[[:space:]]*paned-position[[:space:]]*=[[:space:]]*//p' <<<"$state_section" | tail -n 1 | tr -d '\r')"
+    category="$(settings_category_id "$category" 2>/dev/null || echo unknown)"
+    maximized="$(settings_boolean "$maximized" 2>/dev/null || echo unknown)"
+    state_saved_marker="$(grep -F "SEYRIX_SETTINGS event=state-saved pid=$pid " "$compositor_log" 2>/dev/null | tail -n 1 || true)"
+    state_saved_original_marker="$state_saved_marker"
+    saved_category="$(settings_category_id "$(field "$state_saved_marker" category || true)" 2>/dev/null || echo unknown)"
+    state_evidence=state-saved
+    if [[ "$saved_category" != "$category" ||
+          "$(field "$state_saved_marker" width || true)" != "$width" ||
+          "$(field "$state_saved_marker" height || true)" != "$height" ||
+          "$(settings_boolean "$(field "$state_saved_marker" maximized || true)" 2>/dev/null || echo unknown)" != "$maximized" ||
+          "$(field "$state_saved_marker" paned_position || true)" != "$paned_position" ]]; then
+      state_saved_marker="$marker"
+      state_evidence=start
+      saved_category="$(settings_category_id "$(field "$state_saved_marker" category || true)" 2>/dev/null || echo unknown)"
+    fi
+    [[ "$category" != unknown && "$saved_category" == "$category" &&
+       "$(field "$state_saved_marker" width || true)" == "$width" &&
+       "$(field "$state_saved_marker" height || true)" == "$height" &&
+       "$(settings_boolean "$(field "$state_saved_marker" maximized || true)" 2>/dev/null || echo unknown)" == "$maximized" &&
+       "$(field "$state_saved_marker" paned_position || true)" == "$paned_position" ]] && break
+    sleep 0.25
+  done
+  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ||
+        ! "$paned_position" =~ ^[0-9]+$ || "$saved_category" != "$category" ]]; then
+    diagnostic_saved_category="$(field "$state_saved_original_marker" category || true)"
+    diagnostic_saved_width="$(field "$state_saved_original_marker" width || true)"
+    diagnostic_saved_height="$(field "$state_saved_original_marker" height || true)"
+    diagnostic_saved_maximized="$(field "$state_saved_original_marker" maximized || true)"
+    diagnostic_saved_paned="$(field "$state_saved_original_marker" paned_position || true)"
+    diagnostic_marker_category="$(field "$state_saved_marker" category || true)"
+    diagnostic_marker_width="$(field "$state_saved_marker" width || true)"
+    diagnostic_marker_height="$(field "$state_saved_marker" height || true)"
+    diagnostic_marker_maximized="$(field "$state_saved_marker" maximized || true)"
+    diagnostic_marker_paned="$(field "$state_saved_marker" paned_position || true)"
+    printf 'SETTINGS_SUPERVISOR_BASELINE_STATE_DIAGNOSTIC pid=%s category=%s width=%s height=%s maximized=%s paned_position=%s saved_category=%s state_evidence=%s state_saved_marker_category=%s state_saved_marker_width=%s state_saved_marker_height=%s state_saved_marker_maximized=%s state_saved_marker_paned_position=%s selected_marker_category=%s selected_marker_width=%s selected_marker_height=%s selected_marker_maximized=%s selected_marker_paned_position=%s\n' \
+      "$pid" "$category" "$width" "$height" "$maximized" "$paned_position" "$saved_category" "$state_evidence" \
+      "${diagnostic_saved_category:-missing}" "${diagnostic_saved_width:-missing}" "${diagnostic_saved_height:-missing}" \
+      "${diagnostic_saved_maximized:-missing}" "${diagnostic_saved_paned:-missing}" \
+      "${diagnostic_marker_category:-missing}" "${diagnostic_marker_width:-missing}" "${diagnostic_marker_height:-missing}" \
+      "${diagnostic_marker_maximized:-missing}" "${diagnostic_marker_paned:-missing}"
+    fail "settings-state-window-fields-invalid"
+  fi
+  log_lines="$(wc -l <"$compositor_log")"
+  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$pid" "$start" "$manager" \
+    "$manager_start" "$category" "$width" "$height" "$maximized" \
+    "$paned_position" "$log_lines" "$compositor" "$compositor_start" \
+    "$manager_pgid" "$compositor_pgid" \
+    >/tmp/seyrix-settings-supervisor-before
+  printf 'SETTINGS_SUPERVISOR_BASELINE manager_pid=%s manager_start=%s manager_pgid=%s compositor_pid=%s compositor_start=%s compositor_pgid=%s settings_pid=%s settings_start=%s category=%s width=%s height=%s maximized=%s paned_position=%s state_evidence=%s log_lines=%s state_file=%s\n' \
+    "$manager" "$manager_start" "$manager_pgid" "$compositor" "$compositor_start" "$compositor_pgid" "$pid" "$start" "$category" "$width" \
+    "$height" "$maximized" "$paned_position" "$state_evidence" \
+    "$log_lines" "$state_file"
+  echo SETTINGS_SUPERVISOR_BASELINE=passed
+}
+
+settings_recovery_verify() {
+  local expected=${1:-compositor} before_pid before_start before_manager before_manager_start
+  local before_category before_width before_height before_maximized before_paned_position log_baseline
+  local before_compositor before_compositor_start before_manager_pgid before_compositor_pgid manager manager_start manager_pgid pid count start parent compositor compositor_start compositor_pgid compositor_sid sid
+  local fresh app_start launch_marker ready_marker attempt_marker exit_marker app_exit_marker
+  local trace_fd trace_pid stream_line stream_lines deadline recovery_wait_complete settings_pids
+  local wait_frames wait_hello wait_snapshot_request wait_subscribe_request wait_snapshot_response wait_subscribe_response
+  local diagnostic_pids diagnostic_display_lost diagnostic_supervisor_exit diagnostic_attempt diagnostic_ready
+  local diagnostic_launch diagnostic_app_start diagnostic_accepted diagnostic_frames diagnostic_hello
+  local diagnostic_snapshot_request diagnostic_snapshot_response diagnostic_subscribe_request diagnostic_subscribe_response
+  local diagnostic_mapped diagnostic_compositor diagnostic_processes diagnostic_socket diagnostic_socket_status diagnostic_socket
+  local diagnostic_wchan diagnostic_syscall diagnostic_fd diagnostic_fds diagnostic_stderr
+  local old_start_now new_category new_width new_height new_maximized new_paned_position state_restored
+  local launch_line ready_line attempt_line app_line exit_line exit_status exit_signal expected_status state_file
+  local attempt_number ready_attempt launch_attempt ready_display
+  local accepted frames hello snapshot_request subscribe_request snapshot_response snapshot_status snapshot_to
+  local subscribe_response snapshot_revision subscribe_revision subscribe_status subscribe_to mapped
+  read -r before_pid before_start before_manager before_manager_start before_category \
+    before_width before_height before_maximized before_paned_position log_baseline \
+    before_compositor before_compositor_start before_manager_pgid before_compositor_pgid \
+    </tmp/seyrix-settings-supervisor-before || fail "settings-supervisor-baseline-unreadable"
+  case "$expected" in compositor) expected_status='^(1|75)$' ;; process) expected_status='^137$' ;; *) fail "unknown-settings-recovery-mode-$expected" ;; esac
+  manager=""
+  pid=""
+  count=0
+  fresh=""
+  stream_lines=0
+  recovery_wait_complete=0
+  exec {trace_fd}< <(tail -n +$((log_baseline + 1)) -F "$compositor_log")
+  trace_pid=$!
+  deadline=$((SECONDS + 150))
+  while (( SECONDS < deadline )); do
+    if IFS= read -r -t 0.5 -u "$trace_fd" stream_line; then
+      case "$stream_line" in
+        *"SEYRIX_SETTINGS_SUPERVISOR event="*|*"SEYRIX_SETTINGS event="*|*"SEYRIX_SESSION event=compositor-exit "*|*"Settings endpoint accepted peer uid=1000 "*|*"Settings endpoint frame peer_pid="*|*"Settings endpoint sent peer_pid="*|*"Window mapped: pid="*)
+          fresh+="$stream_line"$'\n'
+          stream_lines=$((stream_lines + 1))
+          ;;
+      esac
+    fi
+    manager="$(settings_manager_pid 2>/dev/null || true)"
+    settings_pids="$(pgrep -u 1000 -x seyrix-settings 2>/dev/null || true)"
+    count="$(awk 'NF {n++} END {print n+0}' <<<"$settings_pids")"
+    pid="$(head -n 1 <<<"$settings_pids" || true)"
+    if [[ "$pid" =~ ^[1-9][0-9]*$ && "$pid" != "$before_pid" && "$count" == 1 ]] && \
+        grep -Fq "SEYRIX_SETTINGS event=start pid=$pid " <<<"$fresh" && \
+        grep -Fq "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid" <<<"$fresh"; then
+      wait_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+      wait_hello=0
+      grep -Eq 'opcode=1 .*negotiated=0' <<<"$wait_frames" && wait_hello=1 || true
+      wait_snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$wait_frames" | head -n 1)"
+      wait_subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$wait_frames" | head -n 1)"
+      wait_snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_snapshot_request " <<<"$fresh" | tail -n 1 || true)"
+      wait_subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_subscribe_request " <<<"$fresh" | tail -n 1 || true)"
+      accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+      mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
+      if [[ "$wait_hello" == 1 && -n "$wait_snapshot_request" &&
+            -n "$wait_subscribe_request" && -n "$wait_snapshot_response" &&
+            -n "$wait_subscribe_response" && -n "$accepted" && -n "$mapped" ]]; then
+        recovery_wait_complete=1
+        break
+      fi
+    fi
+  done
+  if [[ "$recovery_wait_complete" != 1 ]]; then
+    diagnostic_display_lost="$(grep -F "SEYRIX_SETTINGS event=display-lost pid=$before_pid " <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_supervisor_exit="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$before_pid " <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_attempt="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=attempt ' <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_ready="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_launch="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_app_start="$(grep -F 'SEYRIX_SETTINGS event=start ' <<<"$fresh" | tail -n 1 || true)"
+    diagnostic_compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+    diagnostic_pids="$manager,$before_pid"
+    [[ "$diagnostic_compositor" =~ ^[1-9][0-9]*$ ]] && diagnostic_pids+=",$diagnostic_compositor"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] && diagnostic_pids+=",$pid"
+    diagnostic_processes="$(ps -o pid,ppid,sid,pgid,uid,stat,comm,args -p "$diagnostic_pids" 2>&1 || true)"
+    diagnostic_wchan="$(cat "/proc/$pid/wchan" 2>&1 || true)"
+    diagnostic_syscall="$(cat "/proc/$pid/syscall" 2>&1 || true)"
+    diagnostic_fds=""
+    diagnostic_socket_fds=""
+    diagnostic_peer_socket_fds=""
+    if [[ "$pid" =~ ^[1-9][0-9]*$ && -d "/proc/$pid/fd" ]]; then
+      for diagnostic_fd in /proc/"$pid"/fd/*; do
+        [[ -e "$diagnostic_fd" || -L "$diagnostic_fd" ]] || continue
+        diagnostic_fds+="${diagnostic_fd##*/}=$(readlink "$diagnostic_fd" 2>&1)"$'\n'
+      done
+      if command -v ss >/dev/null 2>&1; then
+        diagnostic_socket_fds="$(ss -xapne 2>&1 | grep -F "pid=$pid," || true)"
+        if [[ "$diagnostic_compositor" =~ ^[1-9][0-9]*$ && -d "/proc/$diagnostic_compositor/fd" ]]; then
+          while IFS= read -r diagnostic_socket_line; do
+            [[ "$diagnostic_socket_line" == u_seq\ ESTAB* ]] || continue
+            read -r -a diagnostic_socket_fields <<< "$diagnostic_socket_line"
+            (( ${#diagnostic_socket_fields[@]} >= 9 )) || continue
+            diagnostic_client_inode="${diagnostic_socket_fields[5]}"
+            diagnostic_peer_inode="${diagnostic_socket_fields[7]}"
+            diagnostic_client_fd="${diagnostic_socket_fields[8]##*fd=}"
+            diagnostic_client_fd="${diagnostic_client_fd%%)*}"
+            [[ "$diagnostic_client_fd" =~ ^[0-9]+$ &&
+              "$diagnostic_peer_inode" =~ ^[0-9]+$ ]] || continue
+            diagnostic_compositor_fds=""
+            for diagnostic_peer_fd in /proc/"$diagnostic_compositor"/fd/*; do
+              [[ -e "$diagnostic_peer_fd" || -L "$diagnostic_peer_fd" ]] || continue
+              if [[ "$(readlink "$diagnostic_peer_fd" 2>/dev/null || true)" == "socket:[$diagnostic_peer_inode]" ]]; then
+                diagnostic_compositor_fds+="${diagnostic_peer_fd##*/},"
+              fi
+            done
+            diagnostic_compositor_fds="${diagnostic_compositor_fds%,}"
+            [[ -n "$diagnostic_compositor_fds" ]] || diagnostic_compositor_fds=unmatched
+            diagnostic_peer_socket_fds+="settings_fd=$diagnostic_client_fd settings_inode=$diagnostic_client_inode compositor_pid=$diagnostic_compositor compositor_fd=$diagnostic_compositor_fds peer_inode=$diagnostic_peer_inode ss_row=$diagnostic_socket_line"$'\n'
+          done <<< "$diagnostic_socket_fds"
+        fi
+      fi
+    fi
+    diagnostic_stderr="$(grep -F "source=client-stderr pid=$pid " "$compositor_log" 2>/dev/null | tail -n 80 || true)"
+    diagnostic_ipc_client_trace="$(grep -F "source=client-stderr pid=$pid " "$compositor_log" 2>/dev/null | grep -F 'SETTINGS_IPC_CLIENT ' | tail -n 100 || true)"
+    diagnostic_ipc_server_trace="$(grep -E 'Settings endpoint (accepted peer|watch ready|watch failed|dispatch|read|frame|request-dispatch|rejected frame|rejected request|peer hangup|peer closed|receive failed|sent peer_pid|send failed|removing)' <<<"$fresh" | grep -F "pid=$pid " | tail -n 120 || true)"
+    diagnostic_socket_status=""
+    for diagnostic_socket in "$runtime_dir"/wayland-* "$runtime_dir"/seyrix/settings-v1.sock; do
+      if [[ -e "$diagnostic_socket" || -S "$diagnostic_socket" ]]; then
+        diagnostic_socket_status+="$(stat -c '%n type=%F mode=%a owner=%u:%g' -- "$diagnostic_socket" 2>&1 || true)"$'\n'
+      fi
+    done
+    diagnostic_socket_status="${diagnostic_socket_status:-none}"
+    diagnostic_frames=""
+    if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then
+      diagnostic_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+      diagnostic_accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+      diagnostic_mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
+    else
+      diagnostic_accepted=""
+      diagnostic_mapped=""
+    fi
+    diagnostic_hello=0
+    grep -Eq 'opcode=1 .*negotiated=0' <<<"$diagnostic_frames" && diagnostic_hello=1 || true
+    diagnostic_snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$diagnostic_frames" | head -n 1)"
+    diagnostic_subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$diagnostic_frames" | head -n 1)"
+    diagnostic_snapshot_response=""
+    diagnostic_subscribe_response=""
+    if [[ -n "$diagnostic_snapshot_request" && "$pid" =~ ^[1-9][0-9]*$ ]]; then
+      diagnostic_snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$diagnostic_snapshot_request " <<<"$fresh" | tail -n 1 || true)"
+    fi
+    if [[ -n "$diagnostic_subscribe_request" && "$pid" =~ ^[1-9][0-9]*$ ]]; then
+      diagnostic_subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$diagnostic_subscribe_request " <<<"$fresh" | tail -n 1 || true)"
+    fi
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_STATE mode=%s old_pid=%s manager=%s compositor=%s settings_pid=%s count=%s category=%s width=%s height=%s maximized=%s paned_position=%s filtered_lines=%s\n' \
+      "$expected" "$before_pid" "${manager:-missing}" "${diagnostic_compositor:-missing}" \
+      "${pid:-missing}" "$count" "$before_category" "$before_width" "$before_height" \
+      "$before_maximized" "$before_paned_position" "$stream_lines"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_MARKERS display_lost=%s supervisor_exit=%s attempt=%s wayland_ready=%s launch=%s app_start=%s accepted=%s hello=%s snapshot_request=%s snapshot_response=%s subscribe_request=%s subscribe_response=%s mapped=%s\n' \
+      "${diagnostic_display_lost:+yes}" "${diagnostic_supervisor_exit:+yes}" \
+      "${diagnostic_attempt:+yes}" "${diagnostic_ready:+yes}" "${diagnostic_launch:+yes}" \
+      "${diagnostic_app_start:+yes}" "${diagnostic_accepted:+yes}" "$diagnostic_hello" \
+      "${diagnostic_snapshot_request:-missing}" "${diagnostic_snapshot_response:+yes}" \
+      "${diagnostic_subscribe_request:-missing}" "${diagnostic_subscribe_response:+yes}" \
+      "${diagnostic_mapped:+yes}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PROCESS_TREE_BEGIN\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PROCESS_TREE_END\n' \
+      "${diagnostic_processes:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_WCHAN pid=%s value=%s\n' "${pid:-missing}" "${diagnostic_wchan:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SYSCALL pid=%s value=%s\n' "${pid:-missing}" "${diagnostic_syscall:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_FDS_BEGIN\n%sSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_FDS_END\n' "${diagnostic_fds:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SOCKET_FDS_BEGIN\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SOCKET_FDS_END\n' "${diagnostic_socket_fds:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PEER_SOCKET_FDS_BEGIN\n%sSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PEER_SOCKET_FDS_END\n' "${diagnostic_peer_socket_fds:-unavailable}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_RAW_STDERR_BEGIN pid=%s\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_RAW_STDERR_END\n' \
+      "${pid:-missing}" "${diagnostic_stderr:-no-client-stderr-lines-captured}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_CLIENT_TRACE_BEGIN pid=%s\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_CLIENT_TRACE_END\n' \
+      "${pid:-missing}" "${diagnostic_ipc_client_trace:-no-settings-ipc-client-trace-lines-captured}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_SERVER_TRACE_BEGIN pid=%s\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_SERVER_TRACE_END\n' \
+      "${pid:-missing}" "${diagnostic_ipc_server_trace:-no-settings-ipc-server-trace-lines-captured}"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SOCKETS_BEGIN\n%sSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SOCKETS_END\n' \
+      "$diagnostic_socket_status"
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_EVENTS_BEGIN\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_EVENTS_END\n' \
+      "$(tail -n 30 <<<"$fresh")"
+  fi
+  kill "$trace_pid" 2>/dev/null || true
+  wait "$trace_pid" 2>/dev/null || true
+  exec {trace_fd}<&-
+  if [[ "$recovery_wait_complete" != 1 ]]; then
+    printf 'SETTINGS_SUPERVISOR_RECOVERY_WAIT mode=%s result=timeout old_pid=%s manager=%s compositor=%s settings_pid=%s count=%s filtered_lines=%s total_log_lines=%s\n' \
+      "$expected" "$before_pid" "${manager:-missing}" "$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)" \
+      "${pid:-missing}" "$count" "$stream_lines" "$(wc -l <"$compositor_log" 2>/dev/null || echo missing)"
+  fi
+  start="$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)"
+  manager_start="$(awk '{print $22}' "/proc/$manager/stat" 2>/dev/null || true)"
+  parent="$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+  compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+  compositor_start="$(awk '{print $22}' "/proc/$compositor/stat" 2>/dev/null || true)"
+  compositor_sid="$(ps -o sid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  sid="$(ps -o sid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  manager_pgid="$(ps -o pgid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  compositor_pgid="$(ps -o pgid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  old_start_now="$(awk '{print $22}' "/proc/$before_pid/stat" 2>/dev/null || true)"
+  app_start="$(grep -F "SEYRIX_SETTINGS event=start pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+  launch_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid" <<<"$fresh" | tail -n 1 || true)"
+  ready_marker="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' <<<"$fresh" | tail -n 1 || true)"
+  attempt_marker="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=attempt ' <<<"$fresh" | tail -n 1 || true)"
+  exit_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$before_pid " <<<"$fresh" | tail -n 1 || true)"
+  app_exit_marker=""
+  if [[ "$expected" == compositor ]]; then
+    app_exit_marker="$(grep -F "SEYRIX_SETTINGS event=display-lost pid=$before_pid exit_status=75" <<<"$fresh" | tail -n 1 || true)"
+  fi
+  new_category="$(settings_category_id "$(field "$app_start" category || true)" 2>/dev/null || echo unknown)"
+  new_width="$(field "$app_start" width || true)"
+  new_height="$(field "$app_start" height || true)"
+  new_maximized="$(settings_boolean "$(field "$app_start" maximized || true)" 2>/dev/null || echo unknown)"
+  new_paned_position="$(field "$app_start" paned_position || true)"
+  state_restored="$(field "$app_start" state_restored || true)"
+  ready_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' <<<"$fresh" | tail -n 1 | cut -d: -f1)"
+  launch_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid" <<<"$fresh" | tail -n 1 | cut -d: -f1)"
+  attempt_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=attempt ' <<<"$fresh" | tail -n 1 | cut -d: -f1)"
+  app_line="$(grep -nF "SEYRIX_SETTINGS event=start pid=$pid " <<<"$fresh" | tail -n 1 | cut -d: -f1)"
+  exit_status="$(field "$exit_marker" status || true)"
+  exit_signal="$(field "$exit_marker" signal || true)"
+  exit_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$before_pid " <<<"$fresh" | tail -n 1 | cut -d: -f1)"
+  attempt_number="$(field "$attempt_marker" attempt || true)"
+  ready_attempt="$(field "$ready_marker" attempt || true)"
+  launch_attempt="$(field "$launch_marker" attempt || true)"
+  ready_display="$(field "$ready_marker" display || true)"
+  accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+  frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+  hello=0
+  grep -Eq 'opcode=1 .*negotiated=0' <<<"$frames" && hello=1 || true
+  snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
+  subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
+  snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$snapshot_request " <<<"$fresh" | tail -n 1 || true)"
+  subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$subscribe_request " <<<"$fresh" | tail -n 1 || true)"
+  snapshot_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$snapshot_response")"
+  subscribe_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$subscribe_response")"
+  snapshot_status="$(field "$snapshot_response" response_status || true)"
+  snapshot_to="$(field "$snapshot_response" response_to || true)"
+  subscribe_status="$(field "$subscribe_response" response_status || true)"
+  subscribe_to="$(field "$subscribe_response" response_to || true)"
+  mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
+  state_file="${XDG_STATE_HOME:-/home/seyrix/.local/state}/seyrix/settings.ini"
+  printf 'SETTINGS_SUPERVISOR_RECOVERY mode=%s old_pid=%s old_alive=%s new_pid=%s new_start=%s count=%s manager_before=%s manager_after=%s manager_same_start=%s compositor_before=%s compositor_after=%s compositor_same_start=%s ppid=%s session=%s compositor_session=%s manager_pgid=%s compositor_pgid=%s attempt=%s attempt_number=%s attempt_line=%s ready_display=%s ready_attempt=%s ready_line=%s launch_attempt=%s launch_line=%s app_line=%s exit_line=%s exit_status=%s exit_signal=%s display_lost=%s category=%s/%s width=%s/%s height=%s/%s maximized=%s/%s paned_position=%s/%s state_restored=%s mapped=%s accepted=%s hello=%s snapshot_request=%s snapshot_revision=%s snapshot_status=%s snapshot_to=%s subscribe_request=%s subscribe_revision=%s subscribe_status=%s subscribe_to=%s state_file=%s\n' \
+    "$expected" "$before_pid" "$([[ "$old_start_now" == "$before_start" ]] && echo yes || echo no)" \
+    "${pid:-missing}" "${start:-missing}" "${count:-missing}" "$before_manager" \
+    "${manager:-missing}" "$([[ "$manager" == "$before_manager" && "$manager_start" == "$before_manager_start" ]] && echo yes || echo no)" \
+    "$before_compositor" "${compositor:-missing}" "$([[ "$compositor" == "$before_compositor" && "$compositor_start" == "$before_compositor_start" ]] && echo yes || echo no)" \
+    "${parent:-missing}" "${sid:-missing}" "${compositor_sid:-missing}" \
+    "${manager_pgid:-missing}" "${compositor_pgid:-missing}" \
+    "${attempt_marker:+yes}" "${attempt_number:-missing}" "${attempt_line:-missing}" \
+    "${ready_display:-missing}" "${ready_attempt:-missing}" "${ready_line:-missing}" \
+    "${launch_attempt:-missing}" "${launch_line:-missing}" "${app_line:-missing}" \
+    "${exit_line:-missing}" "${exit_status:-missing}" \
+    "${exit_signal:-none}" "${app_exit_marker:+yes}" "${new_category:-missing}" "$before_category" \
+    "${new_width:-missing}" "$before_width" "${new_height:-missing}" "$before_height" \
+    "${new_maximized:-missing}" "$before_maximized" "${new_paned_position:-missing}" \
+    "$before_paned_position" "${state_restored:-missing}" \
+    "${mapped:+yes}" "${accepted:+yes}" "$hello" "${snapshot_request:-missing}" \
+    "${snapshot_revision:-missing}" "${snapshot_status:-missing}" "${snapshot_to:-missing}" \
+    "${subscribe_request:-missing}" "${subscribe_revision:-missing}" \
+    "${subscribe_status:-missing}" "${subscribe_to:-missing}" "$state_file"
+  if [[ "$manager" == "$before_manager" && "$manager_start" == "$before_manager_start" &&
+        "$pid" =~ ^[1-9][0-9]*$ && "$pid" != "$before_pid" &&
+        "$start" =~ ^[0-9]+$ && "$count" == 1 && "$parent" == "$manager" &&
+        "$sid" == "$compositor_sid" && "$manager_pgid" == "$manager" && "$manager_pgid" == "$before_manager_pgid" && "$manager_pgid" != "$compositor_pgid" && "$before_manager_pgid" != "$before_compositor_pgid" && "$old_start_now" != "$before_start" &&
+        -n "$attempt_marker" && -n "$ready_marker" && -n "$launch_marker" &&
+        -n "$exit_marker" && "$attempt_line" =~ ^[0-9]+$ &&
+        "$exit_line" =~ ^[0-9]+$ && "$exit_line" -lt "$attempt_line" &&
+        "$attempt_number" =~ ^[0-9]+$ && "$attempt_number" == "$ready_attempt" &&
+        "$attempt_number" == "$launch_attempt" && -n "$ready_display" &&
+        -S "/run/user/1000/$ready_display" &&
+        "$ready_line" =~ ^[0-9]+$ && "$launch_line" =~ ^[0-9]+$ &&
+        "$app_line" =~ ^[0-9]+$ && "$attempt_line" -lt "$ready_line" &&
+        "$ready_line" -lt "$launch_line" &&
+        "$launch_line" -lt "$app_line" &&
+        ( "$exit_status" =~ $expected_status ||
+          ( "$expected" == process && "$exit_signal" == 9 ) ) &&
+        "$new_category" == "$before_category" && "$new_width" == "$before_width" &&
+        "$new_height" == "$before_height" && "$new_maximized" == "$before_maximized" &&
+        "$new_paned_position" == "$before_paned_position" &&
+        ( "$expected" != compositor || "$compositor" =~ ^[1-9][0-9]*$ && ( "$compositor" != "$before_compositor" || "$compositor_start" != "$before_compositor_start" ) ) &&
+        "$state_restored" =~ ^(1|true|yes)$ &&
+        -n "$mapped" && -n "$accepted" && "$hello" == 1 &&
+        -n "$snapshot_request" && -n "$snapshot_response" &&
+        -n "$snapshot_revision" && "$snapshot_status" == 0 && "$snapshot_to" == 2 && -n "$subscribe_request" &&
+        -n "$subscribe_response" && -n "$subscribe_revision" && "$subscribe_status" == 0 && "$subscribe_to" == 3 &&
+        -s "$state_file" ]]; then
+    echo SETTINGS_SUPERVISOR_RECOVERY=passed
+    echo SETTINGS_RECOVERY_HARNESS_APP_LAUNCHES=0
+    return 0
+  fi
+  echo SETTINGS_SUPERVISOR_RECOVERY=failed
+  printf 'SETTINGS_SUPERVISOR_RECOVERY_LOG_BEGIN\n%s\nSETTINGS_SUPERVISOR_RECOVERY_LOG_END\n' "$fresh" | tail -n 80
+  return 1
+}
+
+settings_recovery_exhaust_budget() {
+  local manager manager_start manager_exe manager_sid compositor compositor_sid open_line first_pid first_count first_start
+  local first_start_marker category width height maximized paned_position state_file
+  local cursor index launch_marker retry_marker pid attempt ready_marker attempt_marker app_start ready_display
+  local attempt_line ready_line launch_line app_line exit_marker exit_status exit_signal count parent
+  local pids=() seen marker limit_marker limit_line fresh pid_count launch_count exit_count retry_delay_ms scheduled_ms retry_at_ms attempt_monotonic_ms elapsed_ms expected_delay_ms
+  manager="$(settings_manager_pid)"
+  manager_start="$(awk '{print $22}' "/proc/$manager/stat" 2>/dev/null || true)"
+  manager_exe="$(readlink -f "/proc/$manager/exe" 2>/dev/null || true)"
+  manager_sid="$(ps -o sid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+  compositor_sid="$(ps -o sid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  open_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=open-request ' "$compositor_log" | tail -n 1 | cut -d: -f1)"
+  first_pid="$(pgrep -u 1000 -x seyrix-settings | head -n 1 || true)"
+  first_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  first_start="$(awk '{print $22}' "/proc/$first_pid/stat" 2>/dev/null || true)"
+  first_start_marker="$(grep -F "SEYRIX_SETTINGS event=start pid=$first_pid " "$compositor_log" | tail -n 1 || true)"
+  category="$(settings_category_id "$(field "$first_start_marker" category || true)" 2>/dev/null || echo unknown)"
+  width="$(field "$first_start_marker" width || true)"
+  height="$(field "$first_start_marker" height || true)"
+  maximized="$(settings_boolean "$(field "$first_start_marker" maximized || true)" 2>/dev/null || echo unknown)"
+  paned_position="$(field "$first_start_marker" paned_position || true)"
+  state_file="${XDG_STATE_HOME:-/home/seyrix/.local/state}/seyrix/settings.ini"
+  [[ "$manager_exe" == /usr/bin/seyrix-session-supervisor && "$manager_start" =~ ^[0-9]+$ &&
+     "$manager_sid" =~ ^[0-9]+$ && "$manager_sid" == "$compositor_sid" &&
+     "$open_line" =~ ^[0-9]+$ && "$first_pid" =~ ^[1-9][0-9]*$ &&
+     "$first_start" =~ ^[0-9]+$ && "$first_count" == 1 &&
+     "$category" != unknown && "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ &&
+     "$maximized" != unknown && "$paned_position" =~ ^[0-9]+$ && -s "$state_file" ]] ||
+    fail "settings-retry-budget-baseline-invalid"
+  printf '%s %s %s %s %s %s %s %s\n' "$manager" "$manager_start" "$open_line" \
+    "$category" "$width" "$height" "$maximized" "$paned_position" \
+    >/tmp/seyrix-settings-recovery-budget-before
+  printf 'SETTINGS_RECOVERY_BUDGET_BASELINE manager=%s manager_start=%s manager_sid=%s open_line=%s initial_pid=%s initial_start=%s category=%s width=%s height=%s maximized=%s paned_position=%s\n' \
+    "$manager" "$manager_start" "$manager_sid" "$open_line" "$first_pid" "$first_start" \
+    "$category" "$width" "$height" "$maximized" "$paned_position"
+  : >/tmp/seyrix-settings-recovery-budget-pids
+  cursor="$open_line"
+  for index in $(seq 1 6); do
+    if [[ "$index" == 1 ]]; then
+      pid="$first_pid"
+      launch_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid " "$compositor_log" | tail -n 1 || true)"
+    else
+      launch_marker=""
+      retry_marker=""
+      for _ in $(seq 1 480); do
+        fresh="$(tail -n +$((cursor + 1)) "$compositor_log" 2>/dev/null || true)"
+        retry_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=retry-scheduled next_attempt=$index " <<<"$fresh" | tail -n 1 || true)"
+        launch_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=launch " <<<"$fresh" | tail -n 1 || true)"
+        [[ -n "$retry_marker" && -n "$launch_marker" ]] && break
+        sleep 0.25
+      done
+      pid="$(field "$launch_marker" pid || true)"
+    fi
+    attempt="$(field "$launch_marker" attempt || true)"
+    attempt_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=attempt attempt=$attempt " "$compositor_log" | tail -n 1 || true)"
+    if [[ "$index" -gt 1 ]]; then
+      retry_delay_ms="$(field "$retry_marker" delay_ms || true)"
+      scheduled_ms="$(field "$retry_marker" scheduled_ms || true)"
+      retry_at_ms="$(field "$retry_marker" retry_at_ms || true)"
+      attempt_monotonic_ms="$(field "$attempt_marker" monotonic_ms || true)"
+      expected_delay_ms=$((1000 << (index - 2)))
+      elapsed_ms=$(( ${attempt_monotonic_ms:-0} - ${scheduled_ms:-0} ))
+      [[ "$(field "$retry_marker" completed_attempt || true)" == "$((index - 1))" &&
+         "$retry_delay_ms" == "$expected_delay_ms" &&
+         "$scheduled_ms" =~ ^[0-9]+$ && "$retry_at_ms" =~ ^[0-9]+$ &&
+         "$attempt_monotonic_ms" =~ ^[0-9]+$ &&
+         $((retry_at_ms - scheduled_ms)) == "$retry_delay_ms" &&
+         "$elapsed_ms" -ge "$retry_delay_ms" ]] ||
+        fail "settings-retry-backoff-invalid-attempt-$index-delay-${retry_delay_ms:-missing}-elapsed-${elapsed_ms:-missing}"
+      printf 'SETTINGS_RECOVERY_BACKOFF index=%s delay_ms=%s elapsed_ms=%s scheduled_ms=%s attempt_ms=%s\n' \
+        "$index" "$retry_delay_ms" "$elapsed_ms" "$scheduled_ms" "$attempt_monotonic_ms"
+    fi
+    ready_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready " "$compositor_log" | grep -F "attempt=$attempt" | tail -n 1 || true)"
+    app_start="$(grep -F "SEYRIX_SETTINGS event=start pid=$pid " "$compositor_log" | tail -n 1 || true)"
+    count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+    parent="$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+    ready_display="$(field "$ready_marker" display || true)"
+    attempt_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=attempt attempt=$attempt " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+    ready_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' "$compositor_log" | grep -F "attempt=$attempt" | tail -n 1 | cut -d: -f1)"
+    launch_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+    app_line="$(grep -nF "SEYRIX_SETTINGS event=start pid=$pid " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+    [[ "$pid" =~ ^[1-9][0-9]*$ && "$attempt" == "$index" && "$count" == 1 &&
+       "$parent" == "$manager" && -n "$attempt_marker" && -n "$ready_marker" &&
+       -n "$ready_display" && -S "/run/user/1000/$ready_display" &&
+       -n "$app_start" && "$attempt_line" =~ ^[0-9]+$ && "$ready_line" =~ ^[0-9]+$ &&
+       "$launch_line" =~ ^[0-9]+$ && "$app_line" =~ ^[0-9]+$ &&
+       "$attempt_line" -gt "$cursor" && "$attempt_line" -lt "$ready_line" &&
+       "$ready_line" -lt "$launch_line" &&
+       "$launch_line" -lt "$app_line" &&
+       "$(field "$ready_marker" display || true)" != "" ]] ||
+      fail "settings-retry-budget-launch-$index-invalid-pid-$pid"
+    if printf '%s\n' "${pids[@]}" | grep -Fxq "$pid"; then
+      fail "settings-retry-budget-duplicate-pid-$pid"
+    fi
+    pids+=("$pid")
+    printf '%s\n' "$pid" >>/tmp/seyrix-settings-recovery-budget-pids
+    printf 'SETTINGS_RECOVERY_BUDGET_LAUNCH index=%s attempt=%s pid=%s parent=%s count=%s attempt_line=%s ready_line=%s launch_line=%s app_line=%s\n' \
+      "$index" "$attempt" "$pid" "$parent" "$count" "$attempt_line" "$ready_line" "$launch_line" "$app_line"
+    kill -KILL "$pid" || fail "settings-retry-budget-kill-failed-$pid"
+    exit_marker=""
+    for _ in $(seq 1 80); do
+      exit_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$pid " "$compositor_log" | tail -n 1 || true)"
+      [[ -n "$exit_marker" ]] && break
+      sleep 0.25
+    done
+    exit_status="$(field "$exit_marker" status || true)"
+    exit_signal="$(field "$exit_marker" signal || true)"
+    [[ -n "$exit_marker" && ( "$exit_signal" == 9 || "$exit_status" == 137 ) ]] ||
+      fail "settings-retry-budget-exit-not-sigkill-$pid"
+    cursor="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$pid " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+    printf 'SETTINGS_RECOVERY_BUDGET_EXIT index=%s pid=%s status=%s signal=%s cursor=%s\n' \
+      "$index" "$pid" "${exit_status:-none}" "${exit_signal:-none}" "$cursor"
+  done
+  limit_marker=""
+  for _ in $(seq 1 160); do
+    limit_marker="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=restart-limit ' "$compositor_log" | tail -n 1 || true)"
+    [[ -n "$limit_marker" ]] && break
+    sleep 0.25
+  done
+  sleep 2
+  limit_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=restart-limit ' "$compositor_log" | tail -n 1 | cut -d: -f1)"
+  fresh="$(tail -n +$((open_line + 1)) "$compositor_log" 2>/dev/null || true)"
+  pid_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  launch_count="$(grep -Fc 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" || true)"
+  exit_count="$(grep -Fc 'SEYRIX_SETTINGS_SUPERVISOR event=exit ' <<<"$fresh" || true)"
+  seen="$(sed -n 's/^\([0-9][0-9]*\)$/\1/p' /tmp/seyrix-settings-recovery-budget-pids | sort -u | wc -l)"
+  manager_start="$(awk '{print $22}' "/proc/$manager/stat" 2>/dev/null || true)"
+  printf 'SETTINGS_RECOVERY_BUDGET_LIMIT marker=%s attempts=%s line=%s launches=%s exits=%s distinct_pids=%s active=%s manager=%s manager_start=%s pid_file=/tmp/seyrix-settings-recovery-budget-pids\n' \
+    "${limit_marker:+yes}" "$(field "$limit_marker" attempts || true)" "${limit_line:-missing}" \
+    "$launch_count" "$exit_count" "$seen" "$pid_count" "$manager" "$manager_start"
+  cat /tmp/seyrix-settings-recovery-budget-pids
+  [[ -n "$limit_marker" && "$(field "$limit_marker" attempts || true)" == 6 &&
+     "$launch_count" == 6 && "$exit_count" == 6 && "$seen" == 6 && "$pid_count" == 0 &&
+     "$manager_start" == "$(awk '{print $2}' /tmp/seyrix-settings-recovery-budget-before)" ]] ||
+    fail "settings-retry-budget-not-bounded-to-six"
+  limit_line="${limit_line:-0}"
+  printf '%s\n' "$limit_line" >/tmp/seyrix-settings-recovery-budget-limit-line
+  echo SETTINGS_RECOVERY_BUDGET_EXHAUSTED=passed
+  echo SETTINGS_RECOVERY_HARNESS_APP_LAUNCHES=0
+}
+
+settings_recovery_budget_fresh_open_verify() {
+  local manager manager_start manager_sid compositor compositor_sid open_line limit_line pid count parent start_marker launch_marker
+  local ready_marker attempt_marker ready_display category width height maximized paned_position restored
+  local start_line attempt_line ready_line launch_line old_pid fresh accepted frames hello snapshot_request
+  local subscribe_request snapshot_response subscribe_response snapshot_revision subscribe_revision mapped
+  local snapshot_status snapshot_to subscribe_status subscribe_to
+  read -r manager manager_start _ _ _ _ _ _ \
+    </tmp/seyrix-settings-recovery-budget-before || fail "settings-retry-budget-state-unreadable"
+  limit_line="$(cat /tmp/seyrix-settings-recovery-budget-limit-line 2>/dev/null || true)"
+  open_line=""
+  launch_marker=""
+  pid=""
+  for _ in $(seq 1 120); do
+    open_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=open-request ' "$compositor_log" | tail -n 1 | cut -d: -f1)"
+    launch_marker="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' "$compositor_log" | tail -n 1 || true)"
+    pid="$(field "$launch_marker" pid || true)"
+    start_marker="$(grep -F "SEYRIX_SETTINGS event=start pid=$pid " "$compositor_log" | tail -n 1 || true)"
+    [[ "$open_line" =~ ^[0-9]+$ && "$open_line" -gt "$limit_line" &&
+       "$pid" =~ ^[1-9][0-9]*$ && -n "$start_marker" ]] && break
+    sleep 0.25
+  done
+  manager="$(settings_manager_pid 2>/dev/null || true)"
+  manager_start="$(awk '{print $22}' "/proc/$manager/stat" 2>/dev/null || true)"
+  manager_sid="$(ps -o sid= -p "$manager" 2>/dev/null | tr -d ' ')"
+  compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+  compositor_sid="$(ps -o sid= -p "$compositor" 2>/dev/null | tr -d ' ')"
+  count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  parent="$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+  attempt="$(field "$launch_marker" attempt || true)"
+  attempt_marker="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=attempt attempt=$attempt " "$compositor_log" | tail -n 1 || true)"
+  ready_marker="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' "$compositor_log" | grep -F "attempt=$attempt" | tail -n 1 || true)"
+  category="$(settings_category_id "$(field "$start_marker" category || true)" 2>/dev/null || echo unknown)"
+  width="$(field "$start_marker" width || true)"
+  height="$(field "$start_marker" height || true)"
+  maximized="$(settings_boolean "$(field "$start_marker" maximized || true)" 2>/dev/null || echo unknown)"
+  paned_position="$(field "$start_marker" paned_position || true)"
+  restored="$(field "$start_marker" state_restored || true)"
+  ready_display="$(field "$ready_marker" display || true)"
+  start_line="$(grep -nF "SEYRIX_SETTINGS event=start pid=$pid " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+  attempt_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=attempt attempt=$attempt " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+  ready_line="$(grep -nF 'SEYRIX_SETTINGS_SUPERVISOR event=wayland-ready ' "$compositor_log" | grep -F "attempt=$attempt" | tail -n 1 | cut -d: -f1)"
+  launch_line="$(grep -nF "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid " "$compositor_log" | tail -n 1 | cut -d: -f1)"
+  old_pid=none
+  grep -Fxq "$pid" /tmp/seyrix-settings-recovery-budget-pids && old_pid=duplicate || true
+  fresh="$(tail -n +$((open_line + 1)) "$compositor_log" 2>/dev/null || true)"
+  accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+  frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+  hello=0
+  grep -Eq 'opcode=1 .*negotiated=0' <<<"$frames" && hello=1 || true
+  snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
+  subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
+  snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$snapshot_request " <<<"$fresh" | tail -n 1 || true)"
+  subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$subscribe_request " <<<"$fresh" | tail -n 1 || true)"
+  snapshot_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$snapshot_response")"
+  subscribe_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$subscribe_response")"
+  snapshot_status="$(field "$snapshot_response" response_status || true)"
+  snapshot_to="$(field "$snapshot_response" response_to || true)"
+  subscribe_status="$(field "$subscribe_response" response_status || true)"
+  subscribe_to="$(field "$subscribe_response" response_to || true)"
+  mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
+  printf 'SETTINGS_RECOVERY_BUDGET_FRESH_OPEN pid=%s manager=%s/%s open_line=%s limit_line=%s attempt=%s attempt_line=%s ready_line=%s launch_line=%s start_line=%s old_pid=%s count=%s parent=%s category=%s width=%s height=%s maximized=%s paned_position=%s state_restored=%s mapped=%s accepted=%s hello=%s snapshot_request=%s snapshot_status=%s snapshot_to=%s snapshot_revision=%s subscribe_request=%s subscribe_status=%s subscribe_to=%s subscribe_revision=%s\n' \
+    "$pid" "$manager" "$manager_start" "$open_line" "$limit_line" "$attempt" \
+    "${attempt_line:-missing}" "${ready_line:-missing}" "${launch_line:-missing}" \
+    "${start_line:-missing}" "${old_pid:-missing}" "$count" "${parent:-missing}" \
+    "$category" "$width" "$height" "$maximized" "$paned_position" "$restored" \
+    "${mapped:+yes}" "${accepted:+yes}" "$hello" "${snapshot_request:-missing}" \
+    "${snapshot_status:-missing}" "${snapshot_to:-missing}" "${snapshot_revision:-missing}" \
+    "${subscribe_request:-missing}" "${subscribe_status:-missing}" "${subscribe_to:-missing}" \
+    "${subscribe_revision:-missing}"
+  [[ "$manager" == "$(awk '{print $1}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$manager_start" == "$(awk '{print $2}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$manager_sid" =~ ^[0-9]+$ && "$manager_sid" == "$compositor_sid" &&
+     "$open_line" =~ ^[0-9]+$ && "$open_line" -gt "$limit_line" &&
+     "$pid" =~ ^[1-9][0-9]*$ && "$count" == 1 &&
+     "$parent" == "$manager" && "$pid" != "$old_pid" &&
+     "$attempt" == 1 && -n "$attempt_marker" && -n "$ready_marker" &&
+     -n "$ready_display" && -S "/run/user/1000/$ready_display" &&
+     "$attempt_line" =~ ^[0-9]+$ && "$ready_line" =~ ^[0-9]+$ &&
+     "$launch_line" =~ ^[0-9]+$ && "$start_line" =~ ^[0-9]+$ &&
+     "$attempt_line" -lt "$ready_line" && "$ready_line" -lt "$launch_line" &&
+     "$launch_line" -lt "$start_line" &&
+     "$category" == "$(awk '{print $4}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$width" == "$(awk '{print $5}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$height" == "$(awk '{print $6}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$maximized" == "$(awk '{print $7}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$paned_position" == "$(awk '{print $8}' /tmp/seyrix-settings-recovery-budget-before)" &&
+     "$restored" =~ ^(1|true|yes)$ && -n "$mapped" && -n "$accepted" && "$hello" == 1 &&
+     -n "$snapshot_request" && -n "$snapshot_response" && "$snapshot_status" == 0 &&
+     "$snapshot_to" == 2 && -n "$snapshot_revision" &&
+     -n "$subscribe_request" && -n "$subscribe_response" && "$subscribe_status" == 0 &&
+     "$subscribe_to" == 3 && -n "$subscribe_revision" ]] ||
+    fail "settings-retry-budget-fresh-open-invalid"
+  echo SETTINGS_RECOVERY_BUDGET_FRESH_OPEN=passed
+  echo SETTINGS_RECOVERY_HARNESS_APP_LAUNCHES=0
+}
+
+settings_recovery_kill_compositor() {
+  local pid
+  pid="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || fail "settings-recovery-compositor-not-running"
+  kill -KILL "$pid"
+  printf 'SETTINGS_RECOVERY_COMPOSITOR_KILLED pid=%s signal=KILL\n' "$pid"
+}
+
+settings_user_close_verify() {
+  local before_pid before_start manager_before manager_start before_category
+  local before_width before_height before_maximized before_paned_position log_baseline before_compositor before_compositor_start manager_after
+  local app_close manager_exit fresh process_count launch_after
+  read -r before_pid before_start manager_before manager_start before_category \
+    before_width before_height before_maximized before_paned_position log_baseline \
+    before_compositor before_compositor_start \
+    </tmp/seyrix-settings-supervisor-before || fail "settings-user-close-baseline-unreadable"
+  for _ in $(seq 1 60); do
+    app_close="$(grep -F "SEYRIX_SETTINGS event=user-close pid=$before_pid exit_status=0" "$compositor_log" 2>/dev/null | tail -n 1 || true)"
+    manager_exit="$(grep -F "SEYRIX_SETTINGS_SUPERVISOR event=exit pid=$before_pid status=0" "$compositor_log" 2>/dev/null | tail -n 1 || true)"
+    [[ -n "$app_close" && -n "$manager_exit" ]] && break
+    sleep 0.25
+  done
+  fresh="$(tail -n +$((log_baseline + 1)) "$compositor_log" 2>/dev/null || true)"
+  manager_after="$(settings_manager_pid 2>/dev/null || true)"
+  manager_start="$(awk '{print $22}' "/proc/$manager_after/stat" 2>/dev/null || true)"
+  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  launch_after="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" | grep -Fv "pid=$before_pid" || true)"
+  sleep 20
+  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  manager_after="$(settings_manager_pid 2>/dev/null || true)"
+  manager_start="$(awk '{print $22}' "/proc/$manager_after/stat" 2>/dev/null || true)"
+  fresh="$(tail -n +$((log_baseline + 1)) "$compositor_log" 2>/dev/null || true)"
+  launch_after="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" || true)"
+  printf 'SETTINGS_USER_CLOSE old_pid=%s app_marker=%s manager_exit=%s active_apps=%s manager_pid=%s manager_start=%s relaunch_markers=%s wait_s=20\n' \
+    "$before_pid" "${app_close:+yes}" "${manager_exit:+yes}" "$process_count" \
+    "${manager_after:-missing}" "${manager_start:-missing}" "${launch_after:-none}"
+  if [[ -n "$app_close" && -n "$manager_exit" && "$process_count" == 0 &&
+        "$manager_after" == "$manager_before" && "$manager_start" == "$(awk '{print $4}' /tmp/seyrix-settings-supervisor-before)" &&
+        -z "$launch_after" ]]; then
+    echo SETTINGS_USER_CLOSE_NO_REOPEN=passed
+    return 0
+  fi
+  echo SETTINGS_USER_CLOSE_NO_REOPEN=failed
+  return 1
+}
+
 case "${1:-}" in
   resize-start) shift; resize_start "$@" ;;
   resize-check) shift; resize_check "$@" ;;
@@ -1182,6 +1871,12 @@ case "${1:-}" in
   wm-same-geometry) shift; wm_same_geometry "$@" ;;
   wm-geometry-changed) shift; wm_geometry_changed "$@" ;;
   popup-alive) popup_process_alive ;;
+  settings-recovery-baseline) settings_recovery_baseline ;;
+  settings-recovery-verify) settings_recovery_verify ;;
+  settings-recovery-exhaust-budget) settings_recovery_exhaust_budget ;;
+  settings-recovery-budget-fresh-open-verify) settings_recovery_budget_fresh_open_verify ;;
+  settings-recovery-kill-compositor) settings_recovery_kill_compositor ;;
+  settings-user-close-verify) settings_user_close_verify ;;
   terminate-client) shift; kill_probe_client "$@" ;;
   crash-panel-owner) crash_panel_owner_shell ;;
   startup-failure) recover_shell_after_startup_failure ;;

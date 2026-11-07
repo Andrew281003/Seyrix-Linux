@@ -18,6 +18,7 @@ struct seyrix_settings_client {
 	unsigned int io_source;
 	unsigned int retry_source;
 	unsigned int retry_delay_ms;
+	unsigned int connection_attempts;
 	uint32_t next_request_id;
 	uint64_t revision;
 	enum seyrix_settings_client_state state;

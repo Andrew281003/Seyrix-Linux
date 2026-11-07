@@ -7,16 +7,63 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <glib-unix.h>
 
 enum { CLIENT_MAX_MESSAGES_PER_DISPATCH = 32 };
+
+static void client_trace(const struct seyrix_settings_client *client,
+		const char *event, const char *format, ...) {
+	if (g_strcmp0(g_getenv("SEYRIX_SETTINGS_IPC_TRACE"), "1") != 0) {
+		return;
+	}
+	struct timespec now = {0};
+	(void)clock_gettime(CLOCK_MONOTONIC, &now);
+	uint64_t monotonic_ns = (uint64_t)now.tv_sec * 1000000000U +
+		(uint64_t)now.tv_nsec;
+	fprintf(stderr,
+		"SETTINGS_IPC_CLIENT mono_ns=%llu pid=%ld attempt=%u fd=%d event=%s",
+		(unsigned long long)monotonic_ns, (long)getpid(),
+		client != NULL ? client->connection_attempts : 0,
+		client != NULL ? client->fd : -1, event);
+	if (format != NULL) {
+		va_list args;
+		va_start(args, format);
+		vfprintf(stderr, format, args);
+		va_end(args);
+	}
+	fputc('\n', stderr);
+	fflush(stderr);
+}
+
+static void client_trace_connection(struct seyrix_settings_client *client) {
+	if (g_strcmp0(g_getenv("SEYRIX_SETTINGS_IPC_TRACE"), "1") != 0) {
+		return;
+	}
+	struct stat status = {0};
+	struct ucred peer = {0};
+	socklen_t peer_size = sizeof(peer);
+	int stat_result = fstat(client->fd, &status);
+	int stat_errno = stat_result == 0 ? 0 : errno;
+	int peer_result = getsockopt(client->fd, SOL_SOCKET, SO_PEERCRED,
+		&peer, &peer_size);
+	int peer_errno = peer_result == 0 ? 0 : errno;
+	client_trace(client, "connected",
+		" inode=%llu stat_errno=%d server_pid=%ld server_uid=%ld peer_errno=%d",
+		(unsigned long long)(stat_result == 0 ? status.st_ino : 0),
+		stat_errno, (long)(peer_result == 0 ? peer.pid : -1),
+		(long)(peer_result == 0 ? peer.uid : (uid_t)-1), peer_errno);
+}
 
 static void client_notify(struct seyrix_settings_client *client) {
 	if (client->changed != NULL) {
@@ -88,6 +135,8 @@ static bool client_send_request(struct seyrix_settings_client *client,
 		uint64_t revision) {
 	if (client->fd < 0 || payload_size > SEYRIX_SETTINGS_MAX_PACKET_SIZE -
 			SEYRIX_SETTINGS_HEADER_SIZE) {
+		client_trace(client, "serialize-failed", " opcode=%u reason=arguments",
+			opcode);
 		return false;
 	}
 	uint8_t packet[SEYRIX_SETTINGS_MAX_PACKET_SIZE];
@@ -95,15 +144,35 @@ static bool client_send_request(struct seyrix_settings_client *client,
 	if (request_id == 0 || !seyrix_settings_encode_header(packet,
 			sizeof(packet), opcode, request_id, (uint32_t)payload_size,
 			revision) || !client_pending_add(client, request_id, opcode)) {
+		client_trace(client, "serialize-failed", " opcode=%u request=%u",
+			opcode, request_id);
 		return false;
 	}
 	if (payload_size > 0) {
 		memcpy(packet + SEYRIX_SETTINGS_HEADER_SIZE, payload, payload_size);
 	}
-	ssize_t sent = send(client->fd, packet,
-		SEYRIX_SETTINGS_HEADER_SIZE + payload_size,
+	size_t packet_size = SEYRIX_SETTINGS_HEADER_SIZE + payload_size;
+	if (g_strcmp0(g_getenv("SEYRIX_SETTINGS_IPC_TRACE"), "1") == 0) {
+		char wire_hex[65] = {0};
+		for (size_t i = 0; i < packet_size && i < (sizeof(wire_hex) - 1) / 2;
+				i++) {
+			(void)snprintf(wire_hex + i * 2, sizeof(wire_hex) - i * 2,
+				"%02x", packet[i]);
+		}
+		client_trace(client, "serialized",
+			" opcode=%u request=%u revision=%llu payload=%zu bytes=%zu wire_hex=%s",
+			opcode, request_id, (unsigned long long)revision, payload_size,
+			packet_size, wire_hex);
+	}
+	client_trace(client, "write-attempt", " opcode=%u request=%u bytes=%zu",
+		opcode, request_id, packet_size);
+	ssize_t sent = send(client->fd, packet, packet_size,
 		MSG_DONTWAIT | MSG_NOSIGNAL);
-	if (sent < 0 || (size_t)sent != SEYRIX_SETTINGS_HEADER_SIZE + payload_size) {
+	int send_errno = sent < 0 ? errno : 0;
+	client_trace(client, "write-result",
+		" opcode=%u request=%u sent=%ld expected=%zu errno=%d",
+		opcode, request_id, (long)sent, packet_size, send_errno);
+	if (sent < 0 || (size_t)sent != packet_size) {
 		uint16_t ignored;
 		(void)client_pending_take(client, request_id, &ignored);
 		return false;
@@ -131,6 +200,7 @@ static void client_request_snapshot(struct seyrix_settings_client *client) {
 
 static void client_send_hello(struct seyrix_settings_client *client) {
 	static const uint8_t versions[4] = {1, 1, 0, 0};
+	client_trace(client, "hello-begin", " versions=1.1.0.0");
 	client->state = SEYRIX_SETTINGS_CLIENT_NEGOTIATING;
 	client_set_status(client, "Connected; negotiating the read-only protocol…");
 	if (!client_send_request(client, SEYRIX_SETTINGS_OP_HELLO,
@@ -151,6 +221,9 @@ static bool client_add_real_io_source(struct seyrix_settings_client *client,
 	client_drop_source(client);
 	client->io_source = g_unix_fd_add_full(G_PRIORITY_DEFAULT, client->fd,
 		condition, client_io, client, NULL);
+	client_trace(client, "io-source",
+		" result=%s source=%u condition=0x%x", client->io_source != 0 ?
+		"installed" : "failed", client->io_source, condition);
 	return client->io_source != 0;
 }
 
@@ -167,6 +240,8 @@ static void client_schedule_retry_safe(struct seyrix_settings_client *client) {
 
 static void client_disconnect(struct seyrix_settings_client *client,
 		const char *reason) {
+	client_trace(client, "disconnect", " reason=%s",
+		reason != NULL ? reason : "unspecified");
 	client_drop_source(client);
 	if (client->fd >= 0) {
 		close(client->fd);
@@ -186,6 +261,7 @@ static void client_disconnect(struct seyrix_settings_client *client,
 static bool client_begin_connected(struct seyrix_settings_client *client) {
 	client->retry_delay_ms = 250;
 	client->state = SEYRIX_SETTINGS_CLIENT_NEGOTIATING;
+	client_trace_connection(client);
 	if (!client_add_real_io_source(client, G_IO_IN | G_IO_HUP | G_IO_ERR)) {
 		return false;
 	}
@@ -198,11 +274,19 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 	if (client == NULL || client->fd != fd) {
 		return G_SOURCE_REMOVE;
 	}
+	client_trace(client, "io-dispatch", " condition=0x%x state=%d",
+		condition, client->state);
 	if (client->state == SEYRIX_SETTINGS_CLIENT_CONNECTING) {
 		if ((condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL)) != 0) {
 			int socket_error = 0;
 		socklen_t size = sizeof(socket_error);
-			if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &size) != 0 ||
+			int error_result = getsockopt(fd, SOL_SOCKET, SO_ERROR,
+				&socket_error, &size);
+			int socket_errno = error_result == 0 ? 0 : errno;
+			client_trace(client, "connect-ready",
+				" result=%d socket_error=%d errno=%d", error_result,
+				socket_error, socket_errno);
+			if (error_result != 0 ||
 				socket_error != 0) {
 				client->io_source = 0;
 				client_disconnect(client, "Seyrix compositor is unavailable");
@@ -212,7 +296,13 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 		if ((condition & G_IO_OUT) != 0) {
 			int socket_error = 0;
 			socklen_t size = sizeof(socket_error);
-			if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &size) != 0 ||
+			int error_result = getsockopt(fd, SOL_SOCKET, SO_ERROR,
+				&socket_error, &size);
+			int socket_errno = error_result == 0 ? 0 : errno;
+			client_trace(client, "connect-ready",
+				" result=%d socket_error=%d errno=%d", error_result,
+				socket_error, socket_errno);
+			if (error_result != 0 ||
 				socket_error != 0) {
 				client->io_source = 0;
 				client_disconnect(client, "Seyrix compositor is unavailable");
@@ -245,6 +335,11 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 		};
 		ssize_t received = recvmsg(fd, &message, MSG_DONTWAIT | MSG_TRUNC |
 			MSG_CMSG_CLOEXEC);
+		int receive_errno = received < 0 ? errno : 0;
+		client_trace(client, "read-result",
+			" received=%ld errno=%d flags=0x%x control_len=%zu",
+			(long)received, receive_errno, message.msg_flags,
+			(size_t)message.msg_controllen);
 		if (received == 0) {
 			client->io_source = 0;
 			client_disconnect(client,
@@ -252,11 +347,11 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 			return G_SOURCE_REMOVE;
 		}
 		if (received < 0) {
-			if (errno == EINTR) {
+			if (receive_errno == EINTR) {
 				handled--;
 				continue;
 			}
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			if (receive_errno == EAGAIN || receive_errno == EWOULDBLOCK) {
 				return G_SOURCE_CONTINUE;
 			}
 			client->io_source = 0;
@@ -275,15 +370,28 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 			}
 		}
 		struct seyrix_settings_frame frame;
+		bool decoded = !has_control &&
+			(message.msg_flags & MSG_TRUNC) == 0 &&
+			(size_t)received <= sizeof(packet) &&
+			seyrix_settings_decode_frame(packet, (size_t)received, &frame) &&
+			frame.frame_version == SEYRIX_SETTINGS_FRAME_VERSION &&
+			frame.flags == 0;
+		if (!decoded) {
+			client_trace(client, "parse-rejected",
+				" received=%ld control=%d flags=0x%x", (long)received,
+				has_control, message.msg_flags);
+		}
 		if (has_control || (message.msg_flags & MSG_TRUNC) != 0 ||
 				(size_t)received > sizeof(packet) ||
-				!seyrix_settings_decode_frame(packet, (size_t)received, &frame) ||
-			frame.frame_version != SEYRIX_SETTINGS_FRAME_VERSION ||
-			frame.flags != 0) {
+			!decoded) {
 			client->io_source = 0;
 			client_disconnect(client, "Compositor sent an invalid protocol message");
 			return G_SOURCE_REMOVE;
 		}
+		client_trace(client, "frame-decoded",
+			" opcode=%u request=%u payload=%u revision=%llu",
+			frame.opcode, frame.request_id, frame.payload_size,
+			(unsigned long long)frame.revision);
 		if (frame.opcode == SEYRIX_SETTINGS_OP_CHANGED) {
 			if (frame.request_id != 0 || frame.payload_size != 0) {
 				client->io_source = 0;
@@ -325,6 +433,9 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 				return G_SOURCE_REMOVE;
 			}
 			client->negotiated = true;
+			client_trace(client, "hello-response",
+				" request=%u error=%u negotiated=1",
+				frame.request_id, error);
 			client->retry_delay_ms = 250;
 			if (!client_send_request(client,
 					SEYRIX_SETTINGS_OP_GET_SNAPSHOT, NULL, 0,
@@ -366,6 +477,10 @@ static gboolean client_io(gint fd, GIOCondition condition, gpointer data) {
 					 error == SEYRIX_SETTINGS_ERROR_STALE_REVISION)) {
 				client->subscribed = true;
 			}
+			client_trace(client, "state-response",
+				" request=%u response_to=%u error=%u revision=%llu snapshot=1 subscribed=%d",
+				frame.request_id, request_opcode, error,
+				(unsigned long long)frame.revision, client->subscribed);
 			client->state = SEYRIX_SETTINGS_CLIENT_CONNECTED;
 			client_set_status(client, error == SEYRIX_SETTINGS_ERROR_STALE_REVISION ?
 				"Connected; refreshed a newer read-only snapshot" :
@@ -404,24 +519,34 @@ static gboolean client_retry(gpointer data) {
 	if (client == NULL || client->fd >= 0) {
 		return G_SOURCE_REMOVE;
 	}
+	client->connection_attempts++;
+	client_trace(client, "connect-attempt", NULL);
 	const char *runtime = g_getenv("XDG_RUNTIME_DIR");
 	struct sockaddr_un address = {.sun_family = AF_UNIX};
 	if (runtime == NULL || runtime[0] != '/' ||
 		g_snprintf(address.sun_path, sizeof(address.sun_path),
 			"%s/seyrix/settings-v1.sock", runtime) >=
 			(gint)sizeof(address.sun_path)) {
+		client_trace(client, "connect-rejected", " reason=runtime-path");
 		client_set_status(client, "Seyrix runtime directory is unavailable");
 		client_schedule_retry_safe(client);
 		return G_SOURCE_REMOVE;
 	}
 	int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if (fd < 0) {
+		int socket_errno = errno;
+		client_trace(client, "socket-failed", " errno=%d", socket_errno);
 		client_set_status(client, "Could not open the Seyrix settings endpoint");
 		client_schedule_retry_safe(client);
 		return G_SOURCE_REMOVE;
 	}
 	int result = connect(fd, (struct sockaddr *)&address, sizeof(address));
-	if (result != 0 && errno != EINPROGRESS && errno != EAGAIN) {
+	int connect_errno = result == 0 ? 0 : errno;
+	client_trace(client, "connect-result",
+		" result=%d errno=%d path=%s", result, connect_errno,
+		address.sun_path);
+	if (result != 0 && connect_errno != EINPROGRESS &&
+			connect_errno != EAGAIN) {
 		close(fd);
 		client_set_status(client, "Seyrix compositor is not available");
 		client_schedule_retry_safe(client);
@@ -455,6 +580,7 @@ void seyrix_settings_client_init(struct seyrix_settings_client *client,
 
 void seyrix_settings_client_start(struct seyrix_settings_client *client) {
 	if (client != NULL && client->retry_source == 0 && client->fd < 0) {
+		client_trace(client, "start", NULL);
 		client_schedule_retry_safe(client);
 	}
 }
@@ -463,6 +589,7 @@ void seyrix_settings_client_finish(struct seyrix_settings_client *client) {
 	if (client == NULL) {
 		return;
 	}
+	client_trace(client, "finish", NULL);
 	if (client->retry_source != 0) {
 		g_source_remove(client->retry_source);
 		client->retry_source = 0;

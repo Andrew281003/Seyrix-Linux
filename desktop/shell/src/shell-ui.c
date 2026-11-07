@@ -682,3 +682,7 @@ void seyrix_shell_ui_draw(const struct seyrix_shell_view *view,
 	}
 	cairo_restore(cairo);
 }
+
+void seyrix_shell_ui_finish(void) {
+	pango_cairo_font_map_set_default(NULL);
+}

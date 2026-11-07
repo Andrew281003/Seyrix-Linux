@@ -29,6 +29,7 @@ compositor_build_dir="${build_root}/compositor-build"
 protocol_probe_build_dir="${build_root}/protocol-probe-build"
 shell_build_dir="${build_root}/shell-build"
 settings_build_dir="${build_root}/settings-build"
+session_supervisor_build_dir="${build_root}/session-supervisor-build"
 staging_dir="${build_root}/staging"
 
 if (( EUID != 0 )); then
@@ -61,6 +62,29 @@ case "${SEYRIX_QEMU_ACCEPTANCE_HOOKS:-0}" in
 	1|true) qemu_acceptance_hooks=true ;;
 	0|false|'') qemu_acceptance_hooks=false ;;
 	*) echo "SEYRIX_QEMU_ACCEPTANCE_HOOKS must be 0/false or 1/true." >&2; exit 2 ;;
+esac
+
+case "${SEYRIX_QEMU_SETTINGS_RENDER_TRACE:-0}" in
+	1|true)
+		if [[ "$qemu_acceptance_hooks" != true ]]; then
+			echo "SEYRIX_QEMU_SETTINGS_RENDER_TRACE requires QEMU acceptance hooks." >&2
+			exit 2
+		fi
+		qemu_settings_render_trace=true ;;
+	0|false|'') qemu_settings_render_trace=false ;;
+	*) echo "SEYRIX_QEMU_SETTINGS_RENDER_TRACE must be 0/false or 1/true." >&2; exit 2 ;;
+esac
+
+case "${SEYRIX_QEMU_SETTINGS_GSK_CAIRO:-0}" in
+	1|true)
+		if [[ "$qemu_acceptance_hooks" != true ||
+				"$qemu_settings_render_trace" != true ]]; then
+			echo "SEYRIX_QEMU_SETTINGS_GSK_CAIRO requires QEMU acceptance hooks and Settings render tracing." >&2
+			exit 2
+		fi
+		qemu_settings_gsk_cairo=true ;;
+	0|false|'') qemu_settings_gsk_cairo=false ;;
+	*) echo "SEYRIX_QEMU_SETTINGS_GSK_CAIRO must be 0/false or 1/true." >&2; exit 2 ;;
 esac
 
 case "${SEYRIX_BUILD_NATIVE_SANITIZERS:-0}" in
@@ -127,15 +151,26 @@ ninja -C "$shell_build_dir"
 meson test -C "$shell_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$shell_build_dir"
 
+settings_build_args=(--buildtype=release --prefix=/usr --wrap-mode=nofallback)
+if [[ "$qemu_acceptance_hooks" == true ]]; then
+	settings_build_args+=("-Dc_args=-DSEYRIX_SETTINGS_RENDER_DIAGNOSTICS=1")
+fi
 meson setup "$settings_build_dir" "$repo_root/desktop/settings" \
-  --buildtype=release --prefix=/usr --wrap-mode=nofallback
+	"${settings_build_args[@]}"
 ninja -C "$settings_build_dir"
 meson test -C "$settings_build_dir" --print-errorlogs
 DESTDIR="$staging_dir" meson install -C "$settings_build_dir"
 
+meson setup "$session_supervisor_build_dir" "$repo_root/desktop/session-supervisor" \
+	--buildtype=release --prefix=/usr --wrap-mode=nofallback
+ninja -C "$session_supervisor_build_dir"
+meson test -C "$session_supervisor_build_dir" --print-errorlogs
+DESTDIR="$staging_dir" meson install -C "$session_supervisor_build_dir"
+
 bash "$repo_root/tests/settings-desktop-entry-test.sh"
 python3 "$repo_root/tests/qemu-settings-page-check-test.py"
 bash "$repo_root/tests/settings-render-trace-regression.sh"
+bash "$repo_root/tests/settings-input-trace-regression.sh"
 python3 "$repo_root/tests/settings-render-pixel-regression.py"
 tclsh "$repo_root/tests/settings-render-trace-tcl-completeness.tcl" \
 	"$repo_root/tests/qemu-graphics.exp" \
@@ -144,7 +179,7 @@ tclsh "$repo_root/tests/settings-render-trace-tcl-completeness.tcl" \
 
 if [[ "$native_sanitizers" == true ]]; then
 	: > "$metadata_dir/sanitizer-results.txt"
-	for component in compositor settings shell; do
+	for component in compositor settings shell session-supervisor; do
 		sanitizer_build_dir="$build_root/${component}-sanitizer-build"
 		meson setup "$sanitizer_build_dir" "$repo_root/desktop/$component" \
 			--buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback \
@@ -189,6 +224,9 @@ while IFS= read -r -d '' index_entry; do
 done < <("${git_command[@]}" ls-files --stage -z)
 cp -a "$repo_root/config/graphics-overlay/airootfs/." "$profile_dir/airootfs/"
 cp -a "$repo_root/config/compositor-overlay/airootfs/." "$profile_dir/airootfs/"
+cp -a "$repo_root/config/settings-overlay/airootfs/." "$profile_dir/airootfs/"
+sed -i 's/\r$//' \
+	"$profile_dir/airootfs/usr/local/bin/seyrix-settings-launch"
 install -d "$profile_dir/airootfs/etc/systemd/system/multi-user.target.wants"
 ln -sfn ../seyrix-qemu-control.service \
 	"$profile_dir/airootfs/etc/systemd/system/multi-user.target.wants/seyrix-qemu-control.service"
@@ -198,6 +236,15 @@ install -D -m 0755 "$staging_dir/usr/bin/seyrix-compositor" \
   "$profile_dir/airootfs/usr/bin/seyrix-compositor"
 acceptance_hook_marker='SEYRIX_QEMU_ACCEPTANCE_SHELL_EXEC_FAILURE=consumed'
 packaged_compositor="$profile_dir/airootfs/usr/bin/seyrix-compositor"
+packaged_start_seyrix="$profile_dir/airootfs/usr/local/bin/start-seyrix"
+if [[ "$qemu_settings_render_trace" == true ]]; then
+	sed -i '/^export LIBGL_ALWAYS_SOFTWARE=1$/a export SEYRIX_COMPOSITOR_RENDER_TRACE=1' \
+		"$packaged_start_seyrix"
+	if ! grep -Fxq 'export SEYRIX_COMPOSITOR_RENDER_TRACE=1' "$packaged_start_seyrix"; then
+		echo "Could not enable compositor render tracing in the diagnostic QEMU image." >&2
+		exit 1
+	fi
+fi
 if [[ "$qemu_acceptance_hooks" == true ]]; then
 	if ! grep -aFq -- "$acceptance_hook_marker" "$packaged_compositor"; then
 		echo "QEMU acceptance hooks were requested but are missing from the packaged compositor." >&2
@@ -220,9 +267,21 @@ install -D -m 0755 "$staging_dir/usr/bin/seyrix-shell" \
   "$profile_dir/airootfs/usr/bin/seyrix-shell"
 install -D -m 0755 "$staging_dir/usr/bin/seyrix-settings" \
   "$profile_dir/airootfs/usr/bin/seyrix-settings"
+install -D -m 0755 "$staging_dir/usr/bin/seyrix-session-supervisor" \
+	"$profile_dir/airootfs/usr/bin/seyrix-session-supervisor"
 seyrix_install_settings_desktop_entry \
 	"$staging_dir/usr/share/applications/seyrix-settings.desktop" \
 	"$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
+if [[ "$qemu_settings_gsk_cairo" == true ]]; then
+	settings_desktop_entry="$profile_dir/airootfs/usr/share/applications/seyrix-settings.desktop"
+	sed -i 's/^Exec=seyrix-settings-launch$/Exec=env GSK_RENDERER=cairo seyrix-settings-launch/' \
+		"$settings_desktop_entry"
+	if ! grep -Fxq 'Exec=env GSK_RENDERER=cairo seyrix-settings-launch' \
+			"$settings_desktop_entry"; then
+		echo "Could not enable the diagnostic GTK Cairo renderer for Settings." >&2
+		exit 1
+	fi
+fi
 install -D -m 0755 "$settings_build_dir/settings-endpoint-probe" \
   "$profile_dir/airootfs/usr/lib/seyrix-tests/settings-endpoint-probe"
 install -D -m 0644 "$staging_dir/usr/share/seyrix/Manual.txt" \
@@ -252,6 +311,8 @@ sed -i \
   -e '/^file_permissions=(/a\  ["/usr/share/applications/seyrix-settings.desktop"]="0:0:644"' \
   -e '/^file_permissions=(/a\  ["/usr/share/seyrix/build-info"]="0:0:644"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-settings"]="0:0:755"' \
+  -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-session-supervisor"]="0:0:755"' \
+  -e '/^file_permissions=(/a\  ["/usr/local/bin/seyrix-settings-launch"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-protocol-probe"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/bin/seyrix-shell"]="0:0:755"' \
   -e '/^file_permissions=(/a\  ["/usr/share/seyrix/Manual.txt"]="0:0:644"' \
@@ -289,6 +350,8 @@ pacman-conf --repo-list > "$metadata_dir/repositories.txt"
   fi
   printf 'Compositor sanitizers: %s\n' "${sanitizers:-none}"
   printf 'QEMU acceptance hooks: %s\n' "$qemu_acceptance_hooks"
+  printf 'QEMU Settings/compositor render tracing: %s\n' "$qemu_settings_render_trace"
+  printf 'QEMU Settings Cairo renderer probe: %s\n' "$qemu_settings_gsk_cairo"
   printf 'Base profile source: %s\n' "$repo_root/config/archiso"
   printf 'Graphics overlay source: %s\n' "$repo_root/config/graphics-overlay"
   printf 'Compositor overlay source: %s\n' "$repo_root/config/compositor-overlay"
@@ -297,6 +360,7 @@ pacman-conf --repo-list > "$metadata_dir/repositories.txt"
   printf 'Compositor build directory: %s\n' "$compositor_build_dir"
   printf 'Protocol probe build directory: %s\n' "$protocol_probe_build_dir"
   printf 'Settings GTK4 pkg-config version: %s\n' "$(pkg-config --modversion gtk4)"
+  printf 'Settings render diagnostics: %s\n' "$qemu_acceptance_hooks"
   printf 'Settings build directory: %s\n' "$settings_build_dir"
   printf 'Settings build-info revision: %s\n' "$source_revision"
   printf 'Build root: %s\n' "$build_root"

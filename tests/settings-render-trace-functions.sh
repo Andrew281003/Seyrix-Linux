@@ -2,8 +2,15 @@
 # Shared production parsing and launch gates for the Settings diagnostic trace.
 
 settings_trace_initial_appearance_pid() {
-  local trace_file=$1
+  local trace_file=$1 expected_pid=${2:-}
   [[ -r "$trace_file" ]] || return 1
+  if [[ "$expected_pid" =~ ^[0-9]+$ ]]; then
+    settings_trace_gtk_lines_for_pid "$trace_file" "$expected_pid" |
+      grep -E 'event=gtk_page_map page=appearance selected=appearance([[:space:]]|$)' |
+      tail -n 1 |
+      sed -n -E 's/.*pid=([0-9]+) event=gtk_page_map.*/\1/p'
+    return
+  fi
   sed -n -E \
     's/.*SEYRIX_SETTINGS_TRACE .*pid=([0-9]+) event=gtk_page_map page=appearance selected=appearance([[:space:]].*)?$/\1/p' \
     "$trace_file" | head -n 1

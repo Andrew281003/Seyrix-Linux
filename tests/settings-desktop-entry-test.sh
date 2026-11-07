@@ -21,8 +21,8 @@ for entry in "$crlf_target" "$lf_target"; do
 		exit 1
 	fi
 	for field in Exec TryExec; do
-		if [[ "$(grep -Fxc "${field}=seyrix-settings" "$entry")" != 1 ]]; then
-			printf 'FAIL: direct %s missing or duplicated in %s\n' "$field" "$entry" >&2
+		if [[ "$(grep -Fxc "${field}=seyrix-settings-launch" "$entry")" != 1 ]]; then
+			printf 'FAIL: supervised %s missing or duplicated in %s\n' "$field" "$entry" >&2
 			exit 1
 		fi
 	done

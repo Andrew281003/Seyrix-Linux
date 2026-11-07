@@ -57,5 +57,7 @@ struct seyrix_shell_view {
 void seyrix_shell_ui_draw(const struct seyrix_shell_view *view,
 	cairo_t *cairo, struct seyrix_shell_hit_area *hits,
 	size_t hit_capacity, size_t *hit_count);
+/* Reset Pango's font cache after UI resources are released; later draws recreate the map. */
+void seyrix_shell_ui_finish(void);
 
 #endif

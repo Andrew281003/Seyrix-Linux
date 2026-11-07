@@ -4,12 +4,11 @@ set -uo pipefail
 helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$helper_dir/settings-render-trace-functions.sh"
 
-trace=${SEYRIX_SETTINGS_TRACE_FILE:-/run/user/1000/seyrix-settings-render.trace}
+trace=${SEYRIX_SETTINGS_TRACE_FILE:-/tmp/seyrix-compositor.log}
 runtime=${SEYRIX_SETTINGS_RUNTIME_DIR:-/run/user/1000}
 compositor=${SEYRIX_SETTINGS_COMPOSITOR_LOG:-/tmp/seyrix-compositor.log}
-launcher=${SEYRIX_SETTINGS_TRACE_LAUNCHER:-/usr/local/bin/seyrix-settings-render-trace}
+launcher=${SEYRIX_SETTINGS_TRACE_LAUNCHER:-/usr/bin/seyrix-session-supervisor}
 desktop=${SEYRIX_SETTINGS_DESKTOP_ENTRY:-/usr/share/applications/seyrix-settings.desktop}
-diagnostic_desktop=${SEYRIX_SETTINGS_DIAGNOSTIC_DESKTOP_ENTRY:-/home/seyrix/.local/share/applications/seyrix-settings-render-trace.desktop}
 keyboard_log=${SEYRIX_SETTINGS_KEYBOARD_LOG:-/tmp/seyrix-settings-evtest-keyboard.log}
 mouse_log=${SEYRIX_SETTINGS_MOUSE_LOG:-/tmp/seyrix-evtest-mouse.log}
 launcher_log=${SEYRIX_SETTINGS_LAUNCHER_LOG:-/tmp/seyrix-settings-trace-launcher.log}
@@ -24,13 +23,6 @@ launch_trace() {
   printf 'SETTINGS_DESKTOP_ENTRY_BEGIN\n'
   grep -E '^(Exec|TryExec)=' "$desktop" || true
   printf 'SETTINGS_DESKTOP_ENTRY_END\n'
-  printf 'SETTINGS_DIAGNOSTIC_DESKTOP_ENTRY_BEGIN\n'
-  if test -r "$diagnostic_desktop"; then
-    grep -E '^(Name|Exec|TryExec)=' "$diagnostic_desktop" || true
-  else
-    echo SETTINGS_DIAGNOSTIC_DESKTOP_ENTRY=missing
-  fi
-  printf 'SETTINGS_DIAGNOSTIC_DESKTOP_ENTRY_END\n'
   printf 'SETTINGS_TRACE_PATH=%s\n' "$trace"
   printf 'SETTINGS_TRACE_RUNTIME='
   stat -c 'owner=%U:%G mode=%a' "$runtime"
@@ -62,19 +54,20 @@ launch_trace() {
   fi
 
   if [[ -n "$terminal_pid" && -S "$runtime/$wayland_display" && -x "$launcher" &&
-      -x /usr/bin/seyrix-settings && -r "$diagnostic_desktop" ]] &&
-      grep -Fxq "Exec=$launcher" "$diagnostic_desktop" &&
-      grep -Fxq "TryExec=$launcher" "$diagnostic_desktop" &&
+      -x /usr/bin/seyrix-settings && -r "$compositor" ]] &&
+      grep -Fxq 'Exec=seyrix-settings-launch' "$desktop" &&
+      grep -Fxq 'TryExec=seyrix-settings-launch' "$desktop" &&
       pgrep -u 1000 -x seyrix-settings >/dev/null; then
-    echo SETTINGS_WRAPPER_LAUNCH_REQUESTED=passed source=seyrix-shell-launcher
+    echo SETTINGS_WRAPPER_LAUNCH_REQUESTED=passed source=production-session-supervisor-existing-app
   else
-    echo SETTINGS_WRAPPER_LAUNCH_REQUESTED=failed reason=graphical-launcher-did-not-start-traced-settings
+    echo SETTINGS_WRAPPER_LAUNCH_REQUESTED=failed reason=production-managed-settings-not-active
   fi
 
   trace_pid=
   for n in $(seq 1 90); do
-    trace_pid=$(settings_trace_initial_appearance_pid "$trace" 2>/dev/null || true)
-    mapped=$(grep -c 'Window mapped: app_id=org.seyrix.settings' "$compositor" 2>/dev/null || true)
+    active_pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1 || true)
+    trace_pid=$(settings_trace_initial_appearance_pid "$trace" "$active_pid" 2>/dev/null || true)
+    mapped=$(grep -F "Window mapped: pid=$active_pid " "$compositor" | grep -c 'app_id=org.seyrix.settings' || true)
     if [[ -n "$trace_pid" && "$mapped" -gt 0 && -r "$trace" && -r "/proc/$trace_pid/environ" ]]; then
       break
     fi
@@ -84,6 +77,9 @@ launch_trace() {
   proc_pid=$(test -n "$trace_pid" && sed -n 's/^Pid:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$trace_pid/status" 2>/dev/null || true)
   uid=$(test -n "$trace_pid" && sed -n 's/^Uid:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$trace_pid/status" 2>/dev/null || true)
   native_exe=$(test -n "$trace_pid" && readlink -f "/proc/$trace_pid/exe" 2>/dev/null || true)
+  manager_pid=$(test -r /run/user/1000/seyrix-settings-supervisor.pid && cat /run/user/1000/seyrix-settings-supervisor.pid || true)
+  app_parent=$(test -n "$trace_pid" && sed -n 's/^PPid:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$trace_pid/status" 2>/dev/null || true)
+  manager_exe=$(test -n "$manager_pid" && readlink -f "/proc/$manager_pid/exe" 2>/dev/null || true)
   compositor_pid=$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)
   settings_sid=$(test -n "$trace_pid" && ps -o sid= -p "$trace_pid" 2>/dev/null | tr -d ' ' || true)
   compositor_sid=$(test -n "$compositor_pid" && ps -o sid= -p "$compositor_pid" 2>/dev/null | tr -d ' ' || true)
@@ -97,7 +93,7 @@ launch_trace() {
   launcher_executable=no
   binary_executable=no
   [[ -r "$trace" ]] && trace_readable=yes
-  [[ -x "$launcher" ]] && launcher_executable=yes
+  [[ -x "$launcher" && "$manager_exe" == /usr/bin/seyrix-session-supervisor && "$app_parent" == "$manager_pid" ]] && launcher_executable=yes
   [[ -x /usr/bin/seyrix-settings ]] && binary_executable=yes
   trace_env_settings=$(printf '%s\n' "$trace_environment" | sed -n 's/^SEYRIX_SETTINGS_RENDER_TRACE=//p' | head -n 1)
   trace_env_wayland=$(printf '%s\n' "$trace_environment" | sed -n 's/^WAYLAND_DEBUG=//p' | head -n 1)
@@ -109,7 +105,7 @@ launch_trace() {
   fi
   client_events=$(settings_trace_client_surface_event_count "$trace" "$trace_pid")
 
-  printf 'SETTINGS_TRACE_APP_PID=%s CHECKED_PROC_PID=%s UID=%s NATIVE_EXE=%s TRACE_OWNER=%s\n' "$trace_pid" "$proc_pid" "$uid" "$native_exe" "$trace_owner"
+  printf 'SETTINGS_TRACE_APP_PID=%s CHECKED_PROC_PID=%s UID=%s NATIVE_EXE=%s TRACE_OWNER=%s MANAGER_PID=%s APP_PARENT=%s MANAGER_EXE=%s\n' "$trace_pid" "$proc_pid" "$uid" "$native_exe" "$trace_owner" "$manager_pid" "$app_parent" "$manager_exe"
   printf 'SETTINGS_TRACE_SESSION_PID=%s SETTINGS_TRACE_SESSION_ID=%s COMPOSITOR_PID=%s COMPOSITOR_SESSION_ID=%s\n' "$trace_pid" "$settings_sid" "$compositor_pid" "$compositor_sid"
   printf 'SETTINGS_ACTIVE_PAGE_BEFORE=%s\n' "$page_before"
   printf 'SETTINGS_TRACE_ENV SEYRIX_SETTINGS_RENDER_TRACE=%s WAYLAND_DEBUG=%s XDG_RUNTIME_DIR=%s WAYLAND_DISPLAY=%s\n' "$trace_env_settings" "$trace_env_wayland" "$trace_env_runtime" "$trace_env_display"

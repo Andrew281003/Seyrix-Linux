@@ -28,8 +28,9 @@ if ! command -v flock >/dev/null 2>&1; then
 fi
 
 if [[ ! -x /usr/bin/seyrix-compositor || ! -x /usr/bin/weston-terminal ||
-		! -x /usr/bin/seyrix-shell ]]; then
-  echo "Seyrix compositor, panel, or weston-terminal is missing from this image." >&2
+		! -x /usr/bin/seyrix-shell ||
+		! -x /usr/bin/seyrix-session-supervisor ]]; then
+	echo "Seyrix compositor, panel, terminal, or session supervisor is missing from this image." >&2
   exit 1
 fi
 
@@ -40,9 +41,78 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Seyrix
 
-exec > >(tee /tmp/seyrix-compositor.log) 2>&1
+run_session() {
+	if (( $# != 0 )); then
+		echo "Internal error: invalid Seyrix session-runner arguments." >&2
+		return 2
+	fi
+	/usr/bin/seyrix-session-supervisor --serve &
+	supervisor_pid=$!
+	ready=false
+	for attempt in {1..40}; do
+		if /usr/bin/seyrix-session-supervisor --ping; then
+			ready=true
+			break
+		fi
+		if ! kill -0 "$supervisor_pid" 2>/dev/null; then
+			wait "$supervisor_pid" || true
+			break
+		fi
+		sleep 0.05
+	done
+	if [[ "$ready" != true ]]; then
+		echo "Seyrix session supervisor did not become ready." >&2
+		return 1
+	fi
+
+	session_end() {
+		trap - INT TERM HUP
+		/usr/bin/seyrix-session-supervisor --stop || true
+	}
+	trap session_end INT TERM HUP
+
+	restart_window_start=$SECONDS
+	restart_count=0
+	while true; do
+		status=0
+		/usr/bin/seyrix-compositor || status=$?
+		if (( status == 0 )); then
+			trap - INT TERM HUP
+			/usr/bin/seyrix-session-supervisor --stop || true
+			return 0
+		fi
+		if (( SECONDS - restart_window_start >= 120 )); then
+			restart_window_start=$SECONDS
+			restart_count=0
+		fi
+		if (( restart_count >= 5 )); then
+			echo "SEYRIX_SESSION event=compositor-restart-limit status=$status attempts=$restart_count" >&2
+			trap - INT TERM HUP
+			/usr/bin/seyrix-session-supervisor --stop || true
+			return "$status"
+		fi
+		delay=$((1 << restart_count))
+		(( delay > 16 )) && delay=16
+		restart_count=$((restart_count + 1))
+		echo "SEYRIX_SESSION event=compositor-exit status=$status action=restart attempt=$restart_count delay=${delay}s" >&2
+		sleep "$delay"
+	done
+}
+
+if [[ "${1:-}" == --session-runner ]]; then
+	shift
+	run_session "$@"
+	exit $?
+fi
+if (( $# != 0 )); then
+	echo "Usage: start-seyrix" >&2
+	exit 2
+fi
+
+exec > >(tee -a /tmp/seyrix-compositor.log) 2>&1
+script_path="$(readlink -f -- "$0")"
 if flock --nonblock --conflict-exit-code 75 --close \
-		"$XDG_RUNTIME_DIR/seyrix-session.lock" /usr/bin/seyrix-compositor; then
+		"$XDG_RUNTIME_DIR/seyrix-session.lock" "$script_path" --session-runner; then
 	exit 0
 else
 	status=$?

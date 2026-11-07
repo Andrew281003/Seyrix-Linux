@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wlr/util/log.h>
@@ -37,6 +38,7 @@ struct seyrix_settings_client {
 	int fd;
 	uid_t uid;
 	pid_t pid;
+	uint64_t connection_id;
 	bool negotiated;
 	bool subscribed;
 };
@@ -53,10 +55,21 @@ struct seyrix_settings_control {
 	dev_t socket_device;
 	ino_t socket_inode;
 	uint64_t revision;
+	uint64_t next_connection_id;
 	char runtime_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 	char socket_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 	bool socket_identity_valid;
 };
+
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+static uint64_t settings_trace_monotonic_ns(void) {
+	struct timespec now = {0};
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+		return 0;
+	}
+	return (uint64_t)now.tv_sec * 1000000000U + (uint64_t)now.tv_nsec;
+}
+#endif
 
 static bool settings_send(struct seyrix_settings_client *client,
 		const uint8_t *packet, size_t packet_size) {
@@ -66,10 +79,25 @@ static bool settings_send(struct seyrix_settings_client *client,
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
 		struct seyrix_settings_frame frame;
 		if (seyrix_settings_decode_frame(packet, packet_size, &frame)) {
-			wlr_log(WLR_INFO,
-				"Settings endpoint sent peer_pid=%ld opcode=%u request=%u bytes=%zu revision=%llu",
-				(long)client->pid, frame.opcode, frame.request_id, packet_size,
-				(unsigned long long)frame.revision);
+			if (frame.opcode == SEYRIX_SETTINGS_OP_RESPONSE &&
+					frame.payload_size >= 4) {
+				const uint8_t *payload = packet + SEYRIX_SETTINGS_HEADER_SIZE;
+				wlr_log(WLR_INFO,
+					"Settings endpoint sent peer_pid=%ld opcode=%u request=%u bytes=%zu revision=%llu response_status=%u response_to=%u connection_id=%llu fd=%d mono_ns=%llu",
+					(long)client->pid, frame.opcode, frame.request_id, packet_size,
+					(unsigned long long)frame.revision,
+					seyrix_settings_read_u16(payload),
+					seyrix_settings_read_u16(payload + 2),
+					(unsigned long long)client->connection_id, client->fd,
+					(unsigned long long)settings_trace_monotonic_ns());
+			} else {
+				wlr_log(WLR_INFO,
+					"Settings endpoint sent peer_pid=%ld opcode=%u request=%u bytes=%zu revision=%llu connection_id=%llu fd=%d mono_ns=%llu",
+					(long)client->pid, frame.opcode, frame.request_id, packet_size,
+					(unsigned long long)frame.revision,
+					(unsigned long long)client->connection_id, client->fd,
+					(unsigned long long)settings_trace_monotonic_ns());
+			}
 		}
 #endif
 		return true;
@@ -77,8 +105,10 @@ static bool settings_send(struct seyrix_settings_client *client,
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
 	int send_errno = errno;
 	wlr_log(WLR_INFO,
-		"Settings endpoint send failed peer_pid=%ld sent=%ld expected=%zu errno=%d",
-		(long)client->pid, (long)sent, packet_size, send_errno);
+		"Settings endpoint send failed peer_pid=%ld sent=%ld expected=%zu errno=%d connection_id=%llu fd=%d mono_ns=%llu",
+		(long)client->pid, (long)sent, packet_size, send_errno,
+		(unsigned long long)client->connection_id, client->fd,
+		(unsigned long long)settings_trace_monotonic_ns());
 #endif
 	return false;
 }
@@ -342,6 +372,13 @@ static void settings_remove_client(struct seyrix_settings_client *client) {
 	if (client == NULL) {
 		return;
 	}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+	wlr_log(WLR_INFO,
+		"Settings endpoint removing peer_pid=%ld connection_id=%llu fd=%d negotiated=%d subscribed=%d mono_ns=%llu",
+		(long)client->pid, (unsigned long long)client->connection_id,
+		client->fd, client->negotiated, client->subscribed,
+		(unsigned long long)settings_trace_monotonic_ns());
+#endif
 	if (client->source != NULL) {
 		wl_event_source_remove(client->source);
 		client->source = NULL;
@@ -450,11 +487,19 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 	if (client == NULL || client->fd != fd) {
 		return 0;
 	}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+	wlr_log(WLR_INFO,
+		"Settings endpoint dispatch peer_pid=%ld connection_id=%llu fd=%d mask=0x%x mono_ns=%llu",
+		(long)client->pid, (unsigned long long)client->connection_id,
+		fd, mask, (unsigned long long)settings_trace_monotonic_ns());
+#endif
 	if ((mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) != 0) {
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
 		wlr_log(WLR_INFO,
-			"Settings endpoint peer hangup pid=%ld mask=0x%x negotiated=%d subscribed=%d",
-			(long)client->pid, mask, client->negotiated, client->subscribed);
+			"Settings endpoint peer hangup pid=%ld mask=0x%x negotiated=%d subscribed=%d connection_id=%llu fd=%d mono_ns=%llu",
+			(long)client->pid, mask, client->negotiated, client->subscribed,
+			(unsigned long long)client->connection_id, fd,
+			(unsigned long long)settings_trace_monotonic_ns());
 #endif
 		settings_remove_client(client);
 		return 0;
@@ -472,27 +517,41 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 		};
 		ssize_t received = recvmsg(fd, &message,
 			MSG_DONTWAIT | MSG_TRUNC | MSG_CMSG_CLOEXEC);
+		int receive_errno = received < 0 ? errno : 0;
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		wlr_log(WLR_INFO,
+			"Settings endpoint read peer_pid=%ld connection_id=%llu fd=%d received=%ld errno=%d msg_flags=0x%x control_len=%zu mono_ns=%llu",
+			(long)client->pid, (unsigned long long)client->connection_id, fd,
+			(long)received, receive_errno, message.msg_flags,
+			(size_t)message.msg_controllen,
+			(unsigned long long)settings_trace_monotonic_ns());
+#endif
 		if (received == 0) {
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
-			wlr_log(WLR_INFO, "Settings endpoint peer closed pid=%ld",
-				(long)client->pid);
+			wlr_log(WLR_INFO,
+				"Settings endpoint peer closed pid=%ld connection_id=%llu fd=%d mono_ns=%llu",
+				(long)client->pid,
+				(unsigned long long)client->connection_id, fd,
+				(unsigned long long)settings_trace_monotonic_ns());
 #endif
 			settings_remove_client(client);
 			return 0;
 		}
 		if (received < 0) {
-			if (errno == EINTR) {
+			if (receive_errno == EINTR) {
 				handled--;
 				continue;
 			}
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			if (receive_errno == EAGAIN || receive_errno == EWOULDBLOCK) {
+				/* The read callback ran and the accepted socket had no queued frame. */
 				return 0;
 			}
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
-			int receive_errno = errno;
 			wlr_log(WLR_INFO,
-				"Settings endpoint receive failed peer_pid=%ld errno=%d",
-				(long)client->pid, receive_errno);
+				"Settings endpoint receive failed peer_pid=%ld errno=%d connection_id=%llu fd=%d mono_ns=%llu",
+				(long)client->pid, receive_errno,
+				(unsigned long long)client->connection_id, fd,
+				(unsigned long long)settings_trace_monotonic_ns());
 #endif
 			settings_remove_client(client);
 			return 0;
@@ -522,31 +581,47 @@ static int settings_handle_client(int fd, uint32_t mask, void *data) {
 			const char *reason = received_fds ? "ancillary-data" :
 				truncated ? "truncated" : "invalid-wire-frame";
 			wlr_log(WLR_INFO,
-				"Settings endpoint rejected frame peer_pid=%ld reason=%s size=%ld msg_flags=0x%x control_len=%zu magic=%02x%02x%02x%02x",
+				"Settings endpoint rejected frame peer_pid=%ld reason=%s size=%ld msg_flags=0x%x control_len=%zu magic=%02x%02x%02x%02x connection_id=%llu fd=%d mono_ns=%llu",
 				(long)client->pid, reason, (long)received, message.msg_flags,
 				(size_t)message.msg_controllen,
 				(unsigned int)(received > 0 ? packet[0] : 0),
 				(unsigned int)(received > 1 ? packet[1] : 0),
 				(unsigned int)(received > 2 ? packet[2] : 0),
-				(unsigned int)(received > 3 ? packet[3] : 0));
+				(unsigned int)(received > 3 ? packet[3] : 0),
+				(unsigned long long)client->connection_id, fd,
+				(unsigned long long)settings_trace_monotonic_ns());
 #endif
 			settings_remove_client(client);
 			return 0;
 		}
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
 		wlr_log(WLR_INFO,
-			"Settings endpoint frame peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u revision=%llu negotiated=%d",
+			"Settings endpoint frame peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u revision=%llu negotiated=%d connection_id=%llu fd=%d mono_ns=%llu",
 			(long)client->pid, frame.frame_version, frame.flags, frame.opcode,
 			frame.request_id, frame.payload_size,
-			(unsigned long long)frame.revision, client->negotiated);
+			(unsigned long long)frame.revision, client->negotiated,
+			(unsigned long long)client->connection_id, fd,
+			(unsigned long long)settings_trace_monotonic_ns());
 #endif
-		if (!settings_handle_request(client, &frame)) {
+		bool request_handled = settings_handle_request(client, &frame);
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		wlr_log(WLR_INFO,
+			"Settings endpoint request-dispatch peer_pid=%ld connection_id=%llu fd=%d opcode=%u request=%u result=%s negotiated=%d subscribed=%d mono_ns=%llu",
+			(long)client->pid, (unsigned long long)client->connection_id, fd,
+			frame.opcode, frame.request_id,
+			request_handled ? "handled" : "failed", client->negotiated,
+			client->subscribed,
+			(unsigned long long)settings_trace_monotonic_ns());
+#endif
+		if (!request_handled) {
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
 			wlr_log(WLR_INFO,
-				"Settings endpoint rejected request peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u negotiated=%d",
+				"Settings endpoint rejected request peer_pid=%ld version=%u flags=%u opcode=%u request=%u payload=%u negotiated=%d connection_id=%llu fd=%d mono_ns=%llu",
 				(long)client->pid, frame.frame_version, frame.flags,
 				frame.opcode, frame.request_id, frame.payload_size,
-				client->negotiated);
+				client->negotiated,
+				(unsigned long long)client->connection_id, fd,
+				(unsigned long long)settings_trace_monotonic_ns());
 #endif
 			settings_remove_client(client);
 			return 0;
@@ -576,7 +651,8 @@ bool seyrix_settings_peer_authorized(uid_t peer_uid, pid_t peer_pid,
 }
 
 static bool settings_accept_peer(struct seyrix_settings_control *control,
-		int fd, uid_t *uid, pid_t *pid) {
+		int fd, uint64_t connection_id, uid_t *uid, pid_t *pid) {
+	(void)connection_id;
 	struct ucred credentials;
 	socklen_t size = sizeof(credentials);
 	if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &credentials, &size) != 0 ||
@@ -593,18 +669,27 @@ static bool settings_accept_peer(struct seyrix_settings_control *control,
 		pid_t owner_sid = getsid(0);
 		int owner_sid_errno = errno;
 		wlr_log(WLR_INFO,
-			"Settings endpoint rejected peer uid=%ld pid=%ld sid=%ld sid_errno=%d; owner uid=%ld pid=%ld sid=%ld sid_errno=%d",
+			"Settings endpoint rejected peer uid=%ld pid=%ld sid=%ld sid_errno=%d; owner uid=%ld pid=%ld sid=%ld sid_errno=%d connection_id=%llu fd=%d mono_ns=%llu",
 			(long)credentials.uid, (long)credentials.pid, (long)peer_sid,
 			peer_sid_errno, (long)control->owner_uid, (long)getpid(),
-			(long)owner_sid, owner_sid_errno);
+			(long)owner_sid, owner_sid_errno,
+			(unsigned long long)connection_id, fd,
+			(unsigned long long)settings_trace_monotonic_ns());
 #endif
 		return false;
 	}
 #ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+	struct stat socket_status = {0};
+	int socket_stat_result = fstat(fd, &socket_status);
+	int socket_stat_errno = socket_stat_result == 0 ? 0 : errno;
 	wlr_log(WLR_INFO,
-		"Settings endpoint accepted peer uid=%ld pid=%ld sid=%ld owner_pid=%ld owner_sid=%ld",
+		"Settings endpoint accepted peer uid=%ld pid=%ld sid=%ld owner_pid=%ld owner_sid=%ld connection_id=%llu fd=%d inode=%llu stat_errno=%d mono_ns=%llu",
 		(long)credentials.uid, (long)credentials.pid,
-		(long)getsid(credentials.pid), (long)getpid(), (long)getsid(0));
+		(long)getsid(credentials.pid), (long)getpid(), (long)getsid(0),
+		(unsigned long long)connection_id, fd,
+		(unsigned long long)(socket_stat_result == 0 ? socket_status.st_ino : 0),
+		socket_stat_errno,
+		(unsigned long long)settings_trace_monotonic_ns());
 #endif
 	*uid = credentials.uid;
 	*pid = credentials.pid;
@@ -630,9 +715,13 @@ static void settings_accept_clients(struct seyrix_settings_control *control) {
 			close(fd);
 			continue;
 		}
+		uint64_t connection_id = ++control->next_connection_id;
+		if (connection_id == 0) {
+			connection_id = ++control->next_connection_id;
+		}
 		uid_t uid = (uid_t)-1;
 		pid_t pid = -1;
-		if (!settings_accept_peer(control, fd, &uid, &pid)) {
+		if (!settings_accept_peer(control, fd, connection_id, &uid, &pid)) {
 			close(fd);
 			continue;
 		}
@@ -645,16 +734,31 @@ static void settings_accept_clients(struct seyrix_settings_control *control) {
 		client->fd = fd;
 		client->uid = uid;
 		client->pid = pid;
+		client->connection_id = connection_id;
 		wl_list_init(&client->link);
 		client->source = wl_event_loop_add_fd(
 			wl_display_get_event_loop(control->server->display), fd,
 			WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR,
 			settings_handle_client, client);
 		if (client->source == NULL) {
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+			wlr_log(WLR_INFO,
+				"Settings endpoint watch failed peer_pid=%ld connection_id=%llu fd=%d mono_ns=%llu",
+				(long)client->pid,
+				(unsigned long long)client->connection_id, fd,
+				(unsigned long long)settings_trace_monotonic_ns());
+#endif
 			close(fd);
 			free(client);
 			continue;
 		}
+#ifdef SEYRIX_QEMU_ACCEPTANCE_HOOKS
+		wlr_log(WLR_INFO,
+			"Settings endpoint watch ready peer_pid=%ld connection_id=%llu fd=%d mono_ns=%llu",
+			(long)client->pid,
+			(unsigned long long)client->connection_id, fd,
+			(unsigned long long)settings_trace_monotonic_ns());
+#endif
 		wl_list_insert(&control->clients, &client->link);
 	}
 }
