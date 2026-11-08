@@ -7,8 +7,10 @@ Development is paused for the Pop!_OS migration. Phase 2D.3B.5 is **INCOMPLETE**
 - Active worktree: `C:\Users\quake\.codex\worktrees\phase2d3b5-system-settings\Seyrix-Linux`
 - Branch: `codex/phase2d3b5-system-settings`
 - Base HEAD before this checkpoint: `dd0c9231fe576e34d61cfda6f6d73ed83e1a3103`
+- Source/report checkpoint commit: `a30f04b32785c871651bff5cfa1285901de3c8e5`
 - Remote: `https://github.com/Andrew281003/Seyrix-Linux.git`, dedicated branch `codex/phase2d3b5-system-settings`
-- The checkpoint commit and verified remote SHA are recorded in the portable backup manifest and the migration completion report.
+- The verified remote tip is recorded in the portable backup README and final migration report.
+- Two untracked files remain outside the source commit: `tests/.trace-regression-6yCQAG.sh` and the repository-root filename `U+F05C` (a private-use Unicode character). Both are retained in the portable backup.
 - The separate Coding checkout is at `C:\Users\quake\Desktop\Coding\Seyrix-Linux`, branch `phase2d1-hybrid-window-management`, HEAD `4bc271a7c4497b05266961a1544738e81d1c23c3`. It has its own local changes; do not overwrite them.
 - Other dirty Seyrix worktrees exist under `C:\Users\quake\.codex\worktrees\` (`phase2d3b-diagnostic`, `phase2d3b5-smp-investigation`, and `phase2d3b5b-agent1`). Their changes are preserved in the migration backup as patches and untracked-file archives.
 
