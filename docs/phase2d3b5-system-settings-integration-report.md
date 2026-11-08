@@ -2,7 +2,7 @@
 
 **Acceptance decision: INCOMPLETE**
 
-Phase 2D.3B remains unaccepted. The 2026-11-04 targeted 1280×720 continuation verified a real mouse transition from Appearance to Desktop & Dock using the mapped sidebar row, including GTK selection, `GtkStack`, mapped-page, Wayland presentation, and rendered-page evidence. Incorrect harness targeting/layout was one demonstrated issue in earlier attempts, but the return-to-Appearance capture shows selected GTK state with stale Desktop & Dock content. The GTK root cause therefore remains **UNKNOWN**. The pixel comparison correctly stopped keyboard input after detecting the stale content. Graphical acceptance and the remaining phase gates are incomplete.
+Phase 2D.3B remains unaccepted. In the latest 2026-11-08 focused 640×480 run, replacement Settings PID 2731 restored Input state and completed HELLO, snapshot, and subscription, but matching compositor records stop at peer acceptance, watch readiness, and dispatch. The live Wayland trace sidecar was not exported, so its completeness and attribution are **NOT VERIFIED**. The recovery gate is **INCOMPLETE**; no broader matrix or promotion was started. See the final logging candidate addendum below. Earlier GTK navigation evidence remains as recorded below; its root cause remains **UNKNOWN**.
 
 ## 2026-11-03 storage and targeted navigation follow-up
 
@@ -813,3 +813,128 @@ Unprivileged `ss`/`/proc` capture mapped the connection’s peer inode: Settings
 Offline checks before QEMU: Settings tests **PASS 6/6** (including traced client reconnect), `tests/settings-render-trace-regression.sh` **PASS**, Bash syntax checks for the helper and regression **PASS**, hooks-enabled and production hooks-disabled compositor compiles **PASS**, unprivileged socket peer mapping **PASS**, and scoped `git diff --check` **PASS**. No production fix was made, and the broader acceptance gates remain unchanged.
 
 Resume by tracing why the raw server event stream for PID 2692 is absent from `fresh` despite the successful client responses and peer-FD mapping. Improve bounded server-log capture without weakening its acceptance predicate, run a focused offline regression, then make one bounded IPC-only rerun if needed. Phase 2D.3B.5 remains **INCOMPLETE**.
+
+### IPC observability and focused recovery — 2026-11-07
+
+**Result: initial IPC and supervised relaunch PASS; recovery acceptance INCOMPLETE because one matching compositor subscription record was not captured. No protocol defect was demonstrated. The broader matrix was not started and promotion is not ready.**
+
+The prior `qemu-graphics-20261107T201710Z` evidence for replacement Settings PID 2692 showed successful client-side HELLO, snapshot, and subscription replies, with fd/inode correlation to compositor PID 2606, while the retained compositor stream had no corresponding accepted-peer/frame/send records. Source review confirmed that the compositor hooks are compiled only with `SEYRIX_QEMU_ACCEPTANCE_HOOKS`, log accepted-peer, receive/dispatch/frame, send, and removal paths at `WLR_INFO`, and use `SO_PEERCRED`, session checks, and socket identity. The diagnostic build included the hooks; initial compositor-side records were present. The client decoded successful responses, so no production protocol change was justified.
+
+The shared capture path was also reviewed: `start-seyrix` appends compositor and supervisor stderr to `/tmp/seyrix-compositor.log`; before the latest edit, supervisor `trace_emit_line` wrote each record in separate prefix, payload, and newline stdio operations, while `WAYLAND_DEBUG=client` added high-volume records to the same stream. This made line interleaving/capture loss plausible, but did not prove the precise loss mechanism for every missing server event.
+
+Scoped observability changes were made in `desktop/session-supervisor/main.c`, `tests/qemu-graphics.exp`, `tests/qemu-guest-helper.sh`, and `tests/settings-render-trace-regression.sh`:
+
+- IPC tracing is independent of Wayland protocol tracing. In IPC diagnostic mode, protocol lines beginning with `[` go to a private XDG runtime sidecar (mode 0600; no-follow open, regular-file/owner/link/mode validation before truncation). The compact popup checker reads that sidecar from a checked baseline while the compositor log retains IPC records.
+- The recovery stream now retains every `Settings endpoint ` event while keeping its exact accept/frame/send acceptance predicates.
+- After the QEMU run described below, supervisor stderr trace records were changed to use one constructed write loop to reduce interleaving with compositor log records. That final writer edit has compile/offline evidence only; the QEMU ISO predates it.
+
+The diagnostic ISO was built before the final atomic-writer edit:
+
+- ISO: `/var/tmp/seyrix-linux/phase2d3b5-ipc-sidecar-20261107T213135Z/out/seyrix-phase2d3b-2026.11.07-x86_64.iso`
+- SHA-256: `4326e3a241f8c6edeaed5b3b6f45557cd144185840b204e469d6f0b8e099a582`
+- Build command: `CC=/var/tmp/seyrix-linux/phase2d3b-ipc-diag-20261107T1945Z/diagnostic-cc SEYRIX_ARTIFACT_ROOT=/var/tmp/seyrix-linux SEYRIX_BUILD_ROOT=/var/tmp/seyrix-linux/phase2d3b5-ipc-sidecar-20261107T213135Z SEYRIX_QEMU_ACCEPTANCE_HOOKS=1 SEYRIX_QEMU_SETTINGS_RENDER_TRACE=1 ./build/build-phase2d3b-iso.sh`
+- Acceptance hooks and render tracing were enabled. Release suites passed: compositor 4/4, Shell 5/5, Settings 3/3, and supervisor 3/3. The build-integrated desktop-entry, QEMU helper/Tcl, Settings render/input regression checks also passed. Existing `settings-window.c` enum/int signedness warnings were demoted only via the task-local compiler wrapper; archiso root-directory and GRUB SBAT warnings were emitted. No ISO promotion occurred.
+
+One bounded IPC-only QEMU run used shared lock token `20261107T214037Z-257-3568` and retained evidence at `/var/tmp/seyrix-linux/qemu-graphics-20261107T214000Z/`. Command:
+
+```bash
+SEYRIX_RETENTION_KEEP_EVIDENCE=1 SEYRIX_RETENTION_KEEP_ARTIFACTS=1 \
+SEYRIX_QEMU_SETTINGS_IPC_ONLY=1 SEYRIX_QEMU_WORKFLOW=phase2d3b \
+SEYRIX_QEMU_RESOLUTION_PROFILE=640x480 \
+SEYRIX_QEMU_GRAPHICS_DIR=/var/tmp/seyrix-linux/qemu-graphics-20261107T214000Z \
+  tests/qemu-graphics.sh \
+  /var/tmp/seyrix-linux/phase2d3b5-ipc-sidecar-20261107T213135Z/out/seyrix-phase2d3b-2026.11.07-x86_64.iso
+```
+
+Boot/readiness, the shell restart fixture, initial authenticated Settings PID 2133 HELLO/snapshot/subscription, popup configure/commit via the sidecar, Input-category save, state baseline, and compositor termination **PASS**. The saved pre-recovery state was Input, 720×560, maximized, paned position 160 (manager PID 634, compositor PID 638, Settings PID 2133). The same manager recovered compositor PID 2615 and launched exactly one replacement Settings PID 2704 (PPID 634), which restored state and mapped. Socket correlation identified client fd 9/inode 11898, peer credentials PID 2615/UID 1000, peer inode 11899, compositor fds 71 and 75.
+
+Client diagnostics confirm a full replacement handshake: 28-byte HELLO and valid decoded reply, snapshot request and decoded 260-byte response, then a 24-byte subscription write and decoded 260-byte subscribed response. The compositor capture contains the accepted peer plus HELLO and snapshot frame/send records, but no request-3 subscription frame/send record in the recovery verifier's `fresh` stream. The verifier therefore returned `SETTINGS_SUPERVISOR_RECOVERY=failed` with `subscribe_request=missing`; run result is **INCOMPLETE**, exit status 1. This is evidence of an observability gap, not an IPC protocol failure. The recovery gate did not pass, so no additional QEMU runs or Stage 3 matrix were started.
+
+After preserving the run, the following verification passed against the final atomic-writer source: Bash syntax for the Settings trace regression, QEMU helper, and QEMU driver; `tests/settings-render-trace-regression.sh` (`SETTINGS_RENDER_TRACE_OFFLINE_REGRESSION=PASS`); isolated supervisor build at `/var/tmp/seyrix-linux/phase2d3b5-atomic-trace-compile-20261107T220000Z/session-supervisor-build`; supervisor tests 3/3. One ad hoc Meson command attempt ended before Meson due nested-shell quoting and left a marked failed scratch directory; the corrected isolated build/test command passed.
+
+| Acceptance gate | Current result | Evidence / limit |
+|---|---|---|
+| Release suites | PASS | 4/4 compositor, 5/5 Shell, 3/3 Settings, 3/3 supervisor on the diagnostic ISO build; supervisor 3/3 rebuilt after the final writer edit. |
+| Offline trace/input/Tcl regressions | PASS | Latest render trace regression and Bash syntax checks passed. |
+| 640×480 compositor-loss recovery | INCOMPLETE | One replacement restored state and completed client IPC, but its compositor subscription frame/send records were absent from the verifier stream. |
+| Six categories × four resolutions | NOT RUN | Focused recovery did not pass. |
+| Ten cold boots on current candidate | NOT RUN | No current-candidate campaign. |
+| Weston/TTY fallback | NOT RUN | No current-candidate acceptance run. |
+| Lifecycle/security/supervisor full acceptance | INCOMPLETE | Several startup/restart checks passed in the focused run; the recovery gate failed and the wider lifecycle/security matrix was not run. |
+| Two independent complete E2E sessions | NOT RUN | No complete sessions. |
+| Sanitizer suites on current source | NOT RUN | Existing prior results do not include the final supervisor writer edit. |
+| Phase 2D.3B.5 promotion readiness | INCOMPLETE | Not ready; no merge, push, or ISO promotion. |
+
+**Resume point:** the final atomic-writer change still needs a fresh diagnostic ISO and one focused recovery run after work resumes. Start the full matrix only if that focused gate passes. Preserve this run and all earlier artifacts; no protocol changes, physical disk writes, merge, push, or promotion occurred.
+
+## Final logging candidate and focused recovery — 2026-11-08
+
+**Status: build PASS; focused recovery gate FAIL/INCOMPLETE; acceptance matrix NOT RUN; Phase 2D.3B.5 INCOMPLETE.**
+
+### Candidate build
+
+- Source revision: branch `codex/phase2d3b5-system-settings`, HEAD `dd0c9231fe576e34d61cfda6f6d73ed83e1a3103`, with the captured working-tree state. The WSL Git diff SHA-256 is `07c4a3f4e3ef3861f8a0549a846a8fe100facfacc131d03eda3dbea363dfdd0d`; the tracked-source manifest SHA-256 is `ca8da13528972409277ce7283e672d865e0b048b862a830000a847c525407b37`. WSL Git showed broader line-ending-visible changes than the Windows Git view; these digests identify the actual source view used for this build and do not imply every line-ending-visible difference was intentionally authored.
+- Source snapshot, diff, tracked-file hash list, compiler-wrapper checksum, and build metadata are retained under `/var/tmp/seyrix-linux/phase2d3b5-final-supervisor-log-20261108T080000Z/metadata/`.
+- Build command:
+
+  ```bash
+  CC=/var/tmp/seyrix-linux/phase2d3b-ipc-diag-20261107T1945Z/diagnostic-cc SEYRIX_ARTIFACT_ROOT=/var/tmp/seyrix-linux SEYRIX_BUILD_ROOT=/var/tmp/seyrix-linux/phase2d3b5-final-supervisor-log-20261108T080000Z SEYRIX_QEMU_ACCEPTANCE_HOOKS=1 SEYRIX_QEMU_SETTINGS_RENDER_TRACE=1 SEYRIX_RETENTION_KEEP_ARTIFACTS=1 /mnt/c/Users/quake/.codex/worktrees/phase2d3b5-system-settings/Seyrix-Linux/build/build-phase2d3b-iso.sh
+  ```
+
+- Candidate ISO: `/var/tmp/seyrix-linux/phase2d3b5-final-supervisor-log-20261108T080000Z/out/seyrix-phase2d3b-2026.11.08-x86_64.iso`; 1,129,283,584 bytes; SHA-256 `227fb358fb380b4816fdb0a09fb33be7dde0ce1c4181aa61c3d0bf586d09a003`. The ISO checksum is also in `metadata/iso.sha256`. The candidate was not promoted.
+- Release suites **PASS**: compositor 4/4, Shell 5/5, Settings 3/3, session supervisor 3/3. Build-integrated desktop-entry, 20-case page-helper, Settings render/input trace, and Tcl completeness checks **PASS**. Existing Settings signedness warnings at `settings-window.c:985,1013` were demoted by the task-local compiler wrapper; archiso `.pacnew` and GRUB SBAT warnings were emitted.
+
+### Focused 640×480 QEMU recovery
+
+One IPC-only recovery run used the shared lock `/tmp/seyrix-qemu-acceptance.lock`, token `20261108T081257Z-275-10783`. Evidence is retained at `/var/tmp/seyrix-linux/qemu-graphics-20261108T081240Z/`; `raw-artifacts.sha256` (SHA-256 `b821e57ba452c289f310c0ae6abdeb098fb05dc9ba1e4a154a977386f54e7d9e`) was generated and all listed checksums verified. The raw `test.log` SHA-256 is `ed9621749020002453a6137068b3814e61efb8d41e6099a416f08b05b32c3f8b`, `serial.log` is `f1849742e476deadecfeefeff2adfcdbcc3c46343cbe3f42e099bec57f1f034c`, and `expect-session.log` is `0a9b68afb0921ee6e2e85a6ef7a9d52dfa7f14bab8ebcf79c91e64b814480168`. The command and run metadata are retained in that directory. The run ended with exit status 1 and overall result **INCOMPLETE**; the recovery stage failed after 152,831 ms.
+
+```bash
+SEYRIX_RETENTION_KEEP_EVIDENCE=1 SEYRIX_RETENTION_KEEP_ARTIFACTS=1 \
+SEYRIX_ARTIFACT_ROOT=/var/tmp/seyrix-linux \
+SEYRIX_QEMU_LOCK_FILE=/tmp/seyrix-qemu-acceptance.lock \
+SEYRIX_QEMU_SETTINGS_IPC_ONLY=1 SEYRIX_QEMU_WORKFLOW=phase2d3b \
+SEYRIX_QEMU_RESOLUTION_PROFILE=640x480 \
+SEYRIX_QEMU_GRAPHICS_DIR=/var/tmp/seyrix-linux/qemu-graphics-20261108T081240Z \
+  tests/qemu-graphics.sh \
+  /var/tmp/seyrix-linux/phase2d3b5-final-supervisor-log-20261108T080000Z/out/seyrix-phase2d3b-2026.11.08-x86_64.iso
+```
+
+Boot/readiness, shell fixture recovery, initial Settings IPC, Input selection/state save, and compositor termination **PASS**. Initial Settings PID 2158 completed HELLO, snapshot, and subscription with matching client/server records. The saved state was Input, 720×560, maximized, paned position 160. After compositor PID 643 was killed, the same manager PID 639 restarted the compositor as PID 2643 and launched exactly one replacement Settings PID 2731 (PPID 639). The replacement restored the saved state, mapped its window, and connected to the authenticated endpoint as UID 1000; the compositor identified the peer as PID 2731 on connection ID 2, fd 71, inode 11821.
+
+Client-side trace evidence in `test.log` lines 398–427 (also in the timeout raw-stderr section) proves that PID 2731 completed fresh HELLO, snapshot, and subscription exchanges: request 1 received a valid 30-byte response with error 0; request 2 received a decoded 260-byte snapshot at revision 9; request 3 received a decoded 260-byte subscribed response at revision 9. The compositor capture for this same peer contains accepted-peer, watch-ready, and dispatch (`mask=0x1`) records, but no matching read, frame, request-dispatch, or send records. The recovery verifier therefore reports `hello=0` and missing snapshot/subscription requests in its server stream, and the matching client/server evidence gate **FAILS**. The successful client responses do not establish a product protocol failure; the server-side observation gap remains unresolved. The final single-write supervisor logger change did not close it.
+
+The guest private Wayland trace sidecar `/run/user/1000/seyrix-settings-wayland-trace.log` was not exported into the host evidence directory. Consequently, live sidecar completeness, PID attribution, and truncation checks are **INCOMPLETE / NOT VERIFIED**. Captured host logs and screenshots remain preserved and checksummed. The run-owned QEMU process exited during harness cleanup after the failed stage; `qemu-exit-status.txt` is absent. The shared QEMU lock was released, and no QEMU process remained active.
+
+### Current acceptance decision
+
+| Gate | Result | Evidence / limit |
+|---|---|---|
+| Fresh candidate build and release suites | PASS | Candidate and metadata above; candidate not promoted. |
+| Initial authenticated Settings IPC | PASS | PID 2158 client/server HELLO, snapshot, subscription. |
+| Replacement singleton, restored state, and mapped window | PASS | One replacement PID 2731 under unchanged manager PID 639. |
+| Replacement client HELLO, snapshot, subscription | PASS (client evidence) | PID 2731 decoded all successful responses. |
+| Matching replacement compositor records | FAIL / INCOMPLETE | Server capture stops after accepted-peer, watch-ready, and dispatch; no read/frame/send records. |
+| Live Wayland trace sidecar integrity | INCOMPLETE / NOT VERIFIED | Sidecar was not exported to host evidence. |
+| Six categories × four resolutions | NOT RUN | Focused recovery gate did not pass. |
+| Ten cold boots | NOT RUN | No campaign on this candidate. |
+| Weston/TTY fallback | NOT RUN | No current-candidate result. |
+| Lifecycle, security, resource growth, supervisor acceptance | INCOMPLETE / NOT RUN | Broader gates were not started. |
+| Final-source sanitizer suites | NOT RUN | Not reached after the focused recovery failure. |
+| Two independent end-to-end sessions | NOT RUN | Not reached. |
+| Promotion readiness | INCOMPLETE | Not ready; no merge, push, or ISO promotion. |
+
+**Final decision: INCOMPLETE.** The focused recovery acceptance did not pass its matching server-evidence and live-sidecar gates. No acceptance matrix or other expensive acceptance campaigns were started. No production or harness source changes were made during this run; no protocol or GTK changes, physical disk writes, merge, push, or promotion occurred.
+
+**Resume point:** retain this candidate and run evidence. Resolve the missing per-peer compositor read/frame/send evidence and export/validate the live Wayland sidecar with explicit completeness and attribution checks, then rerun only the focused 640×480 recovery gate. Start the broader acceptance stages only after that gate passes.
+
+### Emergency migration checkpoint — 2026-11-08
+
+**Status: Phase 2D.3B.5 remains INCOMPLETE.** No builds, tests, or QEMU runs were started for this handoff.
+
+The current diagnostic ISO is `/var/tmp/seyrix-linux/phase2d3b5-evidence-pipeline-20261108T085200Z/out/seyrix-phase2d3b-2026.11.08-x86_64.iso` (SHA-256 `b123438cd1638f9aacb39d61887abebaf359a2a46cd888f94ec8a53cde21c7f9`). Build-time release suites passed: compositor 4/4, Shell 5/5, Settings 3/3, and session supervisor 3/3. The ISO is not included in the migration archive because it is a large, reproducible artifact; its checksum and build metadata are preserved separately.
+
+The final focused 640×480 run is `/var/tmp/seyrix-linux/qemu-graphics-20261108T095000Z/`. Its raw manifest SHA-256 is `a5eda47a4a8ce96275aebfa60c736549ff35dc5a3b1f37ffefd6565b73f3f823`; `sha256sum -c raw-artifacts.sha256` passed for every listed file. The guest sidecars were exported and retained for PID 2707 (216,373 bytes, SHA-256 `04059e6264fc0bced12fc30d07a2a6bc83039fcbdd85d63d7503df718d6b2a51`) and PID 12681 (338,703 bytes, SHA-256 `3b81ebe8cf183c1da15ee252791819760c4ba4624b642379fc4aff167f0feac4`).
+
+Replacement PID 2707 restored Input state, completed client IPC according to the guest-side trace, and produced compositor read/frame/request-dispatch/send records. The retained host `test.log` does not contain the matching client HELLO, snapshot, and subscription trace lines for PID 2707, so the matching client/server evidence gate remains **INCOMPLETE**. The IPC-only run result is also `INCOMPLETE` by design; exit status 0 means its targeted lifecycle campaign ended cleanly, not that the full acceptance gate passed. The sidecar collection gate passed. Six-category resolution coverage, cold boots, fallback, sanitizer reruns, and full lifecycle/security acceptance remain NOT RUN.
+
+The source tree still needs a focused offline check that requires the three matching client response events in the retained recovery log. Then build one fresh diagnostic ISO, run one bounded locked 640×480 recovery, and require matching client and compositor HELLO/snapshot/subscription evidence plus retained attributable sidecar evidence. Only after that focused gate passes should the remaining acceptance stages resume. Do not change IPC protocol behavior to satisfy logging.

@@ -1287,7 +1287,7 @@ fi
 				puts stderr "Could not read the current GTK category control before recovery."
 				exit 1
 			}
-			set target_recovery_trace_baseline {wc -l < /tmp/seyrix-compositor.log > /tmp/seyrix-settings-recovery-category-baseline; echo SETTINGS_RECOVERY_CATEGORY_BASELINE=ready}
+			set target_recovery_trace_baseline {wc -l < /tmp/seyrix-compositor.log > /tmp/seyrix-settings-recovery-category-baseline || exit 1; wc -l < /run/user/1000/seyrix-settings-wayland-trace.log > /tmp/seyrix-settings-recovery-popup-baseline || exit 1; echo SETTINGS_RECOVERY_CATEGORY_BASELINE=ready}
 			run_serial_check $target_recovery_trace_baseline {SETTINGS_RECOVERY_CATEGORY_BASELINE=ready} {SETTINGS_RECOVERY_CATEGORY_BASELINE=failed} "baseline GTK trace before selecting the recovery category" 10
 			set recovery_click_x [expr {round([lindex $target_recovery_bounds 1] + [lindex $target_recovery_bounds 3] + [lindex $target_recovery_bounds 5] / 2.0)}]
 			set recovery_click_y [expr {round([lindex $target_recovery_bounds 2] + [lindex $target_recovery_bounds 4] + [lindex $target_recovery_bounds 6] / 2.0)}]
@@ -1307,8 +1307,8 @@ fi
 			if {[lindex $target_recovery_bounds 7] eq "1"} {
 				set target_recovery_popup_command {
 pid=$(pgrep -u 1000 -x seyrix-settings | head -n 1)
-baseline=$(cat /tmp/seyrix-settings-recovery-category-baseline)
-trace=/tmp/seyrix-compositor.log
+baseline=$(cat /tmp/seyrix-settings-recovery-popup-baseline)
+trace=/run/user/1000/seyrix-settings-wayland-trace.log
 xdg_surface_id=; popup_id=; surface_id=; popup_x=; popup_y=; popup_width=; popup_height=
 configured=0; acknowledged=0; attached=0; ready=0
 exec {trace_fd}< <(tail -n +$((baseline + 1)) -F "$trace")
@@ -1411,7 +1411,7 @@ fi
 			run_serial_check $target_user_close_command {SETTINGS_USER_CLOSE_NO_REOPEN=passed} {SETTINGS_USER_CLOSE_NO_REOPEN=failed|QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "verify intentional Settings closure disables automatic relaunch through the maximum backoff" 40
 			if {$last_serial_check_result ne "pass"} { exit 1 }
 			puts "STAGE_RESULT name={intentional Settings close remains closed} result=PASS"
-			set target_user_open_baseline_command {wc -l < /tmp/seyrix-compositor.log > /tmp/seyrix-settings-supervisor-open-baseline; read -r old_pid old_start manager manager_start category width height maximized paned log_lines compositor compositor_start < /tmp/seyrix-settings-supervisor-before; printf '%s %s\\n' "$old_pid" "$manager" > /tmp/seyrix-settings-supervisor-open-before; echo SETTINGS_SUPERVISOR_OPEN_BASELINE=ready}
+			set target_user_open_baseline_command {wc -l < /tmp/seyrix-compositor.log > /tmp/seyrix-settings-supervisor-open-baseline; read -r old_pid old_start manager manager_start category width height maximized paned log_lines compositor compositor_start < /tmp/seyrix-settings-supervisor-before; printf '%s %s\n' "$old_pid" "$manager" > /tmp/seyrix-settings-supervisor-open-before; echo SETTINGS_SUPERVISOR_OPEN_BASELINE=ready}
 			run_serial_check $target_user_open_baseline_command {SETTINGS_SUPERVISOR_OPEN_BASELINE=ready} {SETTINGS_SUPERVISOR_OPEN_BASELINE=failed} "record the manager log before explicit user reopen" 10
 			qmp_key_chord $qmp {meta_l} spc
 			after 500
@@ -1426,6 +1426,9 @@ fi
 			qmp_key_chord $qmp {meta_l} q
 			set target_settings_closed_command {for n in $(seq 1 30); do if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then break; fi; sleep 0.2; done; if ! pgrep -u 1000 -x seyrix-settings >/dev/null; then echo SETTINGS_IPC_SETTINGS_CLOSED=passed; else echo SETTINGS_IPC_SETTINGS_CLOSED=failed; fi}
 			run_serial_check $target_settings_closed_command {SETTINGS_IPC_SETTINGS_CLOSED=passed} {SETTINGS_IPC_SETTINGS_CLOSED=failed} "close the explicitly reopened Settings window before ending the session" 10
+			set target_final_compositor_stop_command {bash /tmp/seyrix-qemu-guest-helper.sh terminate-compositor}
+			run_serial_check $target_final_compositor_stop_command {PHASE2D2_COMPOSITOR_SIGTERM_CLEANUP=passed} {QEMU_GUEST_HELPER=failed reason=[^\r\n]*} "send SIGTERM and verify clean session child shutdown" 30
+			if {$last_serial_check_result ne "pass"} { exit 1 }
 			set target_final_compositor_cleanup_command {for n in $(seq 1 70); do if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null; then break; fi; sleep 1; done; socket=/run/user/1000/seyrix/settings-v1.sock; if ! pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' >/dev/null && [[ ! -e "$socket" ]] && systemctl is-active --quiet getty@tty1; then echo SETTINGS_IPC_FINAL_CLEANUP=passed; else echo SETTINGS_IPC_FINAL_CLEANUP=failed; fi; grep -E 'Settings endpoint (accepted peer uid=1000|frame peer_pid=|sent peer_pid=)|Seyrix compositor stopped cleanly' /tmp/seyrix-compositor.log 2>/dev/null || true}
 			run_serial_check $target_final_compositor_cleanup_command {SETTINGS_IPC_FINAL_CLEANUP=passed} {SETTINGS_IPC_FINAL_CLEANUP=failed} "cleanly stop the compositor after targeted Settings IPC verification" 75
 			if {$last_serial_check_result ne "pass"} {

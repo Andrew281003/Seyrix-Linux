@@ -43,6 +43,7 @@ struct supervisor_paths {
 	char pid_file[PATH_MAX];
 	char lock_file[PATH_MAX];
 	char settings_socket[PATH_MAX];
+	char wayland_trace_log[PATH_MAX];
 };
 
 struct supervisor {
@@ -50,6 +51,7 @@ struct supervisor {
 	int listener_fd;
 	int lock_fd;
 	int trace_fd;
+	FILE *wayland_trace_stream;
 	struct stat socket_stat;
 	struct stat pid_stat;
 	pid_t settings_pid;
@@ -66,6 +68,8 @@ struct supervisor {
 	bool attempt_started;
 	bool stopping;
 	bool trace_enabled;
+	bool ipc_trace_enabled;
+	bool wayland_debug_enabled;
 };
 
 static volatile sig_atomic_t stop_requested;
@@ -95,13 +99,41 @@ static void trace_emit_line(struct supervisor *supervisor) {
 	if (supervisor->trace_line_size == 0) {
 		return;
 	}
-	fprintf(stderr,
+	FILE *stream = stderr;
+	if (supervisor->ipc_trace_enabled && supervisor->wayland_debug_enabled &&
+			supervisor->wayland_trace_stream != NULL &&
+			supervisor->trace_line[0] == '[') {
+		stream = supervisor->wayland_trace_stream;
+	}
+	char output[sizeof(supervisor->trace_line) + 128];
+	int prefix_size = snprintf(output, sizeof(output),
 		"SEYRIX_SETTINGS_TRACE monotonic_ns=%" PRIu64
 		" source=client-stderr pid=%ld ", monotonic_ns(),
 		(long)supervisor->trace_pid);
-	(void)fwrite(supervisor->trace_line, 1, supervisor->trace_line_size, stderr);
+	if (prefix_size <= 0 || (size_t)prefix_size >= sizeof(output) ||
+		supervisor->trace_line_size > sizeof(output) - (size_t)prefix_size - 1) {
+		supervisor->trace_line_size = 0;
+		return;
+	}
+	size_t output_size = (size_t)prefix_size;
+	memcpy(output + output_size, supervisor->trace_line,
+		supervisor->trace_line_size);
+	output_size += supervisor->trace_line_size;
 	if (supervisor->trace_line[supervisor->trace_line_size - 1] != '\n') {
-		fputc('\n', stderr);
+		output[output_size++] = '\n';
+	}
+	int output_fd = stream == stderr ? STDERR_FILENO : fileno(stream);
+	size_t written = 0;
+	/* One write keeps short client traces atomic with compositor log records. */
+	while (written < output_size) {
+		ssize_t count = write(output_fd, output + written, output_size - written);
+		if (count < 0 && errno == EINTR) {
+			continue;
+		}
+		if (count <= 0) {
+			break;
+		}
+		written += (size_t)count;
 	}
 	supervisor->trace_line_size = 0;
 }
@@ -175,8 +207,37 @@ static bool supervisor_paths_init(struct supervisor_paths *paths) {
 		!path_set(paths->lock_file, sizeof(paths->lock_file), runtime,
 			"seyrix-settings-supervisor.lock") ||
 		!path_set(paths->settings_socket, sizeof(paths->settings_socket), runtime,
-			"seyrix/settings-v1.sock")) {
+			"seyrix/settings-v1.sock") ||
+		!path_set(paths->wayland_trace_log, sizeof(paths->wayland_trace_log),
+			runtime, "seyrix-settings-wayland-trace.log")) {
 		fprintf(stderr, "seyrix-session-supervisor: runtime path is too long\n");
+		return false;
+	}
+	return true;
+}
+
+static bool wayland_trace_log_start(struct supervisor *supervisor) {
+	int fd = open(supervisor->paths.wayland_trace_log,
+		O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK,
+		S_IRUSR | S_IWUSR);
+	if (fd < 0) {
+		return false;
+	}
+	struct stat status;
+	if (fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) ||
+			status.st_uid != geteuid() || status.st_nlink != 1 ||
+			(status.st_mode & 0077) != 0) {
+		close(fd);
+		errno = EPERM;
+		return false;
+	}
+	if (fchmod(fd, S_IRUSR | S_IWUSR) != 0 || ftruncate(fd, 0) != 0) {
+		close(fd);
+		return false;
+	}
+	supervisor->wayland_trace_stream = fdopen(fd, "w");
+	if (supervisor->wayland_trace_stream == NULL) {
+		close(fd);
 		return false;
 	}
 	return true;
@@ -447,6 +508,10 @@ static void server_finish(struct supervisor *supervisor) {
 		close(supervisor->lock_fd);
 		supervisor->lock_fd = -1;
 	}
+	if (supervisor->wayland_trace_stream != NULL) {
+		fclose(supervisor->wayland_trace_stream);
+		supervisor->wayland_trace_stream = NULL;
+	}
 }
 
 static bool control_request(const struct supervisor_paths *paths,
@@ -584,7 +649,8 @@ static bool launch_settings(struct supervisor *supervisor) {
 			setenv("SEYRIX_SETTINGS_SUPERVISED", "1", 1) != 0) {
 			_exit(126);
 		}
-		if (supervisor->trace_enabled && setenv("WAYLAND_DEBUG", "client", 1) != 0) {
+		if (supervisor->wayland_debug_enabled &&
+				setenv("WAYLAND_DEBUG", "client", 1) != 0) {
 			_exit(126);
 		}
 		execl("/usr/bin/seyrix-settings", "seyrix-settings", (char *)NULL);
@@ -818,11 +884,17 @@ static int serve(void) {
 		.listener_fd = -1,
 		.lock_fd = -1,
 		.trace_fd = -1,
+		.wayland_trace_stream = NULL,
 	};
 	const char *wayland_debug = getenv("WAYLAND_DEBUG");
-	supervisor.trace_enabled = wayland_debug != NULL &&
+	const char *ipc_trace = getenv("SEYRIX_SETTINGS_IPC_TRACE");
+	supervisor.ipc_trace_enabled = ipc_trace != NULL &&
+		strcmp(ipc_trace, "1") == 0;
+	supervisor.wayland_debug_enabled = wayland_debug != NULL &&
 		strcmp(wayland_debug, "client") == 0;
-	if (supervisor.trace_enabled) {
+	supervisor.trace_enabled = supervisor.wayland_debug_enabled ||
+		supervisor.ipc_trace_enabled;
+	if (supervisor.wayland_debug_enabled) {
 		(void)unsetenv("WAYLAND_DEBUG");
 	}
 	if (!supervisor_paths_init(&supervisor.paths)) {
@@ -838,6 +910,12 @@ static int serve(void) {
 	}
 	if (!server_start(&supervisor)) {
 		perror("seyrix-session-supervisor: start control socket");
+		server_finish(&supervisor);
+		return 1;
+	}
+	if (supervisor.ipc_trace_enabled && supervisor.wayland_debug_enabled &&
+			!wayland_trace_log_start(&supervisor)) {
+		perror("seyrix-session-supervisor: capture Wayland trace");
 		server_finish(&supervisor);
 		return 1;
 	}

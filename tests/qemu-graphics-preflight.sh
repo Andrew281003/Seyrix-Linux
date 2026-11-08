@@ -8,6 +8,9 @@ qemu_graphics_required_support_files() {
       printf '%s\n' qemu-guest-helper.sh
       ;;
   esac
+  if [[ "$workflow" == phase2d3b ]]; then
+    printf '%s\n' settings-wayland-trace-collect.py
+  fi
   if [[ "$settings_trace_only" == 1 ]]; then
     printf '%s\n' \
       qemu-graphics-preflight.sh \

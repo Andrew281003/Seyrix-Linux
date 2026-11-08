@@ -339,8 +339,15 @@ assert_true "the packaged Settings desktop entry uses the production launcher" \
   grep -Fxq 'Exec=seyrix-settings-launch' <(tr -d '\r' < "$repo_root/desktop/settings/data/seyrix-settings.desktop") && \
   grep -Fxq 'TryExec=seyrix-settings-launch' <(tr -d '\r' < "$repo_root/desktop/settings/data/seyrix-settings.desktop")
 assert_true "render diagnostics set WAYLAND_DEBUG before starting the production session manager" \
+  grep -Fq 'if {$settings_render_diagnostic || $settings_ipc_only}' "$script_dir/qemu-graphics.exp" && \
   grep -Fq 'WAYLAND_DEBUG=client $compositor_launch_command' "$script_dir/qemu-graphics.exp" && \
   grep -Fq 'source=client-stderr pid=$app_pid' "$script_dir/qemu-graphics.exp"
+assert_true "IPC-only recovery keeps Wayland protocol evidence separate from compositor IPC logs" \
+  grep -Fq 'const char *ipc_trace = getenv("SEYRIX_SETTINGS_IPC_TRACE")' "$repo_root/desktop/session-supervisor/main.c" && \
+  grep -Fq 'supervisor->trace_line[0] == '\''['\''' "$repo_root/desktop/session-supervisor/main.c" && \
+  grep -Fq 'wayland_trace_stream' "$repo_root/desktop/session-supervisor/main.c" && \
+  grep -Fq '/run/user/1000/seyrix-settings-wayland-trace.log' "$script_dir/qemu-graphics.exp" && \
+  grep -Fq 'export WAYLAND_DEBUG=client' "$script_dir/qemu-graphics.exp"
 assert_true "diagnostic launcher requests a normal open from the production supervisor" \
   grep -Fq 'seyrix-session-supervisor", "--open' "$script_dir/settings-render-trace-launcher.py"
 if grep -Eq 'subprocess\.Popen|/usr/bin/seyrix-settings' "$script_dir/settings-render-trace-launcher.py"; then
@@ -453,10 +460,11 @@ assert_true "supervised compositor-loss recovery requires new PID, ready Wayland
   grep -Fq 'snapshot_revision' "$script_dir/qemu-guest-helper.sh" && \
   grep -Fq 'subscribe_revision' "$script_dir/qemu-guest-helper.sh" && \
   grep -Fq 'SETTINGS_RECOVERY_HARNESS_APP_LAUNCHES=0' "$script_dir/qemu-guest-helper.sh"
-assert_true "compositor loss and process kill use production manager-owned recovery" \
+assert_true "compositor loss and process kill dispatch the expected production recovery mode" \
   grep -Fq 'settings-recovery-kill-compositor' "$script_dir/qemu-graphics.exp" && \
   grep -Fq 'settings-recovery-verify compositor' "$script_dir/qemu-graphics.exp" && \
   grep -Fq 'settings-recovery-verify process' "$script_dir/qemu-graphics.exp" && \
+  grep -Fq 'settings-recovery-verify) shift; settings_recovery_verify "${1:-compositor}" ;;' "$script_dir/qemu-guest-helper.sh" && \
   grep -Fq 'event=launch pid=' "$script_dir/qemu-guest-helper.sh" && \
   grep -Fq 'old_start_now' "$script_dir/qemu-guest-helper.sh"
 assert_true "bounded production retry campaign kills six children, verifies limit, and accepts a fresh OPEN" \
@@ -468,7 +476,14 @@ assert_true "bounded production retry campaign kills six children, verifies limi
 assert_true "a deliberate Settings close remains closed and explicit OPEN reopens through the desktop launcher" \
   grep -Fq 'settings-user-close-verify' "$script_dir/qemu-graphics.exp" && \
   grep -Fq 'event=user-close pid=$before_pid exit_status=0' "$script_dir/qemu-guest-helper.sh" && \
+  grep -Fq 'process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l || true)"' "$script_dir/qemu-guest-helper.sh" && \
   grep -Fq 'settings-recovery-budget-fresh-open-verify' "$script_dir/qemu-graphics.exp"
+assert_true "explicit Settings reopen baseline uses a real record separator" \
+  grep -Fq "printf '%s %s\\n' \"\$old_pid\" \"\$manager\"" "$script_dir/qemu-graphics.exp"
+assert_true "IPC-only final cleanup sends compositor SIGTERM before checking endpoint removal" \
+  grep -Fq 'target_final_compositor_stop_command {bash /tmp/seyrix-qemu-guest-helper.sh terminate-compositor}' "$script_dir/qemu-graphics.exp" && \
+  grep -Fq 'PHASE2D2_COMPOSITOR_SIGTERM_CLEANUP=passed' "$script_dir/qemu-graphics.exp" && \
+  grep -Fq 'SETTINGS_IPC_FINAL_CLEANUP=passed' "$script_dir/qemu-graphics.exp"
 assert_true "Settings state baseline waits long enough for bounded consistency polling and reports its result" python3 - "$script_dir/qemu-graphics.exp" "$script_dir/qemu-guest-helper.sh" <<'PY'
 import pathlib
 import re
@@ -893,6 +908,7 @@ import sys
 root = pathlib.Path(sys.argv[1])
 client = (root / "desktop/settings/src/settings-client.c").read_text()
 compositor = (root / "desktop/compositor/src/settings-control.c").read_text()
+supervisor = (root / "desktop/session-supervisor/main.c").read_text()
 launch = (root / "tests/qemu-graphics.exp").read_text()
 helper = (root / "tests/qemu-guest-helper.sh").read_text()
 for token in ("SEYRIX_SETTINGS_IPC_TRACE", '"hello-begin"', '"serialized"',
@@ -903,21 +919,36 @@ for token in ("settings_trace_monotonic_ns", "Settings endpoint accepted peer",
               "connection_id=%llu", "Settings endpoint dispatch",
               "Settings endpoint read", "Settings endpoint request-dispatch"):
     assert token in compositor, token
+trace_emit = supervisor[supervisor.index("static void trace_emit_line"):supervisor.index("static void trace_finish")]
+assert "write(output_fd, output + written, output_size - written)" in trace_emit
+assert "fprintf(stream" not in trace_emit and "fwrite(" not in trace_emit
 launcher_write = launch.index("set ipc_trace_launcher_command ")
 launcher_check = launch.index("run_serial_check $ipc_trace_launcher_command", launcher_write)
 short_launch = launch.index("set compositor_launch_command {bash /tmp/seyrix-ipc-launch}", launcher_check)
 qmp_launch = launch.index("qmp_type $qmp $compositor_launch_command", short_launch)
 assert launcher_write < launcher_check < short_launch < qmp_launch
 for token in ("export SEYRIX_SETTINGS_IPC_TRACE=1", "export SEYRIX_SETTINGS_RENDER_TRACE=1",
-              "export WAYLAND_DEBUG=client", "exec start-seyrix"):
+              "exec start-seyrix"):
     assert token in launch, token
+assert "export WAYLAND_DEBUG=client" in launch
 for token in ("ss -xapne", "u_seq\\ ESTAB", "peer_inode", "/proc/\"$diagnostic_compositor\"/fd",
               "SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_CLIENT_TRACE_BEGIN",
               "SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_IPC_SERVER_TRACE_BEGIN"):
     assert token in helper, token
+assert '*"Settings endpoint "*' in helper
+assert '"$compositor_log" | grep -F "pid=$pid "' in helper
+assert 'settings_wayland_trace_export "$pid"' in helper
+assert "SETTINGS_IPC_SERVER_LOG_BEGIN" in helper
+assert 'source=client-stderr pid=$pid ' in helper
+assert 'diagnostic_compositor_stderr' in helper and 'diagnostic_manager_stderr' in helper
+collector = (root / "tests/settings-wayland-trace-collect.py").read_text()
+for token in ("SETTINGS_WAYLAND_TRACE_EXPORT_BEGIN", "hashlib.sha256(payload)",
+              "wl_display", "wl_surface", "os.O_EXCL", "os.fsync"):
+    assert token in collector, token
 print("SETTINGS_IPC_DIAGNOSTIC_INSTRUMENTATION=PASS")
 PY
 echo "PASS: Settings recovery checks production manager, new process, readiness, state restore, singleton, IPC, bounded retries, and close behavior"
+bash "$script_dir/settings-wayland-trace-collect-test.sh"
 tclsh "$script_dir/settings-render-trace-tcl-completeness.tcl" \
   "$script_dir/qemu-graphics.exp" \
   "$script_dir/qemu-graphics-capture.tcl" \

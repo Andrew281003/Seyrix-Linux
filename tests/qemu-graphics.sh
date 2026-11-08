@@ -21,7 +21,7 @@ if [[ ! -f "$iso_path" ]]; then
   exit 2
 fi
 
-for command in qemu-system-x86_64 expect sha256sum realpath stat pacman; do
+for command in qemu-system-x86_64 expect sha256sum realpath stat pacman python3; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command is missing: $command" >&2
     exit 2
@@ -140,6 +140,7 @@ if [[ -e "$run_dir" ]]; then
   exit 2
 fi
 mkdir -p "$run_dir"
+chmod 700 "$run_dir"
 seyrix_retention_begin "$run_dir" qemu-run
 
 run_started_utc="$(date -u --iso-8601=seconds)"
@@ -162,7 +163,16 @@ expect_is_owned() {
 }
 finish_graphics_run() {
   local status=$?
+  local trace_collection_ok=1
   trap - EXIT
+  if [[ "$settings_ipc_only" == 1 ]]; then
+    if python3 "$script_dir/settings-wayland-trace-collect.py" \
+        "$run_dir/test.log" "$run_dir" > "$run_dir/wayland-trace-collection.txt" 2>&1; then
+      trace_collection_ok=0
+    else
+      status=1
+    fi
+  fi
   {
     printf 'Run finished UTC: %s\n' "$(date -u --iso-8601=seconds)"
     printf 'Run exit status: %s\n' "$status"
@@ -229,6 +239,9 @@ finish_graphics_run() {
       ! grep -Fxq "Run result: $run_result" "$run_dir/run-result.txt"; then
     run_result="INCOMPLETE"
   fi
+  if [[ "$settings_ipc_only" == 1 && "$trace_collection_ok" != 0 ]]; then
+    run_result="INCOMPLETE"
+  fi
   {
     printf 'Run result: %s\nRun exit status: %s\nFinished UTC: %s\n' \
       "$run_result" "$status" "$(date -u --iso-8601=seconds)"
@@ -242,6 +255,14 @@ finish_graphics_run() {
     }
   else
     seyrix_retention_finish_qemu_run "$run_dir" "$iso_path" 1 || true
+  fi
+  if [[ -d "$run_dir" ]]; then
+    (
+      cd -- "$run_dir"
+      find . -maxdepth 1 -type f ! -name 'raw-artifacts.sha256*' -print0 |
+        LC_ALL=C sort -z | xargs -0r sha256sum
+    ) > "$run_dir/raw-artifacts.sha256.tmp"
+    mv -f -- "$run_dir/raw-artifacts.sha256.tmp" "$run_dir/raw-artifacts.sha256"
   fi
   if [[ -d "$run_dir" ]]; then
     printf 'QEMU %s graphics test result: %s. Evidence: %s\n' \

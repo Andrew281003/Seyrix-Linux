@@ -1284,6 +1284,30 @@ settings_recovery_baseline() {
   echo SETTINGS_SUPERVISOR_BASELINE=passed
 }
 
+settings_wayland_trace_export() {
+  local pid="$1" path="$runtime_dir/seyrix-settings-wayland-trace.log"
+  local owner mode bytes digest last_byte
+  [[ "$pid" =~ ^[1-9][0-9]*$ && -f "$path" && ! -L "$path" ]] || {
+    echo 'SETTINGS_WAYLAND_TRACE_EXPORT=failed reason=missing-or-invalid-path'
+    return 1
+  }
+  read -r owner mode bytes < <(stat -c '%u %a %s' "$path")
+  last_byte="$(tail -c 1 "$path" | od -An -t x1 | tr -d ' \n')"
+  digest="$(sha256sum "$path" | awk '{print $1}')"
+  if [[ "$owner" != 1000 || "$mode" != 600 || ! "$bytes" =~ ^[1-9][0-9]*$ ||
+        "$last_byte" != 0a || ! "$digest" =~ ^[0-9a-f]{64}$ ]] ||
+      ! grep -Fq "source=client-stderr pid=$pid " "$path" ||
+      ! grep -Eq "source=client-stderr pid=$pid .*wl_display" "$path" ||
+      ! grep -Eq "source=client-stderr pid=$pid .*wl_surface" "$path"; then
+    echo 'SETTINGS_WAYLAND_TRACE_EXPORT=failed reason=integrity-or-attribution'
+    return 1
+  fi
+  printf '\nSETTINGS_WAYLAND_TRACE_EXPORT_BEGIN pid=%s bytes=%s sha256=%s\n' \
+    "$pid" "$bytes" "$digest"
+  base64 -w 76 "$path"
+  printf 'SETTINGS_WAYLAND_TRACE_EXPORT_END pid=%s\n' "$pid"
+}
+
 settings_recovery_verify() {
   local expected=${1:-compositor} before_pid before_start before_manager before_manager_start
   local before_category before_width before_height before_maximized before_paned_position log_baseline
@@ -1296,9 +1320,11 @@ settings_recovery_verify() {
   local diagnostic_snapshot_request diagnostic_snapshot_response diagnostic_subscribe_request diagnostic_subscribe_response
   local diagnostic_mapped diagnostic_compositor diagnostic_processes diagnostic_socket diagnostic_socket_status diagnostic_socket
   local diagnostic_wchan diagnostic_syscall diagnostic_fd diagnostic_fds diagnostic_stderr
+  local diagnostic_compositor_stderr diagnostic_manager_stderr
   local old_start_now new_category new_width new_height new_maximized new_paned_position state_restored
   local launch_line ready_line attempt_line app_line exit_line exit_status exit_signal expected_status state_file
   local attempt_number ready_attempt launch_attempt ready_display
+  local server_lines trace_export
   local accepted frames hello snapshot_request subscribe_request snapshot_response snapshot_status snapshot_to
   local subscribe_response snapshot_revision subscribe_revision subscribe_status subscribe_to mapped
   read -r before_pid before_start before_manager before_manager_start before_category \
@@ -1318,7 +1344,7 @@ settings_recovery_verify() {
   while (( SECONDS < deadline )); do
     if IFS= read -r -t 0.5 -u "$trace_fd" stream_line; then
       case "$stream_line" in
-        *"SEYRIX_SETTINGS_SUPERVISOR event="*|*"SEYRIX_SETTINGS event="*|*"SEYRIX_SESSION event=compositor-exit "*|*"Settings endpoint accepted peer uid=1000 "*|*"Settings endpoint frame peer_pid="*|*"Settings endpoint sent peer_pid="*|*"Window mapped: pid="*)
+        *"SEYRIX_SETTINGS_SUPERVISOR event="*|*"SEYRIX_SETTINGS event="*|*"SEYRIX_SESSION event=compositor-exit "*|*"Settings endpoint "*|*"Window mapped: pid="*)
           fresh+="$stream_line"$'\n'
           stream_lines=$((stream_lines + 1))
           ;;
@@ -1331,14 +1357,15 @@ settings_recovery_verify() {
     if [[ "$pid" =~ ^[1-9][0-9]*$ && "$pid" != "$before_pid" && "$count" == 1 ]] && \
         grep -Fq "SEYRIX_SETTINGS event=start pid=$pid " <<<"$fresh" && \
         grep -Fq "SEYRIX_SETTINGS_SUPERVISOR event=launch pid=$pid" <<<"$fresh"; then
-      wait_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+      server_lines="$(grep -E 'Settings endpoint (accepted peer|watch ready|dispatch|read|frame|request-dispatch|sent peer_pid)' "$compositor_log" | grep -F "pid=$pid " || true)"
+      wait_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$server_lines" || true)"
       wait_hello=0
       grep -Eq 'opcode=1 .*negotiated=0' <<<"$wait_frames" && wait_hello=1 || true
       wait_snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$wait_frames" | head -n 1)"
       wait_subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$wait_frames" | head -n 1)"
-      wait_snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_snapshot_request " <<<"$fresh" | tail -n 1 || true)"
-      wait_subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_subscribe_request " <<<"$fresh" | tail -n 1 || true)"
-      accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+      wait_snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_snapshot_request " <<<"$server_lines" | tail -n 1 || true)"
+      wait_subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$wait_subscribe_request " <<<"$server_lines" | tail -n 1 || true)"
+      accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$server_lines" | tail -n 1 || true)"
       mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
       if [[ "$wait_hello" == 1 && -n "$wait_snapshot_request" &&
             -n "$wait_subscribe_request" && -n "$wait_snapshot_response" &&
@@ -1356,6 +1383,8 @@ settings_recovery_verify() {
     diagnostic_launch="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" | tail -n 1 || true)"
     diagnostic_app_start="$(grep -F 'SEYRIX_SETTINGS event=start ' <<<"$fresh" | tail -n 1 || true)"
     diagnostic_compositor="$(pgrep -u 1000 -f '^/usr/bin/seyrix-compositor$' | head -n 1 || true)"
+    diagnostic_compositor_stderr="$(readlink "/proc/$diagnostic_compositor/fd/2" 2>/dev/null || true)"
+    diagnostic_manager_stderr="$(readlink "/proc/$manager/fd/2" 2>/dev/null || true)"
     diagnostic_pids="$manager,$before_pid"
     [[ "$diagnostic_compositor" =~ ^[1-9][0-9]*$ ]] && diagnostic_pids+=",$diagnostic_compositor"
     [[ "$pid" =~ ^[1-9][0-9]*$ ]] && diagnostic_pids+=",$pid"
@@ -1399,7 +1428,7 @@ settings_recovery_verify() {
     fi
     diagnostic_stderr="$(grep -F "source=client-stderr pid=$pid " "$compositor_log" 2>/dev/null | tail -n 80 || true)"
     diagnostic_ipc_client_trace="$(grep -F "source=client-stderr pid=$pid " "$compositor_log" 2>/dev/null | grep -F 'SETTINGS_IPC_CLIENT ' | tail -n 100 || true)"
-    diagnostic_ipc_server_trace="$(grep -E 'Settings endpoint (accepted peer|watch ready|watch failed|dispatch|read|frame|request-dispatch|rejected frame|rejected request|peer hangup|peer closed|receive failed|sent peer_pid|send failed|removing)' <<<"$fresh" | grep -F "pid=$pid " | tail -n 120 || true)"
+    diagnostic_ipc_server_trace="$(grep -E 'Settings endpoint (accepted peer|watch ready|watch failed|dispatch|read|frame|request-dispatch|rejected frame|rejected request|peer hangup|peer closed|receive failed|sent peer_pid|send failed|removing)' "$compositor_log" | grep -F "pid=$pid " | tail -n 120 || true)"
     diagnostic_socket_status=""
     for diagnostic_socket in "$runtime_dir"/wayland-* "$runtime_dir"/seyrix/settings-v1.sock; do
       if [[ -e "$diagnostic_socket" || -S "$diagnostic_socket" ]]; then
@@ -1409,8 +1438,8 @@ settings_recovery_verify() {
     diagnostic_socket_status="${diagnostic_socket_status:-none}"
     diagnostic_frames=""
     if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then
-      diagnostic_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
-      diagnostic_accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
+      diagnostic_frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$diagnostic_ipc_server_trace" || true)"
+      diagnostic_accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$diagnostic_ipc_server_trace" | tail -n 1 || true)"
       diagnostic_mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
     else
       diagnostic_accepted=""
@@ -1441,6 +1470,9 @@ settings_recovery_verify() {
       "${diagnostic_mapped:+yes}"
     printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PROCESS_TREE_BEGIN\n%s\nSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_PROCESS_TREE_END\n' \
       "${diagnostic_processes:-unavailable}"
+    printf 'SETTINGS_RECOVERY_LOG_FD compositor_stderr=%s supervisor_stderr=%s log=%s\n' \
+      "${diagnostic_compositor_stderr:-unavailable}" \
+      "${diagnostic_manager_stderr:-unavailable}" "$compositor_log"
     printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_WCHAN pid=%s value=%s\n' "${pid:-missing}" "${diagnostic_wchan:-unavailable}"
     printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_SYSCALL pid=%s value=%s\n' "${pid:-missing}" "${diagnostic_syscall:-unavailable}"
     printf 'SETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_FDS_BEGIN\n%sSETTINGS_SUPERVISOR_RECOVERY_TIMEOUT_FDS_END\n' "${diagnostic_fds:-unavailable}"
@@ -1501,14 +1533,15 @@ settings_recovery_verify() {
   ready_attempt="$(field "$ready_marker" attempt || true)"
   launch_attempt="$(field "$launch_marker" attempt || true)"
   ready_display="$(field "$ready_marker" display || true)"
-  accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$fresh" | tail -n 1 || true)"
-  frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$fresh" || true)"
+  server_lines="$(grep -E 'Settings endpoint (accepted peer|watch ready|dispatch|read|frame|request-dispatch|sent peer_pid)' "$compositor_log" | grep -F "pid=$pid " || true)"
+  accepted="$(grep -F "Settings endpoint accepted peer uid=1000 pid=$pid " <<<"$server_lines" | tail -n 1 || true)"
+  frames="$(grep -F "Settings endpoint frame peer_pid=$pid " <<<"$server_lines" || true)"
   hello=0
   grep -Eq 'opcode=1 .*negotiated=0' <<<"$frames" && hello=1 || true
   snapshot_request="$(sed -nE 's/.*opcode=2 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
   subscribe_request="$(sed -nE 's/.*opcode=3 request=([0-9]+) .*/\1/p' <<<"$frames" | head -n 1)"
-  snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$snapshot_request " <<<"$fresh" | tail -n 1 || true)"
-  subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$subscribe_request " <<<"$fresh" | tail -n 1 || true)"
+  snapshot_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$snapshot_request " <<<"$server_lines" | tail -n 1 || true)"
+  subscribe_response="$(grep -F "Settings endpoint sent peer_pid=$pid opcode=32768 request=$subscribe_request " <<<"$server_lines" | tail -n 1 || true)"
   snapshot_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$snapshot_response")"
   subscribe_revision="$(sed -nE 's/.*revision=([0-9]+).*/\1/p' <<<"$subscribe_response")"
   snapshot_status="$(field "$snapshot_response" response_status || true)"
@@ -1516,8 +1549,11 @@ settings_recovery_verify() {
   subscribe_status="$(field "$subscribe_response" response_status || true)"
   subscribe_to="$(field "$subscribe_response" response_to || true)"
   mapped="$(grep -F "Window mapped: pid=$pid " <<<"$fresh" | grep -F 'app_id=org.seyrix.settings title=System Settings' | tail -n 1 || true)"
+  if settings_wayland_trace_export "$pid"; then trace_export=passed; else trace_export=failed; fi
+  printf 'SETTINGS_IPC_SERVER_LOG_BEGIN pid=%s\n%s\nSETTINGS_IPC_SERVER_LOG_END\n' \
+    "${pid:-missing}" "${server_lines:-no-matching-server-records}"
   state_file="${XDG_STATE_HOME:-/home/seyrix/.local/state}/seyrix/settings.ini"
-  printf 'SETTINGS_SUPERVISOR_RECOVERY mode=%s old_pid=%s old_alive=%s new_pid=%s new_start=%s count=%s manager_before=%s manager_after=%s manager_same_start=%s compositor_before=%s compositor_after=%s compositor_same_start=%s ppid=%s session=%s compositor_session=%s manager_pgid=%s compositor_pgid=%s attempt=%s attempt_number=%s attempt_line=%s ready_display=%s ready_attempt=%s ready_line=%s launch_attempt=%s launch_line=%s app_line=%s exit_line=%s exit_status=%s exit_signal=%s display_lost=%s category=%s/%s width=%s/%s height=%s/%s maximized=%s/%s paned_position=%s/%s state_restored=%s mapped=%s accepted=%s hello=%s snapshot_request=%s snapshot_revision=%s snapshot_status=%s snapshot_to=%s subscribe_request=%s subscribe_revision=%s subscribe_status=%s subscribe_to=%s state_file=%s\n' \
+  printf 'SETTINGS_SUPERVISOR_RECOVERY mode=%s old_pid=%s old_alive=%s new_pid=%s new_start=%s count=%s manager_before=%s manager_after=%s manager_same_start=%s compositor_before=%s compositor_after=%s compositor_same_start=%s ppid=%s session=%s compositor_session=%s manager_pgid=%s compositor_pgid=%s attempt=%s attempt_number=%s attempt_line=%s ready_display=%s ready_attempt=%s ready_line=%s launch_attempt=%s launch_line=%s app_line=%s exit_line=%s exit_status=%s exit_signal=%s display_lost=%s category=%s/%s width=%s/%s height=%s/%s maximized=%s/%s paned_position=%s/%s state_restored=%s mapped=%s accepted=%s hello=%s snapshot_request=%s snapshot_revision=%s snapshot_status=%s snapshot_to=%s subscribe_request=%s subscribe_revision=%s subscribe_status=%s subscribe_to=%s wayland_trace=%s state_file=%s\n' \
     "$expected" "$before_pid" "$([[ "$old_start_now" == "$before_start" ]] && echo yes || echo no)" \
     "${pid:-missing}" "${start:-missing}" "${count:-missing}" "$before_manager" \
     "${manager:-missing}" "$([[ "$manager" == "$before_manager" && "$manager_start" == "$before_manager_start" ]] && echo yes || echo no)" \
@@ -1535,7 +1571,7 @@ settings_recovery_verify() {
     "${mapped:+yes}" "${accepted:+yes}" "$hello" "${snapshot_request:-missing}" \
     "${snapshot_revision:-missing}" "${snapshot_status:-missing}" "${snapshot_to:-missing}" \
     "${subscribe_request:-missing}" "${subscribe_revision:-missing}" \
-    "${subscribe_status:-missing}" "${subscribe_to:-missing}" "$state_file"
+    "${subscribe_status:-missing}" "${subscribe_to:-missing}" "$trace_export" "$state_file"
   if [[ "$manager" == "$before_manager" && "$manager_start" == "$before_manager_start" &&
         "$pid" =~ ^[1-9][0-9]*$ && "$pid" != "$before_pid" &&
         "$start" =~ ^[0-9]+$ && "$count" == 1 && "$parent" == "$manager" &&
@@ -1557,7 +1593,7 @@ settings_recovery_verify() {
         "$new_paned_position" == "$before_paned_position" &&
         ( "$expected" != compositor || "$compositor" =~ ^[1-9][0-9]*$ && ( "$compositor" != "$before_compositor" || "$compositor_start" != "$before_compositor_start" ) ) &&
         "$state_restored" =~ ^(1|true|yes)$ &&
-        -n "$mapped" && -n "$accepted" && "$hello" == 1 &&
+        -n "$mapped" && -n "$accepted" && "$hello" == 1 && "$trace_export" == passed &&
         -n "$snapshot_request" && -n "$snapshot_response" &&
         -n "$snapshot_revision" && "$snapshot_status" == 0 && "$snapshot_to" == 2 && -n "$subscribe_request" &&
         -n "$subscribe_response" && -n "$subscribe_revision" && "$subscribe_status" == 0 && "$subscribe_to" == 3 &&
@@ -1834,10 +1870,10 @@ settings_user_close_verify() {
   fresh="$(tail -n +$((log_baseline + 1)) "$compositor_log" 2>/dev/null || true)"
   manager_after="$(settings_manager_pid 2>/dev/null || true)"
   manager_start="$(awk '{print $22}' "/proc/$manager_after/stat" 2>/dev/null || true)"
-  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l || true)"
   launch_after="$(grep -F 'SEYRIX_SETTINGS_SUPERVISOR event=launch ' <<<"$fresh" | grep -Fv "pid=$before_pid" || true)"
   sleep 20
-  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l)"
+  process_count="$(pgrep -u 1000 -x seyrix-settings | wc -l || true)"
   manager_after="$(settings_manager_pid 2>/dev/null || true)"
   manager_start="$(awk '{print $22}' "/proc/$manager_after/stat" 2>/dev/null || true)"
   fresh="$(tail -n +$((log_baseline + 1)) "$compositor_log" 2>/dev/null || true)"
@@ -1872,7 +1908,7 @@ case "${1:-}" in
   wm-geometry-changed) shift; wm_geometry_changed "$@" ;;
   popup-alive) popup_process_alive ;;
   settings-recovery-baseline) settings_recovery_baseline ;;
-  settings-recovery-verify) settings_recovery_verify ;;
+  settings-recovery-verify) shift; settings_recovery_verify "${1:-compositor}" ;;
   settings-recovery-exhaust-budget) settings_recovery_exhaust_budget ;;
   settings-recovery-budget-fresh-open-verify) settings_recovery_budget_fresh_open_verify ;;
   settings-recovery-kill-compositor) settings_recovery_kill_compositor ;;
