@@ -1,0 +1,27 @@
+Phase 2C.2 original EGL/GBM control failure
+Source run: /root/.cache/seyrix-linux/phase2c2-egl-control-permissions-fixed-run-20261026
+Guest device in that QEMU boot: /dev/dri/card1, virtio_gpu, PCI 1af4:1050.
+The control itself hard-coded /dev/dri/renderD128 and used the guest root shell.
+
+Original control output:
+EGL_CONTROL_LIBRARY=/usr/lib/libEGL.so.1
+EGL_CONTROL_INITIALIZE=failed egl_error=0x3000
+EGL_CONTROL_EXIT=1
+
+Call sequence from the preserved original source:
+- open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC) succeeded; otherwise it would have emitted perror and exited before EGL.
+- gbm_create_device(fd) succeeded; otherwise it would have emitted EGL_CONTROL_GBM_CREATE=failed.
+- eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, gbm, NULL) returned a value other than EGL_NO_DISPLAY; otherwise it would have emitted EGL_CONTROL_GET_PLATFORM_DISPLAY=failed and stopped.
+- eglInitialize(display, NULL, NULL) returned EGL_FALSE.
+- The immediate eglGetError() returned EGL_SUCCESS (0x3000).
+- The original helper did not print the non-null EGLDisplay handle, so its numeric value is not recoverable from this run's log.
+- The original helper did not print EGL extensions. In the same boot the working compositor recorded the client extension list in the preserved QEMU log. The directly corrected control later queried the same guest stack and recorded its full extension lists in egl-direct-1.log.
+
+Relevant guest extensions observed in the successful compositor/control path:
+Client: EGL_EXT_platform_base, EGL_KHR_platform_gbm, EGL_MESA_platform_gbm, EGL_EXT_platform_device, EGL_MESA_platform_surfaceless.
+Display: EGL_KHR_no_config_context, EGL_MESA_configless_context, EGL_KHR_surfaceless_context.
+EGL_KHR_display_reference was absent from the EGL client extension list.
+
+The original helper used the same effective render node that wlroots resolves for card1 in this guest: card1 maps to renderD128. It differed from the compositor setup by hard-coding that node, running as root, omitting LIBGL_ALWAYS_SOFTWARE=1 and WLR_RENDERER_ALLOW_SOFTWARE=1, using the MESA platform enum entry point, and requesting a config plus pbuffer after initialization. Config and pbuffer setup cannot explain this failure because eglInitialize failed first. The corrected control uses the compositor's environment and derives renderD128 from card1; it succeeds and confirms llvmpipe.
+
+The evidence establishes the exact failing call and values, and shows the old harness was not equivalent to Seyrix. It does not isolate which old setup difference made Mesa return EGL_FALSE while eglGetError remained EGL_SUCCESS. Missing forced software selection is the strongest remaining hypothesis; it is not proven as the sole cause.

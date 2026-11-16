@@ -1,0 +1,26 @@
+Guest kernel: 7.2.11-arch1-1
+Guest user: uid=1000(seyrix) gid=1000(seyrix) groups=1000(seyrix)
+XDG_RUNTIME_DIR=/run/user/1000
+LIBSEAT_BACKEND=logind
+LIBGL_ALWAYS_SOFTWARE=1
+WLR_RENDERER_ALLOW_SOFTWARE=1
+XDG_SESSION_TYPE=wayland
+DRM_NODES_BEGIN
+total 0
+drwxr-xr-x  2 root root         80 Oct 26 17:21 by-path
+crw-rw----+ 1 root video  226,   1 Oct 26 17:21 card1
+crw-rw-rw-  1 root render 226, 128 Oct 26 17:21 renderD128
+DRM_NODES_END
+DRM_DEVICE_DRIVER=/sys/bus/pci/drivers/virtio-pci
+Mesa package: warning: database file for 'core' does not exist (use '-Sy' to download)
+warning: database file for 'extra' does not exist (use '-Sy' to download)
+mesa 1:26.2.5-1
+wlroots package: warning: database file for 'core' does not exist (use '-Sy' to download)
+warning: database file for 'extra' does not exist (use '-Sy' to download)
+wlroots0.20 0.20.2-1
+ASan runtime: warning: database file for 'core' does not exist (use '-Sy' to download)
+warning: database file for 'extra' does not exist (use '-Sy' to download)
+libasan 16.2.1+r23+gd564253eb6c8-1
+GCC runtime package: warning: database file for 'core' does not exist (use '-Sy' to download)
+warning: database file for 'extra' does not exist (use '-Sy' to download)
+gcc-libs 16.2.1+r23+gd564253eb6c8-1
