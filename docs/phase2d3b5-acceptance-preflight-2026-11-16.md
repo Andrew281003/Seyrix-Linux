@@ -2,7 +2,7 @@
 
 > **Digest correction:** The expected digest in the initial acceptance prompt was mistyped. The authoritative digest is `060083a024ff58c7f6160573e2c089b9e475951e6b40fd4dd22665dd8013c12c`, which matches the fresh snapshot and verified baseline. The earlier stop was caused by that instruction typo; it was not a snapshot integrity failure. The subsequent resume attempt is recorded in [the resume report](phase2d3b5-acceptance-resume-attempt-2026-11-16.md).
 
-**Phase status: INCOMPLETE.** The diagnostic-enabled harness was prepared and its offline checks passed, but the acceptance run was stopped before launch because the required `qemu-graphics.exp` digest did not match the verified November 15 baseline. The authorization for one 640×480 acceptance run remains unused.
+**Phase status: INCOMPLETE.** The initial preflight stopped before launch because the expected `qemu-graphics.exp` digest in the prompt was mistyped. This was an instruction error, not an observed file-integrity failure. The corrected digest matches the verified November 15 baseline. The single-run authorization remained unused at that preflight; the later resume attempt and its fail-fast result are recorded in the linked report.
 
 ## Preflight identity and evidence
 
@@ -18,7 +18,7 @@ The fresh guest snapshot at `/home/builder/phase2d3b5-controlled-acceptance-2026
 | --- | --- |
 | `qemu-guest-helper.sh` | **PASS** — `a3510bf544727c4168ac6e5351f4c980c8b3fa5c15689c59e830b63edf4b0562` |
 | `qemu-graphics.sh` | **PASS** — `614d34b287e678e5548bfde0035d6fd1c93fab7c9ec3356c52cf60a5348bee08` |
-| `qemu-graphics.exp` | **FAIL** — task digest `060083a024ff58c7f6160573e2c089b9b475951e6b40fd4dd22665dd8013c12c`; verified baseline and fresh snapshot `060083a024ff58c7f6160573e2c089b9e475951e6b40fd4dd22665dd8013c12c` |
+| `qemu-graphics.exp` | **PASS** — verified baseline and fresh snapshot match the corrected authoritative digest `060083a024ff58c7f6160573e2c089b9e475951e6b40fd4dd22665dd8013c12c`; the earlier expected value was a prompt typo |
 | Remaining baseline support files | **PASS** — 62/62 hashes match |
 | Snapshot sealing and executable modes | **PASS** — no writable paths; required executables retain their required modes |
 
@@ -42,4 +42,4 @@ The initial host-side render-trace regression attempt was **INCOMPLETE** because
 
 Acceptance stages are **NOT RUN**; there is no `test.log` or stage-results log for this preflight ID. Static inspection of `qemu-graphics.exp` finds 224 `run_serial_check` call sites. Therefore, as a static estimate only, PASS=0, FAIL=0, INCOMPLETE=0 result records, and all 224 call sites are **NOT RUN**; these are not executed stage results. The Settings recovery result and diagnostic predicates are **NOT RUN**. No compositor log was captured, so its byte count and SHA-256 are **NOT AVAILABLE** for this attempt. No ISO rebuild or promotion occurred, and no production code or acceptance-harness source was changed for this preflight.
 
-The first failed gate is the `qemu-graphics.exp` hash mismatch above. The smallest next action is to confirm which digest is intended. After that is resolved, continue with the still-unused single-run authorization, execute the existing full 640×480 TCG/virtio-vga acceptance workflow once, reconcile raw and extracted stage results, and verify the final evidence manifests and compositor-log integrity. Keep Phase 2D.3B.5 **INCOMPLETE** until the entire acceptance matrix passes.
+The initial preflight was blocked by the mistyped expected digest, not by a file-integrity failure. The corrected digest passes. The later resume attempt stopped during offline preflight with five regressions passing and the Settings recovery regression failing; the acceptance runner was not invoked. Use the resume report for the precise failure and evidence status. Keep Phase 2D.3B.5 **INCOMPLETE** until every acceptance gate passes.
