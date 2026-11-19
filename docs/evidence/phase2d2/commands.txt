@@ -1,0 +1,26 @@
+Cloud workspace: /workspace/Seyrix-Linux
+Disposable build image: seyrix-phase2d2-debian:latest (Debian GNU/Linux 12 Bookworm, linux/amd64)
+PKG_CONFIG_PATH inside the container: /out/pkgconfig
+The wlr-protocols metadata/XML used for shell client generation was staged under /out/wlr-protocols; this image did not contain wlroots-0.20.
+
+Clean C17 shell build and all five Meson tests:
+  docker run --rm -v /workspace/Seyrix-Linux:/src -v /workspace/work/seyrix-phase2d2-cloud:/out -w /src -e PKG_CONFIG_PATH=/out/pkgconfig seyrix-phase2d2-debian:latest bash -c 'set -o pipefail; meson setup /out/shell-clean-build /src/desktop/shell --buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback 2>&1 | tee /out/logs/shell-clean-setup.log && ninja -C /out/shell-clean-build 2>&1 | tee /out/logs/shell-clean-build.log && meson test -C /out/shell-clean-build --print-errorlogs 2>&1 | tee /out/logs/shell-clean-tests.log'
+
+ASan/UBSan/LSan configuration (created earlier in this disposable image):
+  meson setup /out/shell-asan-build /src/desktop/shell --buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback -Db_sanitize=address,undefined
+  ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 meson test -C /out/shell-asan-build --print-errorlogs 'shell state model' 'shell configuration' 'shell application catalog'
+  ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 meson test -C /out/shell-asan-build --print-errorlogs 'shell user interface rendering'
+The three data/config/catalog tests passed. The rendering test completed its assertions, then LSan reported process-global Fontconfig allocations; that finding is retained without a suppression.
+
+GCC static analyzer configuration (created earlier in this disposable image):
+  meson setup /out/shell-analyzer-build /src/desktop/shell --buildtype=debugoptimized --prefix=/usr --wrap-mode=nofallback -Dc_args=-fanalyzer -Dwerror=false
+  ninja -C /out/shell-analyzer-build
+
+Unprivileged desktop-entry execution check:
+    docker run --rm -v /workspace/Seyrix-Linux:/src -v /workspace/work/seyrix-phase2d2-cloud:/out seyrix-phase2d2-debian:latest bash -c 'setpriv --reuid=65534 --regid=65534 --clear-groups /out/shell-clean-build/seyrix-shell-app-catalog-test'
+
+Source hygiene checks:
+  git diff --check
+  bash -n config/compositor-overlay/airootfs/usr/local/bin/start-seyrix build/build-phase2d2-iso.sh tests/session-lock-test.sh
+
+The compositor Meson build, existing Phase 2D.1 tests, headless Wayland integration, ISO build, and QEMU boot were not run: this container has no wlroots-0.20 pkg-config dependency, no QEMU executable, and no /dev/dri or /dev/kvm. The disposable test image and logs are engineering evidence, not a target Arch Linux runtime environment.

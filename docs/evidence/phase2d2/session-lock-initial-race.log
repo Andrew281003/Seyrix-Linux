@@ -1,0 +1,27 @@
+ninja: no work to do.
+ninja: Entering directory `/out/shell-build'
+ninja: no work to do.
+1/5 shell state model              OK              0.01s
+2/5 shell configuration            OK              0.02s
+3/5 shell application catalog      OK              0.05s
+4/5 session lock lifecycle         FAIL            0.06s   exit status 1
+>>> MALLOC_PERTURB_=131 /src/desktop/shell/../../tests/session-lock-test.sh
+――――――――――――――――――――――――――――――――――――― ✀  ―――――――――――――――――――――――――――――――――――――
+stderr:
+flock child exited before holding its session lock
+――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+5/5 shell user interface rendering OK              0.09s
+
+Summary of Failures:
+
+4/5 session lock lifecycle         FAIL            0.06s   exit status 1
+
+Ok:                 4   
+Expected Fail:      0   
+Fail:               1   
+Unexpected Pass:    0   
+Skipped:            0   
+Timeout:            0   
+
+Full log written to /out/shell-build/meson-logs/testlog.txt

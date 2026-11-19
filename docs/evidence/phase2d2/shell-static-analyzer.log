@@ -1,0 +1,3 @@
+ninja: Entering directory `/out/shell-analyzer-build'
+[1/2] Compiling C object seyrix-shell.p/src_main.c.o
+[2/2] Linking target seyrix-shell

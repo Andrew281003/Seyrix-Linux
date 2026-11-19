@@ -1,3 +1,9 @@
 wlroots0.20
 wlr-randr
 wayland
+glib2
+gdk-pixbuf2
+cairo
+pango
+librsvg
+libxkbcommon

@@ -2,6 +2,7 @@
 
 #include <linux/input-event-codes.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/util/log.h>
@@ -124,15 +125,53 @@ static const struct shortcut_binding shortcut_bindings[] = {
 	BINDING(XKB_KEY_r, WLR_MODIFIER_CTRL, SHORTCUT_RELOAD_CONFIG, 0),
 };
 
+static bool configured_shortcut_matches(const char *shortcut,
+		xkb_keysym_t sym, uint32_t modifiers) {
+	uint32_t relevant = modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT |
+		WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL);
+	if (strcmp(shortcut, "Super+Space") == 0) {
+		return sym == XKB_KEY_space && relevant == WLR_MODIFIER_LOGO;
+	}
+	if (strcmp(shortcut, "Super+D") == 0) {
+		return sym == XKB_KEY_d && relevant == WLR_MODIFIER_LOGO;
+	}
+	if (strcmp(shortcut, "Super+P") == 0) {
+		return sym == XKB_KEY_p && relevant == WLR_MODIFIER_LOGO;
+	}
+	if (strcmp(shortcut, "Super+Tab") == 0) {
+		return sym == XKB_KEY_Tab && relevant == WLR_MODIFIER_LOGO;
+	}
+	if (strcmp(shortcut, "Alt+Tab") == 0) {
+		return sym == XKB_KEY_Tab && relevant == WLR_MODIFIER_ALT;
+	}
+	return false;
+}
+
 static bool handle_shortcut(struct seyrix_keyboard *keyboard,
 		const struct wlr_keyboard_key_event *event, xkb_keysym_t sym) {
 	struct seyrix_server *server = keyboard->server;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED ||
-			(modifiers & WLR_MODIFIER_LOGO) == 0) {
+	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		return false;
 	}
 	xkb_keysym_t normalized = xkb_keysym_to_lower(sym);
+	if (configured_shortcut_matches(server->shell_config.launcher_shortcut,
+			normalized, modifiers)) {
+		if (!seyrix_shell_toggle_launcher(server)) {
+			wlr_log(WLR_INFO, "Application launcher is unavailable");
+		}
+		return true;
+	}
+	if (configured_shortcut_matches(server->shell_config.switcher_shortcut,
+			normalized, modifiers)) {
+		if (!seyrix_shell_toggle_switcher(server)) {
+			wlr_log(WLR_INFO, "Window switcher is unavailable");
+		}
+		return true;
+	}
+	if ((modifiers & WLR_MODIFIER_LOGO) == 0) {
+		return false;
+	}
 	uint32_t relevant_modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT |
 		WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL;
 	uint32_t active_modifiers = modifiers & relevant_modifiers;
@@ -229,6 +268,16 @@ static void handle_keyboard_modifiers(struct wl_listener *listener, void *data) 
 	(void)data;
 	struct seyrix_keyboard *keyboard =
 		wl_container_of(listener, keyboard, modifiers);
+	uint32_t previous = keyboard->last_modifiers;
+	uint32_t current = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+	keyboard->last_modifiers = current;
+	uint32_t switcher_modifier = strcmp(
+		keyboard->server->shell_config.switcher_shortcut, "Alt+Tab") == 0 ?
+		WLR_MODIFIER_ALT : WLR_MODIFIER_LOGO;
+	if ((previous & switcher_modifier) != 0 &&
+			(current & switcher_modifier) == 0) {
+		seyrix_shell_commit_switcher(keyboard->server);
+	}
 	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->wlr_keyboard);
 	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
 		&keyboard->wlr_keyboard->modifiers);
